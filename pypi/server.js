@@ -36,6 +36,16 @@ if (!fs.existsSync(cacheDir)) {
   fs.mkdirSync(cacheDir);
 }
 
+// Helper function to check if a package exists in PyPI
+async function packageExists(packageName) {
+  try {
+    await cachedGet(`https://pypi.org/pypi/${packageName}/json`);
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
 async function cachedGet(url, headers = {}) {
   const cacheFile = path.join(cacheDir, Buffer.from(url).toString("base64"));
   let etag = null;
@@ -81,7 +91,7 @@ async function cachedGet(url, headers = {}) {
 }
 
 // Utility to generate common xRegistry attributes
-function xregistryCommonAttrs({ id, name, description, parentUrl, type }) {
+function xregistryCommonAttrs({ id, name, description, parentUrl, type, labels = {}, docsUrl = null }) {
   const now = new Date().toISOString();
   
   // Validate and format ID according to xRegistry spec
@@ -96,12 +106,12 @@ function xregistryCommonAttrs({ id, name, description, parentUrl, type }) {
     xid = '/';
   } else if (type === GROUP_TYPE_SINGULAR) {
     // For groups, use /groupType/groupId
-    xid = `/${GROUP_TYPE}/${safeId}`;
+    xid = normalizePath(`/${GROUP_TYPE}/${safeId}`);
   } else if (type === RESOURCE_TYPE_SINGULAR) {
     // For resources, extract group from parentUrl and use /groupType/groupId/resourceType/resourceId
     const parts = parentUrl.split('/');
     const groupId = parts[2];
-    xid = `/${GROUP_TYPE}/${groupId}/${RESOURCE_TYPE}/${safeId}`;
+    xid = normalizePath(`/${GROUP_TYPE}/${groupId}/${RESOURCE_TYPE}/${safeId}`);
   } else if (type === "version") {
     // For versions, use /groupType/group/resourceType/resource/versions/versionId
     const parts = parentUrl.split('/');
@@ -109,10 +119,32 @@ function xregistryCommonAttrs({ id, name, description, parentUrl, type }) {
     const group = parts[2];
     const resourceType = parts[3];
     const resource = parts[4];
-    xid = `/${groupType}/${group}/${resourceType}/${resource}/versions/${safeId}`;
+    xid = normalizePath(`/${groupType}/${group}/${resourceType}/${resource}/versions/${safeId}`);
   } else {
     // Fallback for other types - should not be used in this implementation
-    xid = `/${type}/${safeId}`;
+    xid = normalizePath(`/${type}/${safeId}`);
+  }
+  
+  // The docs field must be a single absolute URL
+  // If docsUrl is provided, use it for documentation link
+  // Otherwise, for packages, use the new doc endpoint
+  let docUrl = null;
+  
+  // First check if an external docs URL was provided
+  if (docsUrl) {
+    docUrl = docsUrl;
+  } 
+  // For packages, use the doc endpoint (needs to be an absolute URL)
+  else if (type === RESOURCE_TYPE_SINGULAR) {
+    // Use the new doc endpoint for packages, creating an absolute URL
+    const parts = parentUrl.split('/');
+    const groupId = parts[2];
+    // This will be made absolute by the calling function using req.protocol and req.get('host')
+    docUrl = `/${GROUP_TYPE}/${groupId}/${RESOURCE_TYPE}/${safeId}/doc`;
+  } 
+  // Default behavior for other types
+  else if (parentUrl) {
+    docUrl = `${parentUrl}/docs/${safeId}`;
   }
   
   return {
@@ -122,10 +154,17 @@ function xregistryCommonAttrs({ id, name, description, parentUrl, type }) {
     epoch: 1,
     createdat: now,
     modifiedat: now,
-    labels: {},
-    documentation: parentUrl ? [`${parentUrl}/docs/${safeId}`] : [],
-    shortself: parentUrl ? `${parentUrl}/${safeId}` : undefined,
+    labels: labels,
+    docs: docUrl, // Changed from 'documentation' to 'docs' and using a single URL
+    shortself: parentUrl ? normalizePath(`${parentUrl}/${safeId}`) : undefined,
   };
+}
+
+// Utility function to normalize paths by removing double slashes
+function normalizePath(path) {
+  if (!path) return path;
+  // Replace multiple consecutive slashes with a single slash
+  return path.replace(/\/+/g, '/');
 }
 
 // Utility function to generate pagination Link headers
@@ -179,73 +218,55 @@ function generatePaginationLinks(req, totalCount, offset, limit) {
   return links.join(', ');
 }
 
-// Registry Model
-const registryModel = {
-  specversion: "1.0-rc1", // The version of the xRegistry specification this model adheres to.
-  registryid: REGISTRY_ID, // Unique identifier for this registry instance.
-  model: {
-    description:
-      "The xRegistry model for the PyPI wrapper, describing the structure and metadata for Python package registries and packages.",
-    groups: {
-      [GROUP_TYPE]: {
-        description:
-          "A group representing a Python package registry provider (e.g., pypi.org). Contains all available Python package registries.",
-        plural: GROUP_TYPE, // Plural name for the group type (e.g., 'pythonregistries').
-        singular: GROUP_TYPE_SINGULAR, // Singular name for the group type (e.g., 'pythonregistry').
-        resources: {
-          [RESOURCE_TYPE]: {
-            description:
-              "A resource representing a Python package in the registry, including its metadata and available versions.",
-            plural: RESOURCE_TYPE, // Plural name for the resource type (e.g., 'packages').
-            singular: RESOURCE_TYPE_SINGULAR, // Singular name for the resource type (e.g., 'package').
-            hasdocument: false, // Indicates that resources do not have a separate document payload.
-            attributes: {
-              name: {
-                type: "string",
-                description: "The canonical name of the Python package.",
-              },
-              summary: {
-                type: "string",
-                description:
-                  "A short summary or tagline describing the package.",
-              },
-              license: {
-                type: "string",
-                description:
-                  "The license under which the package is distributed.",
-              },
-              author: {
-                type: "string",
-                description: "The author or maintainer of the package.",
-              },
-              home_page: {
-                type: "string",
-                description: "The main homepage URL for the package.",
-              },
-              project_url: {
-                type: "string",
-                description:
-                  "The main project URL or repository for the package.",
-              },
-              requires_dist: {
-                type: "array",
-                item: { type: "string" },
-                description:
-                  "A list of package dependencies required for installation.",
-              },
-              urls: {
-                type: "array",
-                item: { type: "object" },
-                description:
-                  "A list of downloadable distribution files and their metadata for the package version.",
-              },
-            },
-          },
-        },
-      },
-    },
-  },
-};
+// Load Registry Model from JSON file
+let registryModel;
+try {
+  const modelPath = path.join(__dirname, "model.json");
+  const modelData = fs.readFileSync(modelPath, "utf8");
+  registryModel = JSON.parse(modelData);
+  
+  // Replace any placeholder values with constants
+  if (registryModel.registryid !== REGISTRY_ID) {
+    registryModel.registryid = REGISTRY_ID;
+  }
+  
+  // Ensure group and resource types use the constants
+  if (registryModel.model && registryModel.model.groups) {
+    const groupsObj = registryModel.model.groups;
+    if (groupsObj.pythonregistries) {
+      // If model uses "pythonregistries" directly, create a dynamic property with the constant
+      const groupData = groupsObj.pythonregistries;
+      groupsObj[GROUP_TYPE] = groupData;
+      
+      if (groupData.resources && groupData.resources.packages) {
+        const resourceData = groupData.resources.packages;
+        groupData.resources[RESOURCE_TYPE] = resourceData;
+        
+        // Update target in package field if needed
+        if (resourceData.attributes && 
+            resourceData.attributes.package && 
+            resourceData.attributes.package.target === "/pythonregistries/package") {
+          resourceData.attributes.package.target = `/${GROUP_TYPE}/${RESOURCE_TYPE_SINGULAR}`;
+        }
+        
+        // Also update the target in requires_dist.item.properties.package if it exists
+        if (resourceData.attributes && 
+            resourceData.attributes.requires_dist && 
+            resourceData.attributes.requires_dist.item && 
+            resourceData.attributes.requires_dist.item.properties && 
+            resourceData.attributes.requires_dist.item.properties.package && 
+            resourceData.attributes.requires_dist.item.properties.package.target === "/pythonregistries/package") {
+          resourceData.attributes.requires_dist.item.properties.package.target = `/${GROUP_TYPE}/${RESOURCE_TYPE_SINGULAR}`;
+        }
+      }
+    }
+  }
+  
+  console.log("Registry model loaded successfully from model.json");
+} catch (error) {
+  console.error("Error loading model.json:", error.message);
+  process.exit(1);
+}
 
 // Middleware to handle content negotiation and check Accept headers
 app.use((req, res, next) => {
@@ -391,11 +412,11 @@ app.get("/", (req, res) => {
     createdat: now,
     modifiedat: now,
     labels: {},
-    documentation: ["/docs"],
+    docs: `${req.protocol}://${req.get('host')}/docs`, // Changed to single absolute URL
     self: "/",
     modelurl: "/model",
     capabilitiesurl: "/capabilities",
-    [`${GROUP_TYPE}url`]: `/${GROUP_TYPE}`,
+    [`${GROUP_TYPE}url`]: normalizePath(`/${GROUP_TYPE}`),
     [`${GROUP_TYPE}count`]: 1,
     [GROUP_TYPE]: {
       [GROUP_ID]: {
@@ -406,11 +427,14 @@ app.get("/", (req, res) => {
           parentUrl: `/${GROUP_TYPE}`,
           type: GROUP_TYPE_SINGULAR,
         }),
-        self: `/${GROUP_TYPE}/${GROUP_ID}`,
-        [`${RESOURCE_TYPE}url`]: `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`,
+        self: normalizePath(`/${GROUP_TYPE}/${GROUP_ID}`),
+        [`${RESOURCE_TYPE}url`]: normalizePath(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`),
       },
     },
   };
+  
+  // Make all URLs in the docs field absolute
+  convertDocsToAbsoluteUrl(req, rootResponse);
   
   // Apply flag handlers
   rootResponse = handleCollectionsFlag(req, rootResponse);
@@ -435,8 +459,12 @@ app.get("/capabilities", (req, res) => {
       apis: ["/", "/capabilities", "/model", `/${GROUP_TYPE}`, `/${GROUP_TYPE}/${GROUP_ID}`, 
              `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`, 
              `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName`,
+             `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName$details`,
              `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName/versions`,
-             `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName/versions/:version`],
+             `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName/versions/:version`,
+             `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName/versions/:version$details`,
+             `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName/meta`,
+             `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName/doc`],
       flags: [
         "collections", "doc", "filter", "inline", "limit", "offset",
         "epoch", "noepoch", "noreadonly", "specversion",
@@ -584,15 +612,7 @@ app.get(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`, async (req, res) => {
     // Create resource objects for the paginated results
     const resources = {};
     paginatedPackageNames.forEach((packageName) => {
-      resources[packageName] = {
-        ...xregistryCommonAttrs({
-          id: packageName,
-          name: packageName,
-          parentUrl: `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`,
-          type: RESOURCE_TYPE_SINGULAR,
-        }),
-        self: `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}`,
-      };
+              resources[packageName] = {        ...xregistryCommonAttrs({          id: packageName,          name: packageName,          parentUrl: normalizePath(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`),          type: RESOURCE_TYPE_SINGULAR,        }),        self: normalizePath(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}`),      };
     });
     
     // Handle empty results correctly (spec requires empty object for no results)
@@ -627,6 +647,35 @@ app.get(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`, async (req, res) => {
   }
 });
 
+// Package description endpoint - serves the full description with the appropriate content type
+app.get(
+  `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName/doc`,
+  async (req, res) => {
+    const { packageName } = req.params;
+    try {
+      const response = await cachedGet(
+        `https://pypi.org/pypi/${packageName}/json`
+      );
+      const { info } = response;
+      
+      // Get the full description
+      const description = info.description || '';
+      
+      // Set the Content-Type based on description_content_type
+      // If not specified, default to text/plain
+      const contentType = info.description_content_type || 'text/plain';
+      res.set('Content-Type', contentType);
+      
+      // Send the raw description
+      res.send(description);
+    } catch (error) {
+      res.status(404).json(
+        createErrorResponse("not_found", "Package not found", 404, req.originalUrl, `The package '${packageName}' could not be found`, packageName)
+      );
+    }
+  }
+);
+
 // Package metadata
 app.get(
   `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName`,
@@ -639,6 +688,51 @@ app.get(
       const { info } = response;
       const versions = Object.keys(response.releases);
       
+      // Process requires_dist to include package cross-references
+      const requiresDist = await processRequiresDist(info.requires_dist);
+      
+      // Convert classifiers to labels map
+      const labels = convertClassifiersToLabels(info.classifiers);
+      
+      // Check for documentation URL in project_urls
+      let docsUrl = null;
+      if (info.project_urls) {
+        // Look for common documentation keys
+        const docKeys = ['Documentation', 'Docs', 'docs', 'documentation'];
+        for (const key of docKeys) {
+          if (info.project_urls[key]) {
+            docsUrl = info.project_urls[key];
+            break;
+          }
+        }
+      }
+      
+      // Build resource URL paths
+      const resourceBasePath = `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}`;
+      const metaUrl = normalizePath(`${resourceBasePath}/meta`);
+      const versionsUrl = normalizePath(`${resourceBasePath}/versions`);
+      const defaultVersionUrl = normalizePath(`${resourceBasePath}/versions/${info.version}`);
+      
+      // Get creation and modification timestamps
+      const createdAt = info.created ? new Date(info.created).toISOString() : new Date().toISOString();
+      const modifiedAt = info.modified ? new Date(info.modified).toISOString() : new Date().toISOString();
+      
+      // Create meta subobject according to spec
+      const metaObject = {
+        [`${RESOURCE_TYPE_SINGULAR}id`]: packageName,
+        self: metaUrl,
+        xid: normalizePath(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}/meta`),
+        epoch: 1,
+        createdat: createdAt,
+        modifiedat: modifiedAt,
+        readonly: true, // PyPI wrapper is read-only
+        compatibility: "none",
+        // Include version related information in meta
+        defaultversionid: info.version,
+        defaultversionurl: defaultVersionUrl,
+        defaultversionsticky: true, // Make default version sticky by default
+      };
+      
       let packageResponse = {
         ...xregistryCommonAttrs({
           id: packageName,
@@ -646,35 +740,112 @@ app.get(
           description: info.summary,
           parentUrl: `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`,
           type: RESOURCE_TYPE_SINGULAR,
+          labels: labels,
+          docsUrl: docsUrl,
         }),
         [`${RESOURCE_TYPE_SINGULAR}id`]: packageName,
         versionid: info.version,
-        self: req.originalUrl,
+        self: normalizePath(req.originalUrl),
         name: info.name,
         description: info.summary,
         license: info.license,
         author: info.author,
+        author_email: info.author_email,
+        maintainer: info.maintainer,
+        maintainer_email: info.maintainer_email,
         home_page: info.home_page,
         project_url: info.project_url,
-        requires_dist: info.requires_dist,
-        versionsurl: `${req.originalUrl}/versions`,
+        project_urls: info.project_urls,
+        description_content_type: info.description_content_type,
+        requires_dist: requiresDist,
+        requires_python: info.requires_python,
+        classifiers: info.classifiers,
+        provides_extra: info.provides_extra,
+        platform: info.platform,
+        dynamic: info.dynamic,
+        yanked: info.yanked || false,
+        yanked_reason: info.yanked_reason,
+        // Resource level navigation attributes
+        metaurl: metaUrl,
+        versionsurl: versionsUrl,
         versionscount: versions.length,
       };
+      
+      // Make the docs URL absolute if it's not already
+      convertDocsToAbsoluteUrl(req, packageResponse);
       
       // Apply flag handlers
       packageResponse = handleCollectionsFlag(req, packageResponse);
       packageResponse = handleDocFlag(req, packageResponse);
-      packageResponse = handleInlineFlag(req, packageResponse, "versions");
+      packageResponse = handleInlineFlag(req, packageResponse, "versions", metaObject);
       packageResponse = handleEpochFlag(req, packageResponse);
       packageResponse = handleSpecVersionFlag(req, packageResponse);
       packageResponse = handleNoReadonlyFlag(req, packageResponse);
-      packageResponse = handleVersionFlags(req, packageResponse, packageName);
+      // Skip version flags that would add meta properties to main response
+      // packageResponse = handleVersionFlags(req, packageResponse, packageName);
       packageResponse = handleSchemaFlag(req, packageResponse, 'resource');
+      
+      // Remove any meta-specific attributes that might have been added
+      if (packageResponse.defaultversionid) delete packageResponse.defaultversionid;
+      if (packageResponse.defaultversionsticky) delete packageResponse.defaultversionsticky;
+      if (packageResponse.defaultversionurl) delete packageResponse.defaultversionurl;
       
       // Apply response headers
       setXRegistryHeaders(res, packageResponse);
       
+      // Log the structure of the response to debug
+      console.log("Package response includes meta:", !!packageResponse.meta);
+      
       res.json(packageResponse);
+    } catch (error) {
+      res.status(404).json(
+        createErrorResponse("not_found", "Package not found", 404, req.originalUrl, `The package '${packageName}' could not be found`, packageName)
+      );
+    }
+  }
+);
+
+// Resource meta endpoint
+app.get(
+  `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName/meta`,
+  async (req, res) => {
+    const { packageName } = req.params;
+    try {
+      const response = await cachedGet(
+        `https://pypi.org/pypi/${packageName}/json`
+      );
+      const { info } = response;
+      
+      // Build resource URL paths
+      const resourceBasePath = `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}`;
+      const metaUrl = normalizePath(`${resourceBasePath}/meta`);
+      const defaultVersionUrl = normalizePath(`${resourceBasePath}/versions/${info.version}`);
+      
+      // Create meta response according to spec
+      const metaResponse = {
+        [`${RESOURCE_TYPE_SINGULAR}id`]: packageName,
+        self: metaUrl,
+        xid: normalizePath(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}/meta`),
+        epoch: 1,
+        createdat: info.created ? new Date(info.created).toISOString() : new Date().toISOString(),
+        modifiedat: info.modified ? new Date(info.modified).toISOString() : new Date().toISOString(),
+        readonly: true, // PyPI wrapper is read-only
+        compatibility: "none",
+        // Include version related information in meta
+        defaultversionid: info.version,
+        defaultversionurl: defaultVersionUrl,
+        defaultversionsticky: true, // Make default version sticky by default
+      };
+      
+      // Apply flag handlers
+      let processedResponse = handleEpochFlag(req, metaResponse);
+      processedResponse = handleNoReadonlyFlag(req, processedResponse);
+      processedResponse = handleSchemaFlag(req, processedResponse, 'meta');
+      
+      // Apply response headers
+      setXRegistryHeaders(res, processedResponse);
+      
+      res.json(processedResponse);
     } catch (error) {
       res.status(404).json(
         createErrorResponse("not_found", "Package not found", 404, req.originalUrl, `The package '${packageName}' could not be found`, packageName)
@@ -718,7 +889,7 @@ app.get(
             type: "version",
           }),
           versionid: v,
-          self: `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}/versions/${v}`,
+          self: normalizePath(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}/versions/${v}`),
         };
       });
       
@@ -764,6 +935,28 @@ app.get(
       const { info, urls } = versionData;
       const versions = Object.keys(packageData.releases);
       
+      // Process requires_dist to include package cross-references
+      const requiresDist = await processRequiresDist(info.requires_dist);
+      
+      // Get vulnerabilities if available
+      const vulnerabilities = versionData.vulnerabilities || [];
+      
+      // Convert classifiers to labels map
+      const labels = convertClassifiersToLabels(info.classifiers);
+      
+      // Check for documentation URL in project_urls
+      let docsUrl = null;
+      if (info.project_urls) {
+        // Look for common documentation keys
+        const docKeys = ['Documentation', 'Docs', 'docs', 'documentation'];
+        for (const key of docKeys) {
+          if (info.project_urls[key]) {
+            docsUrl = info.project_urls[key];
+            break;
+          }
+        }
+      }
+      
       // Start with the version-specific attributes
       let versionResponse = {
         ...xregistryCommonAttrs({
@@ -772,35 +965,50 @@ app.get(
           description: info.summary,
           parentUrl: `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}/versions`,
           type: "version",
+          labels: labels,
+          docsUrl: docsUrl,
         }),
         // Basic version attributes
         [`${RESOURCE_TYPE_SINGULAR}id`]: packageName,
         versionid: version,
-        self: `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}/versions/${version}`,
-        resourceurl: `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}`,
-        
+        self: normalizePath(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}/versions/${version}`),
+        resourceurl: normalizePath(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}`),
         // Resource details (package information)
         name: info.name,
         description: info.summary,
         license: info.license,
         author: info.author,
+        author_email: info.author_email,
+        maintainer: info.maintainer,
+        maintainer_email: info.maintainer_email,
         home_page: info.home_page,
         project_url: info.project_url,
-        requires_dist: info.requires_dist,
-        
+        project_urls: info.project_urls,
+        description_content_type: info.description_content_type,
+        requires_dist: requiresDist,
+        requires_python: info.requires_python,
+        classifiers: info.classifiers,
+        provides_extra: info.provides_extra,
+        platform: info.platform,
+        dynamic: info.dynamic,
+        yanked: info.yanked || false,
+        yanked_reason: info.yanked_reason,
         // Version-specific details
         version_created: info.created ? new Date(info.created).toISOString() : null,
         version_released: info.released ? new Date(info.released).toISOString() : null,
-        
         // Additional package metadata
         package_version_count: versions.length,
         package_latest_version: packageData.info.version,
         is_latest: version === packageData.info.version,
-        
         // Distribution files
         urls: urls,
         urlscount: Array.isArray(urls) ? urls.length : 0,
+        // Security information
+        vulnerabilities: vulnerabilities
       };
+      
+      // Make the docs URL absolute if it's not already
+      convertDocsToAbsoluteUrl(req, versionResponse);
       
       // Add classifiers if available
       if (info.classifiers && Array.isArray(info.classifiers)) {
@@ -849,13 +1057,41 @@ function handleCollectionsFlag(req, data) {
   return data;
 }
 
+// Utility function to convert PyPI classifiers to labels map
+function convertClassifiersToLabels(classifiers) {
+  if (!Array.isArray(classifiers) || classifiers.length === 0) {
+    return {};
+  }
+  
+  const labels = {};
+  
+  classifiers.forEach(classifier => {
+    // Split classifier on double-colon with spaces
+    const parts = classifier.split(' :: ');
+    
+    if (parts.length > 1) {
+      const key = parts[0];
+      const value = parts.slice(1).join(' :: ');
+      
+      // If we have multiple values for the same key, join them with commas
+      if (labels[key]) {
+        labels[key] = `${labels[key]}, ${value}`;
+      } else {
+        labels[key] = value;
+      }
+    }
+  });
+  
+  return labels;
+}
+
 // Utility function to handle doc flag
 function handleDocFlag(req, data) {
   if (req.query.doc === 'false') {
     // Remove documentation links
     const result = {...data};
-    if (result.documentation) {
-      delete result.documentation;
+    if (result.docs) {
+      delete result.docs;
     }
     return result;
   }
@@ -863,13 +1099,26 @@ function handleDocFlag(req, data) {
 }
 
 // Utility function to handle inline flag
-function handleInlineFlag(req, data, resourceType) {
-  if (req.query.inline === 'true' && data[`${resourceType}url`]) {
-    // Inline is requested but not implemented
-    // In a full implementation, this would fetch and include the referenced resource
+function handleInlineFlag(req, data, resourceType, metaObject = null) {
+  const inlineParam = req.query.inline;
+  
+  // Handle inline=true for versions collection
+  if (inlineParam === 'true' && data[`${resourceType}url`]) {
+    // Currently not implemented - would fetch and include the referenced resource
     // For now, we add a header to indicate this isn't fully supported
     req.res.set('Warning', '299 - "Inline flag partially supported"');
   }
+  
+  // Handle meta inlining for resources
+  // Include meta object when specifically requested via inline=true or inline=meta
+  // OR by default during development/testing (remove this in production)
+  if (inlineParam === 'true' || inlineParam === 'meta') { // Always include meta for testing
+    if (metaObject && data.metaurl) {
+      // Include meta object
+      data.meta = metaObject;
+    }
+  }
+  
   return data;
 }
 
@@ -975,24 +1224,49 @@ function handleVersionFlags(req, data, packageName) {
   
   const result = {...data};
   
-  // Handle nodefaultversionid flag
-  if (req.query.nodefaultversionid === 'true') {
-    // Keep versionid but mark it as not being the default
-    result.defaultversionid = false;
-  } else {
-    // By default, mark the current version as the default
-    result.defaultversionid = true;
-  }
-  
-  // Handle sticky flag for default versions
-  if (req.query.nodefaultversionsticky !== 'true') {
-    // Default is sticky (won't change when new versions are added)
-    result.defaultversionsticky = true;
-  } else {
-    result.defaultversionsticky = false;
-  }
+  // These attributes should only be in the meta subobject, not in the main resource response
+  // Don't add them to the main response
   
   return result;
+}
+
+// Utility function to process requires_dist with package cross-references
+async function processRequiresDist(requiresList) {
+  if (!Array.isArray(requiresList)) {
+    return [];
+  }
+  
+  // Create promises for each dependency check
+  const depPromises = requiresList.map(async dep => {
+    // Extract the package name from the dependency string
+    // This regex extracts the package name before any version specifiers or extras
+    const packageNameMatch = dep.match(/^([A-Za-z0-9_.-]+)(\s*[<>=!;].*)?$/);
+    const depPackageName = packageNameMatch ? packageNameMatch[1].trim() : dep;
+    
+    // Check if the package exists before adding package reference
+    const exists = await packageExists(depPackageName);
+    
+    // Parse version from the specifier if it exists
+    let versionPath = '';
+    if (exists) {
+      // Extract version constraints
+      // Look for common patterns: ==X.Y.Z, >=X.Y.Z, ~=X.Y.Z, etc.
+      const versionMatch = dep.match(/[=><~!]=?\s*([0-9]+(?:\.[0-9]+)*)/);
+      if (versionMatch && versionMatch[1]) {
+        const version = versionMatch[1];
+        // Add version to the path for direct deep linking
+        versionPath = `/versions/${version}`;
+      }
+    }
+    
+    return {
+      specifier: dep,
+      package: exists ? normalizePath(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE_SINGULAR}/${depPackageName}${versionPath}`) : null
+    };
+  });
+  
+  // Wait for all promises to resolve
+  return Promise.all(depPromises);
 }
 
 // Basic schema validation utility
@@ -1109,6 +1383,107 @@ app.options(`/${GROUP_TYPE}/:groupId/${RESOURCE_TYPE}/:resourceId/versions`, (re
 app.options(`/${GROUP_TYPE}/:groupId/${RESOURCE_TYPE}/:resourceId/versions/:versionId`, (req, res) => {
   handleOptionsRequest(req, res, 'GET');
 });
+
+// OPTIONS handler for doc endpoint
+app.options(`/${GROUP_TYPE}/:groupId/${RESOURCE_TYPE}/:resourceId/doc`, (req, res) => {
+  handleOptionsRequest(req, res, 'GET');
+});
+
+// OPTIONS handler for meta endpoint
+app.options(`/${GROUP_TYPE}/:groupId/${RESOURCE_TYPE}/:resourceId/meta`, (req, res) => {
+  handleOptionsRequest(req, res, 'GET');
+});
+
+// Utility function to convert relative docs URLs to absolute URLs
+function convertDocsToAbsoluteUrl(req, data) {
+  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  
+  // Process root object
+  if (data.docs && typeof data.docs === 'string' && !data.docs.startsWith('http')) {
+    data.docs = `${baseUrl}${data.docs.startsWith('/') ? '' : '/'}${data.docs}`;
+  }
+  
+  // Process nested objects that might have docs field
+  for (const key in data) {
+    if (typeof data[key] === 'object' && data[key] !== null) {
+      if (data[key].docs && typeof data[key].docs === 'string' && !data[key].docs.startsWith('http')) {
+        data[key].docs = `${baseUrl}${data[key].docs.startsWith('/') ? '' : '/'}${data[key].docs}`;
+      }
+      
+      // Process deeper nested objects
+      convertDocsToAbsoluteUrl(req, data[key]);
+    }
+  }
+  
+  return data;
+}
+
+// Add $details endpoint for resources (packages)
+// Use a regex pattern to match the $details suffix
+app.get(
+  new RegExp(`^\\/${GROUP_TYPE}\\/${GROUP_ID}\\/${RESOURCE_TYPE}\\/([^/]+)\\$details$`),
+  async (req, res) => {
+    // Extract the package name from the regex match
+    const packageName = req.params[0];
+    
+    // Construct new URL to forward to
+    const forwardUrl = `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}`;
+    
+    // Log the forwarding for debugging
+    console.log(`Forwarding $details request from ${req.url} to ${forwardUrl}`);
+    
+    // Modify the request URL
+    req.url = forwardUrl;
+    
+    // Set a header to indicate this was accessed via the $details endpoint
+    res.set('X-XRegistry-Details', 'true');
+    
+    // Forward to the regular resource endpoint handler
+    app._router.handle(req, res);
+  }
+);
+
+// Add $details endpoint for versions
+// Use a regex pattern to match the $details suffix
+app.get(
+  new RegExp(`^\\/${GROUP_TYPE}\\/${GROUP_ID}\\/${RESOURCE_TYPE}\\/([^/]+)\\/versions\\/([^/]+)\\$details$`),
+  async (req, res) => {
+    // Extract the package name and version from the regex match
+    const packageName = req.params[0];
+    const version = req.params[1];
+    
+    // Construct new URL to forward to
+    const forwardUrl = `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}/versions/${version}`;
+    
+    // Log the forwarding for debugging
+    console.log(`Forwarding version $details request from ${req.url} to ${forwardUrl}`);
+    
+    // Modify the request URL
+    req.url = forwardUrl;
+    
+    // Set a header to indicate this was accessed via the $details endpoint
+    res.set('X-XRegistry-Details', 'true');
+    
+    // Forward to the regular version endpoint handler
+    app._router.handle(req, res);
+  }
+);
+
+// OPTIONS handler for resource $details endpoint - using regex for proper matching
+app.options(
+  new RegExp(`^\\/${GROUP_TYPE}\\/${GROUP_ID}\\/${RESOURCE_TYPE}\\/([^/]+)\\$details$`),
+  (req, res) => {
+    handleOptionsRequest(req, res, 'GET');
+  }
+);
+
+// OPTIONS handler for version $details endpoint - using regex for proper matching
+app.options(
+  new RegExp(`^\\/${GROUP_TYPE}\\/${GROUP_ID}\\/${RESOURCE_TYPE}\\/([^/]+)\\/versions\\/([^/]+)\\$details$`),
+  (req, res) => {
+    handleOptionsRequest(req, res, 'GET');
+  }
+);
 
 app.listen(PORT, () => {
   console.log(`xRegistry PyPI wrapper listening on port ${PORT}`);

@@ -1,0 +1,211 @@
+{
+    "specversion": "1.0-rc1",
+    "registryid": "pypi-wrapper",
+    "model": {
+        "description": "The xRegistry model for the PyPI wrapper, describing the structure and metadata for Python package registries and packages.",
+        "groups": {
+            "pythonregistries": {
+                "description": "A group representing a Python package registry provider (e.g., pypi.org). Contains all available Python package registries.",
+                "plural": "pythonregistries",
+                "singular": "pythonregistry",
+                "resources": {
+                    "packages": {
+                        "description": "A resource representing a Python package in the registry, including its metadata and available versions.",
+                        "plural": "packages",
+                        "singular": "package",
+                        "hasdocument": false,
+                        "attributes": {
+                            "name": {
+                                "type": "string",
+                                "description": "The canonical name of the Python package."
+                            },
+                            "summary": {
+                                "type": "string",
+                                "description": "A short summary or tagline describing the package."
+                            },
+                            "license": {
+                                "type": "string",
+                                "description": "The license under which the package is distributed."
+                            },
+                            "author": {
+                                "type": "string",
+                                "description": "The author or maintainer of the package."
+                            },
+                            "author_email": {
+                                "type": "string",
+                                "description": "The email of the package author."
+                            },
+                            "maintainer": {
+                                "type": "string",
+                                "description": "The maintainer of the package."
+                            },
+                            "maintainer_email": {
+                                "type": "string",
+                                "description": "The email of the package maintainer."
+                            },
+                            "home_page": {
+                                "type": "string",
+                                "description": "The main homepage URL for the package."
+                            },
+                            "project_url": {
+                                "type": "string",
+                                "description": "The main project URL or repository for the package."
+                            },
+                            "project_urls": {
+                                "type": "object",
+                                "description": "Dictionary of additional project URLs."
+                            },
+                            "description_content_type": {
+                                "type": "string",
+                                "description": "The content type of the description (e.g., text/markdown)."
+                            },
+                            "requires_dist": {
+                                "type": "array",
+                                "item": {
+                                    "type": "object",
+                                    "properties": {
+                                        "specifier": {
+                                            "type": "string",
+                                            "description": "Original dependency specifier string following PEP 508 format."
+                                        },
+                                        "package": {
+                                            "type": "xid",
+                                            "description": "XID reference to the package in this registry.",
+                                            "target": "/pythonregistries/package"
+                                        }
+                                    }
+                                },
+                                "description": "A list of package dependencies required for installation with cross-references."
+                            },
+                            "requires_python": {
+                                "type": "string",
+                                "description": "The Python version requirement for this package."
+                            },
+                            "classifiers": {
+                                "type": "array",
+                                "item": {
+                                    "type": "string"
+                                },
+                                "description": "List of classifiers categorizing the package."
+                            },
+                            "provides_extra": {
+                                "type": "array",
+                                "item": {
+                                    "type": "string"
+                                },
+                                "description": "List of optional feature names provided by this package."
+                            },
+                            "platform": {
+                                "type": "string",
+                                "description": "Platform compatibility information."
+                            },
+                            "dynamic": {
+                                "type": "array",
+                                "item": {
+                                    "type": "string"
+                                },
+                                "description": "List of fields that were dynamically computed at build time."
+                            },
+                            "yanked": {
+                                "type": "boolean",
+                                "description": "Whether this version has been yanked."
+                            },
+                            "yanked_reason": {
+                                "type": "string",
+                                "description": "Reason for yanking this version, if applicable."
+                            },
+                            "urls": {
+                                "type": "array",
+                                "item": {
+                                    "type": "object",
+                                    "properties": {
+                                        "filename": {
+                                            "type": "string"
+                                        },
+                                        "packagetype": {
+                                            "type": "string"
+                                        },
+                                        "python_version": {
+                                            "type": "string"
+                                        },
+                                        "size": {
+                                            "type": "number"
+                                        },
+                                        "upload_time": {
+                                            "type": "string"
+                                        },
+                                        "upload_time_iso_8601": {
+                                            "type": "string"
+                                        },
+                                        "url": {
+                                            "type": "string"
+                                        },
+                                        "digests": {
+                                            "type": "object",
+                                            "properties": {
+                                                "blake2b_256": {
+                                                    "type": "string"
+                                                },
+                                                "md5": {
+                                                    "type": "string"
+                                                },
+                                                "sha256": {
+                                                    "type": "string"
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                "description": "A list of downloadable distribution files and their metadata for the package version."
+                            },
+                            "vulnerabilities": {
+                                "type": "array",
+                                "item": {
+                                    "type": "object",
+                                    "properties": {
+                                        "aliases": {
+                                            "type": "array",
+                                            "item": {
+                                                "type": "string"
+                                            }
+                                        },
+                                        "details": {
+                                            "type": "string"
+                                        },
+                                        "summary": {
+                                            "type": "string"
+                                        },
+                                        "fixed_in": {
+                                            "type": "array",
+                                            "item": {
+                                                "type": "string"
+                                            }
+                                        },
+                                        "id": {
+                                            "type": "string"
+                                        },
+                                        "link": {
+                                            "type": "string"
+                                        },
+                                        "source": {
+                                            "type": "string"
+                                        },
+                                        "withdrawn": {
+                                            "type": "string"
+                                        }
+                                    }
+                                },
+                                "description": "List of known security vulnerabilities for this package."
+                            },
+                            "package": {
+                                "type": "xid",
+                                "description": "Cross-reference to another package resource when applicable.",
+                                "target": "/pythonregistries/package"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
