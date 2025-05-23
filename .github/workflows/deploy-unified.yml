@@ -13,7 +13,7 @@ on:
         type: boolean
       resource_group:
         description: Azure Resource Group
-        default: xregistry-resources
+        default: xregistry-package-registries
         type: string
       location:
         description: Azure Region
@@ -21,11 +21,11 @@ on:
         type: string
       env_name:
         description: Container App Environment Name
-        default: xregistry-env
+        default: xregistry-package-registries
         type: string
       app_name:
         description: Container App Name
-        default: xregistry-pypi-bridge
+        default: xregistry-package-registries
         type: string
 
 env:
