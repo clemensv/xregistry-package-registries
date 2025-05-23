@@ -181,4 +181,5 @@ jobs:
                          XREGISTRY_PYPI_QUIET=false
           fi
 
-      - run: echo "Endpoint: https://$(az containerapp show --name $APP_NAME --resource-group $RESOURCE_GROUP --query 'properties.configuration.ingress.fqdn' -o tsv)"
+      - run: | 
+          echo "Endpoint: https://$(az containerapp show --name $APP_NAME --resource-group $RESOURCE_GROUP --query 'properties.configuration.ingress.fqdn' -o tsv)"
