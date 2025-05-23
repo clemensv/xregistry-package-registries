@@ -1,0 +1,59 @@
+# Node.js
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+test/
+coverage/
+.nyc_output/
+*.test.js
+
+# Development files
+.git/
+.gitignore
+README.md
+*.md
+ACTIONS.md
+QUICK-START.md
+push-to-ghcr.md
+
+# Build artifacts
+*.tar.gz
+*.tgz
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Development scripts
+start-servers*.bat
+start-servers*.ps1
+setup-deployment-secrets.*
+run-test-servers.js
+
+# Cache (will be created in container)
+cache/*
+!cache/.gitkeep 

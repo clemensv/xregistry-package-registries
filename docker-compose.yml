@@ -1,18 +1,41 @@
-version: '3'
+version: '3.8'
 
 services:
+  # Unified xRegistry Server (Production-like)
+  unified:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - XREGISTRY_PORT=3000
+      - XREGISTRY_ENABLE=pypi,npm,maven,nuget,oci
+      - XREGISTRY_QUIET=false
+      - NODE_ENV=development
+    volumes:
+      - ./cache:/app/cache
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "node", "-e", "const http = require('http'); const options = { host: 'localhost', port: 3000, path: '/', timeout: 2000 }; const req = http.request(options, (res) => { if (res.statusCode === 200) process.exit(0); else process.exit(1); }); req.on('error', () => process.exit(1)); req.end();"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Individual PyPI Server (Development)
   pypi:
     build:
       context: ./pypi
     ports:
-      - "3000:3000"
+      - "3001:3000"
     environment:
       - XREGISTRY_PYPI_PORT=3000
-      - XREGISTRY_PYPI_BASEURL=http://localhost:3000
+      - XREGISTRY_PYPI_BASEURL=http://localhost:3001
     volumes:
       - ./pypi/cache:/app/cache
       - ./logs:/logs
 
+  # Individual NPM Server (Development)
   npm:
     build:
       context: ./npm

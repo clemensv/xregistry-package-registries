@@ -5,8 +5,18 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "start:all": "node server.js --enable pypi,npm,maven,nuget,oci",
     "dev": "node server.js --enable=pypi",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "npx mocha 'test/**/*.test.js' --recursive --timeout 10000",
+    "test:unit": "npx mocha 'test/unit/**/*.test.js' --recursive --timeout 5000",
+    "test:integration": "npx mocha 'test/integration/**/*.test.js' --recursive --timeout 15000",
+    "test:regression": "npx mocha 'test/regression/**/*.test.js' --recursive --timeout 10000",
+    "test:install": "npm install",
+    "docker:build": "docker build -t xregistry-unified .",
+    "docker:run": "docker run -p 3000:3000 --rm xregistry-unified",
+    "docker:test": "bash test-docker.sh",
+    "docker:compose": "docker-compose up unified",
+    "docker:compose:dev": "docker-compose up pypi npm"
   },
   "keywords": [
     "xregistry",
@@ -21,11 +31,17 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "express": "^4.18.2",
     "axios": "^1.6.0",
+    "express": "^4.18.2",
     "yargs": "^17.7.2"
   },
   "engines": {
     "node": ">=16.0.0"
+  },
+  "devDependencies": {
+    "mocha": "^10.2.0",
+    "chai": "^4.3.10",
+    "supertest": "^6.3.3",
+    "sinon": "^17.0.1"
   }
 }
