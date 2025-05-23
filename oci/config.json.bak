@@ -1,0 +1,23 @@
+{
+  "ociBackends": [
+    {
+      "name": "dockerhub",
+      "registryUrl": "https://registry-1.docker.io",
+      "catalogPath": "/v2/_catalog",
+      "username": "clemensv",
+      "password": ""
+    },
+    {
+      "name": "ghcr",
+      "registryUrl": "https://ghcr.io",
+      "username": "your-ghcr-username",
+      "password": "your-ghcr-pat",
+      "catalogPath": "disabled"
+    },
+    {
+      "name": "localRegistry",
+      "registryUrl": "http://localhost:5000",
+      "catalogPath": "/v2/_catalog"
+    }
+  ]
+}

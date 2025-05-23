@@ -1,0 +1,29 @@
+{
+  "name": "xregistry-oci-proxy",
+  "version": "1.0.0",
+  "description": "xRegistry API proxy for OCI container registries with full xRegistry compliance",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js --quiet=false",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "xregistry",
+    "oci",
+    "container",
+    "registry",
+    "proxy",
+    "docker",
+    "ghcr"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.6.0",
+    "express": "^4.18.2",
+    "mkdirp": "^3.0.1",
+    "sanitize-filename": "^1.6.3",
+    "yargs": "^17.7.2"
+  }
+} 

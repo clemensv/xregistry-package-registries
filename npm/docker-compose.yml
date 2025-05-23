@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  xregistry-npm:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: xregistry-npm-bridge
+    container_name: xregistry-npm-bridge
+    ports:
+      - "${XREGISTRY_NPM_PORT:-3100}:3100"
+    environment:
+      - NODE_ENV=production
+      - PORT=3100
+      - XREGISTRY_NPM_PORT=3100
+      - XREGISTRY_NPM_LOG=${XREGISTRY_NPM_LOG:-}
+      - XREGISTRY_NPM_QUIET=${XREGISTRY_NPM_QUIET:-false}
+      - XREGISTRY_NPM_BASEURL=${XREGISTRY_NPM_BASEURL:-}
+      - XREGISTRY_NPM_API_KEY=${XREGISTRY_NPM_API_KEY:-}
+    volumes:
+      - ./logs:/logs
+      - ./cache:/app/cache
+    restart: unless-stopped 

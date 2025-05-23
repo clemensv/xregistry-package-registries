@@ -2,8 +2,49 @@ const express = require("express");
 const axios = require("axios");
 const fs = require("fs");
 const path = require("path");
+const yargs = require("yargs");
 const app = express();
-const PORT = process.env.PORT || 3000;
+
+// Parse command line arguments with fallback to environment variables
+const argv = yargs
+  .option('port', {
+    alias: 'p',
+    description: 'Port to listen on',
+    type: 'number',
+    default: process.env.XREGISTRY_PYPI_PORT || process.env.PORT || 3000
+  })
+  .option('log', {
+    alias: 'l',
+    description: 'Path to log file in W3C Extended Log File Format',
+    type: 'string',
+    default: process.env.XREGISTRY_PYPI_LOG || null
+  })
+  .option('quiet', {
+    alias: 'q',
+    description: 'Suppress logging to stdout',
+    type: 'boolean',
+    default: process.env.XREGISTRY_PYPI_QUIET === 'true' || false
+  })
+  .option('baseurl', {
+    alias: 'b',
+    description: 'Base URL for self-referencing URLs',
+    type: 'string',
+    default: process.env.XREGISTRY_PYPI_BASEURL || null
+  })
+  .option('api-key', {
+    alias: 'k',
+    description: 'API key for authentication (if set, clients must provide this in Authorization header)',
+    type: 'string',
+    default: process.env.XREGISTRY_PYPI_API_KEY || null
+  })
+  .help()
+  .argv;
+
+const PORT = argv.port;
+const LOG_FILE = argv.log;
+const QUIET_MODE = argv.quiet;
+const BASE_URL = argv.baseurl;
+const API_KEY = argv.apiKey;
 
 const REGISTRY_ID = "pypi-wrapper";
 const GROUP_TYPE = "pythonregistries";
@@ -14,6 +55,191 @@ const RESOURCE_TYPE_SINGULAR = "package";
 const DEFAULT_PAGE_LIMIT = 50;
 const SPEC_VERSION = "1.0-rc1";
 const SCHEMA_VERSION = "xRegistry-json/1.0-rc1";
+
+// Initialize logging
+let logStream = null;
+if (LOG_FILE) {
+  try {
+    logStream = fs.createWriteStream(LOG_FILE, { flags: 'a' });
+    // Write W3C Extended Log File Format header
+    logStream.write('#Version: 1.0\n');
+    logStream.write('#Fields: date time c-ip cs-method cs-uri-stem cs-uri-query sc-status sc-bytes time-taken cs(User-Agent) cs(Referer)\n');
+    console.log(`Logging to file: ${LOG_FILE}`);
+  } catch (error) {
+    console.error(`Error opening log file: ${error.message}`);
+    process.exit(1);
+  }
+}
+
+// Logging function
+function logRequest(req, res, responseTime) {
+  const date = new Date();
+  const dateStr = date.toISOString().split('T')[0];
+  const timeStr = date.toISOString().split('T')[1].split('.')[0];
+  const ip = req.ip || req.connection.remoteAddress;
+  const method = req.method;
+  const uri = req.path;
+  const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?') + 1) : '-';
+  const status = res.statusCode;
+  const bytes = res._contentLength || '-';
+  const userAgent = req.get('User-Agent') || '-';
+  const referer = req.get('Referer') || '-';
+  
+  const logEntry = `${dateStr} ${timeStr} ${ip} ${method} ${uri} ${query} ${status} ${bytes} ${responseTime} "${userAgent}" "${referer}"\n`;
+  
+  // Write to log file if specified
+  if (logStream) {
+    logStream.write(logEntry);
+  }
+  
+  // Log to stdout unless quiet mode is enabled
+  if (!QUIET_MODE) {
+    console.log(logEntry.trim());
+  }
+}
+
+// Configure Express to not decode URLs
+app.set('decode_param_values', false);
+
+// Configure Express to pass raw URLs through without normalization
+// This allows handling the $ character properly in routes
+app.enable('strict routing');
+app.enable('case sensitive routing');
+app.disable('x-powered-by');
+
+// Add middleware for API key authentication (if configured)
+if (API_KEY) {
+  if (!QUIET_MODE) {
+    console.log("API key authentication enabled");
+  }
+  
+  app.use((req, res, next) => {
+    // Check for Authorization header
+    const authHeader = req.headers.authorization;
+    
+    // Skip authentication for OPTIONS requests (pre-flight CORS)
+    if (req.method === 'OPTIONS') {
+      return next();
+    }
+    
+    if (!authHeader) {
+      if (!QUIET_MODE) {
+        console.log(`Unauthorized request: No Authorization header provided (${req.method} ${req.path})`);
+      }
+      return res.status(401).json(
+        createErrorResponse(
+          "unauthorized", 
+          "Authentication required", 
+          401, 
+          req.originalUrl, 
+          "API key must be provided in the Authorization header"
+        )
+      );
+    }
+    
+    // Check for Bearer token format
+    const parts = authHeader.split(' ');
+    const scheme = parts[0];
+    const credentials = parts[1];
+    
+    if (!/^Bearer$/i.test(scheme)) {
+      if (!QUIET_MODE) {
+        console.log(`Unauthorized request: Invalid Authorization format (${req.method} ${req.path})`);
+      }
+      return res.status(401).json(
+        createErrorResponse(
+          "unauthorized", 
+          "Invalid authorization format", 
+          401, 
+          req.originalUrl, 
+          "Format is: Authorization: Bearer <api-key>"
+        )
+      );
+    }
+    
+    // Verify the API key
+    if (credentials !== API_KEY) {
+      if (!QUIET_MODE) {
+        console.log(`Unauthorized request: Invalid API key provided (${req.method} ${req.path})`);
+      }
+      return res.status(401).json(
+        createErrorResponse(
+          "unauthorized", 
+          "Invalid API key", 
+          401, 
+          req.originalUrl, 
+          "The provided API key is not valid"
+        )
+      );
+    }
+    
+    // API key is valid, proceed to the next middleware
+    next();
+  });
+}
+
+// Add middleware to handle trailing slashes
+// This middleware will treat URLs with trailing slashes the same as those without
+app.use((req, res, next) => {
+  if (req.path.length > 1 && req.path.endsWith('/')) {
+    // Remove trailing slash (except for root path) and maintain query string
+    const query = req.url.indexOf('?') !== -1 ? req.url.slice(req.url.indexOf('?')) : '';
+    const pathWithoutSlash = req.path.slice(0, -1) + query;
+    
+    if (!QUIET_MODE) {
+      console.log(`Normalized path with trailing slash: ${req.path} -> ${req.path.slice(0, -1)}`);
+    }
+    
+    // Update the URL to remove trailing slash
+    req.url = pathWithoutSlash;
+  }
+  next();
+});
+
+// Add middleware to log all requests for debugging
+app.use((req, res, next) => {
+  const startTime = Date.now();
+  
+  // Save original end function
+  const originalEnd = res.end;
+  
+  // Override end function
+  res.end = function(chunk, encoding) {
+    // Calculate response time
+    const responseTime = Date.now() - startTime;
+    
+    // Log the request
+    logRequest(req, res, responseTime);
+    
+    // Call the original end function
+    return originalEnd.call(this, chunk, encoding);
+  };
+  
+  next();
+});
+
+// Middleware to handle $details suffix
+app.use((req, res, next) => {
+  if (req.path.endsWith('$details')) {
+    // Log the original request
+    if (!QUIET_MODE) {
+      console.log(`$details detected in path: ${req.path}`);
+    }
+    
+    // Remove $details suffix
+    const basePath = req.path.substring(0, req.path.length - 8); // 8 is length of '$details'
+    if (!QUIET_MODE) {
+      console.log(`Forwarding to base path: ${basePath}`);
+    }
+    
+    // Update the URL to the base path
+    req.url = basePath + (req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '');
+    
+    // Set a header to indicate this was accessed via $details
+    res.set('X-XRegistry-Details', 'true');
+  }
+  next();
+});
 
 // Generate RFC7807 compliant error responses
 function createErrorResponse(type, title, status, instance, detail = null, data = null) {
@@ -170,7 +396,7 @@ function normalizePath(path) {
 // Utility function to generate pagination Link headers
 function generatePaginationLinks(req, totalCount, offset, limit) {
   const links = [];
-  const baseUrl = `${req.protocol}://${req.get('host')}${req.path}`;
+  const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}${req.path}`;
   
   // Add base query parameters from original request (except pagination ones)
   const queryParams = {...req.query};
@@ -223,45 +449,33 @@ let registryModel;
 try {
   const modelPath = path.join(__dirname, "model.json");
   const modelData = fs.readFileSync(modelPath, "utf8");
-  registryModel = JSON.parse(modelData);
-  
-  // Replace any placeholder values with constants
-  if (registryModel.registryid !== REGISTRY_ID) {
-    registryModel.registryid = REGISTRY_ID;
+  const loadedModel = JSON.parse(modelData);
+
+  // Ensure registryModel is the core model definition
+  if (loadedModel && loadedModel.model) {
+    registryModel = loadedModel.model;
+  } else {
+    // If model.json doesn't have a 'model' property, assume it's already the core model
+    // or it's an invalid structure, which will be handled by the catch block or later validation
+    registryModel = loadedModel;
   }
-  
-  // Ensure group and resource types use the constants
-  if (registryModel.model && registryModel.model.groups) {
-    const groupsObj = registryModel.model.groups;
-    if (groupsObj.pythonregistries) {
-      // If model uses "pythonregistries" directly, create a dynamic property with the constant
-      const groupData = groupsObj.pythonregistries;
-      groupsObj[GROUP_TYPE] = groupData;
-      
-      if (groupData.resources && groupData.resources.packages) {
-        const resourceData = groupData.resources.packages;
-        groupData.resources[RESOURCE_TYPE] = resourceData;
-        
-        // Update target in package field if needed
-        if (resourceData.attributes && 
-            resourceData.attributes.package && 
-            resourceData.attributes.package.target === "/pythonregistries/package") {
-          resourceData.attributes.package.target = `/${GROUP_TYPE}/${RESOURCE_TYPE_SINGULAR}`;
-        }
-        
-        // Also update the target in requires_dist.item.properties.package if it exists
-        if (resourceData.attributes && 
-            resourceData.attributes.requires_dist && 
-            resourceData.attributes.requires_dist.item && 
-            resourceData.attributes.requires_dist.item.properties && 
-            resourceData.attributes.requires_dist.item.properties.package && 
-            resourceData.attributes.requires_dist.item.properties.package.target === "/pythonregistries/package") {
-          resourceData.attributes.requires_dist.item.properties.package.target = `/${GROUP_TYPE}/${RESOURCE_TYPE_SINGULAR}`;
-        }
+
+  // If the model used hardcoded group/resource names (e.g., "pythonservices", "packages"),
+  // and we use dynamic GROUP_TYPE/RESOURCE_TYPE constants, adjust the model structure.
+  if (registryModel.groups) {
+    const groupsObj = registryModel.groups;
+    if (groupsObj.pythonservices && GROUP_TYPE !== 'pythonservices') {
+      groupsObj[GROUP_TYPE] = groupsObj.pythonservices;
+      delete groupsObj.pythonservices;
+
+      if (groupsObj[GROUP_TYPE] && groupsObj[GROUP_TYPE].resources && groupsObj[GROUP_TYPE].resources.packages && RESOURCE_TYPE !== 'packages') {
+        groupsObj[GROUP_TYPE].resources[RESOURCE_TYPE] = groupsObj[GROUP_TYPE].resources.packages;
+        delete groupsObj[GROUP_TYPE].resources.packages;
+        // Add any further model adjustments specific to PyPI if needed
       }
     }
   }
-  
+
   console.log("Registry model loaded successfully from model.json");
 } catch (error) {
   console.error("Error loading model.json:", error.message);
@@ -402,6 +616,8 @@ app.use((req, res, next) => {
 // Root Document
 app.get("/", (req, res) => {
   const now = new Date().toISOString();
+  const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
+  
   let rootResponse = {
     specversion: SPEC_VERSION,
     registryid: REGISTRY_ID,
@@ -412,11 +628,11 @@ app.get("/", (req, res) => {
     createdat: now,
     modifiedat: now,
     labels: {},
-    docs: `${req.protocol}://${req.get('host')}/docs`, // Changed to single absolute URL
-    self: "/",
-    modelurl: "/model",
-    capabilitiesurl: "/capabilities",
-    [`${GROUP_TYPE}url`]: normalizePath(`/${GROUP_TYPE}`),
+    docs: `${baseUrl}/docs`, // Absolute URL for docs
+    self: `${baseUrl}/`,
+    modelurl: `${baseUrl}/model`,
+    capabilitiesurl: `${baseUrl}/capabilities`,
+    [`${GROUP_TYPE}url`]: `${baseUrl}/${GROUP_TYPE}`,
     [`${GROUP_TYPE}count`]: 1,
     [GROUP_TYPE]: {
       [GROUP_ID]: {
@@ -427,8 +643,8 @@ app.get("/", (req, res) => {
           parentUrl: `/${GROUP_TYPE}`,
           type: GROUP_TYPE_SINGULAR,
         }),
-        self: normalizePath(`/${GROUP_TYPE}/${GROUP_ID}`),
-        [`${RESOURCE_TYPE}url`]: normalizePath(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`),
+        self: `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}`,
+        [`${RESOURCE_TYPE}url`]: `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`,
       },
     },
   };
@@ -453,18 +669,26 @@ app.get("/", (req, res) => {
 
 // Capabilities endpoint
 app.get("/capabilities", (req, res) => {
+  const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
+  
   const response = {
-    self: "/capabilities",
+    self: `${baseUrl}/capabilities`,
     capabilities: {
-      apis: ["/", "/capabilities", "/model", `/${GROUP_TYPE}`, `/${GROUP_TYPE}/${GROUP_ID}`, 
-             `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`, 
-             `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName`,
-             `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName$details`,
-             `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName/versions`,
-             `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName/versions/:version`,
-             `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName/versions/:version$details`,
-             `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName/meta`,
-             `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName/doc`],
+      apis: [
+        `${baseUrl}/`, 
+        `${baseUrl}/capabilities`, 
+        `${baseUrl}/model`, 
+        `${baseUrl}/${GROUP_TYPE}`, 
+        `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}`, 
+        `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`, 
+        `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName`,
+        `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName$details`,
+        `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName/versions`,
+        `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName/versions/:version`,
+        `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName/versions/:version$details`,
+        `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName/meta`,
+        `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName/doc`
+      ],
       flags: [
         "collections", "doc", "filter", "inline", "limit", "offset",
         "epoch", "noepoch", "noreadonly", "specversion",
@@ -490,14 +714,46 @@ app.get("/capabilities", (req, res) => {
 
 // /model
 app.get("/model", (req, res) => {
-  // Apply response headers
-  setXRegistryHeaders(res, registryModel);
+  const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
   
-  res.json(registryModel);
+  // Create a copy of the model to modify URLs
+  const modelWithAbsoluteUrls = JSON.parse(JSON.stringify(registryModel));
+  
+  // Update self URL to be absolute
+  if (modelWithAbsoluteUrls.self) {
+    modelWithAbsoluteUrls.self = `${baseUrl}/model`;
+  }
+  
+  // Apply response headers
+  setXRegistryHeaders(res, modelWithAbsoluteUrls);
+  
+  res.json(modelWithAbsoluteUrls);
 });
+
+// Helper function to make all URLs in an object absolute
+function makeAllUrlsAbsolute(req, obj) {
+  const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
+  
+  // Process the object
+  for (const key in obj) {
+    if (typeof obj[key] === 'string' && key.endsWith('url') || key === 'self') {
+      // If it's a URL and not already absolute, make it absolute
+      if (!obj[key].startsWith('http')) {
+        obj[key] = `${baseUrl}${obj[key].startsWith('/') ? '' : '/'}${obj[key]}`;
+      }
+    } else if (typeof obj[key] === 'object' && obj[key] !== null) {
+      // Recursively process nested objects
+      makeAllUrlsAbsolute(req, obj[key]);
+    }
+  }
+  
+  return obj;
+}
 
 // Group collection
 app.get(`/${GROUP_TYPE}`, (req, res) => {
+  const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
+  
   // For this example, we only have one group, but implementing pagination for consistency
   const totalCount = 1;
   const limit = req.query.limit ? parseInt(req.query.limit, 10) : DEFAULT_PAGE_LIMIT;
@@ -521,8 +777,8 @@ app.get(`/${GROUP_TYPE}`, (req, res) => {
         parentUrl: `/${GROUP_TYPE}`,
         type: GROUP_TYPE_SINGULAR,
       }),
-      self: `/${GROUP_TYPE}/${GROUP_ID}`,
-      [`${RESOURCE_TYPE}url`]: `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`,
+      self: `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}`,
+      [`${RESOURCE_TYPE}url`]: `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`,
     };
     
     // Apply flag handlers to each group
@@ -543,6 +799,8 @@ app.get(`/${GROUP_TYPE}`, (req, res) => {
 
 // Group details
 app.get(`/${GROUP_TYPE}/${GROUP_ID}`, async (req, res) => {
+  const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
+  
   let packagescount = 0;
   try {
     const response = await cachedGet("https://pypi.org/simple/", {
@@ -559,8 +817,8 @@ app.get(`/${GROUP_TYPE}/${GROUP_ID}`, async (req, res) => {
       parentUrl: `/${GROUP_TYPE}`,
       type: GROUP_TYPE_SINGULAR,
     }),
-    self: `/${GROUP_TYPE}/${GROUP_ID}`,
-    [`${RESOURCE_TYPE}url`]: `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`,
+    self: `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}`,
+    [`${RESOURCE_TYPE}url`]: `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`,
     [`${RESOURCE_TYPE}count`]: packagescount,
   };
   
@@ -581,6 +839,8 @@ app.get(`/${GROUP_TYPE}/${GROUP_ID}`, async (req, res) => {
 
 // All packages with filtering
 app.get(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`, async (req, res) => {
+  const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
+  
   try {
     const response = await cachedGet("https://pypi.org/simple/", {
       Accept: "application/vnd.pypi.simple.v1+json",
@@ -594,6 +854,28 @@ app.get(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`, async (req, res) => {
         name.toLowerCase().includes(filter)
       );
     }
+    
+    // Custom sorting: packages starting with letters first, then numbers/symbols at the bottom
+    packageNames.sort((a, b) => {
+      const aFirstChar = a.charAt(0);
+      const bFirstChar = b.charAt(0);
+      
+      // Check if first character is a letter (a-z, A-Z)
+      const aIsLetter = /^[a-zA-Z]/.test(aFirstChar);
+      const bIsLetter = /^[a-zA-Z]/.test(bFirstChar);
+      
+      // Debug logging for packages starting with numbers to see what's happening
+      if (!QUIET_MODE && (aFirstChar === '0' || bFirstChar === '0')) {
+        console.log(`Sorting debug: "${a}" (isLetter: ${aIsLetter}) vs "${b}" (isLetter: ${bIsLetter})`);
+      }
+      
+      // If one starts with letter and other doesn't, letter comes first
+      if (aIsLetter && !bIsLetter) return -1;
+      if (!aIsLetter && bIsLetter) return 1;
+      
+      // If both start with letters or both start with non-letters, sort alphabetically
+      return a.toLowerCase().localeCompare(b.toLowerCase());
+    });
     
     // Pagination parameters
     const totalCount = packageNames.length;
@@ -612,7 +894,15 @@ app.get(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`, async (req, res) => {
     // Create resource objects for the paginated results
     const resources = {};
     paginatedPackageNames.forEach((packageName) => {
-              resources[packageName] = {        ...xregistryCommonAttrs({          id: packageName,          name: packageName,          parentUrl: normalizePath(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`),          type: RESOURCE_TYPE_SINGULAR,        }),        self: normalizePath(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}`),      };
+      resources[packageName] = {
+        ...xregistryCommonAttrs({
+          id: packageName,
+          name: packageName,
+          parentUrl: `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`,
+          type: RESOURCE_TYPE_SINGULAR,
+        }),
+        self: `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}`,
+      };
     });
     
     // Handle empty results correctly (spec requires empty object for no results)
@@ -628,6 +918,9 @@ app.get(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`, async (req, res) => {
       resources[packageName] = handleDocFlag(req, resources[packageName]);
       resources[packageName] = handleEpochFlag(req, resources[packageName]);
       resources[packageName] = handleNoReadonlyFlag(req, resources[packageName]);
+      
+      // Make all URLs absolute
+      makeAllUrlsAbsolute(req, resources[packageName]);
     }
     
     // Add pagination links
@@ -681,6 +974,8 @@ app.get(
   `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName`,
   async (req, res) => {
     const { packageName } = req.params;
+    const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
+    
     try {
       const response = await cachedGet(
         `https://pypi.org/pypi/${packageName}/json`
@@ -708,10 +1003,10 @@ app.get(
       }
       
       // Build resource URL paths
-      const resourceBasePath = `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}`;
-      const metaUrl = normalizePath(`${resourceBasePath}/meta`);
-      const versionsUrl = normalizePath(`${resourceBasePath}/versions`);
-      const defaultVersionUrl = normalizePath(`${resourceBasePath}/versions/${info.version}`);
+      const resourceBasePath = `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}`;
+      const metaUrl = `${resourceBasePath}/meta`;
+      const versionsUrl = `${resourceBasePath}/versions`;
+      const defaultVersionUrl = `${resourceBasePath}/versions/${info.version}`;
       
       // Get creation and modification timestamps
       const createdAt = info.created ? new Date(info.created).toISOString() : new Date().toISOString();
@@ -721,7 +1016,7 @@ app.get(
       const metaObject = {
         [`${RESOURCE_TYPE_SINGULAR}id`]: packageName,
         self: metaUrl,
-        xid: normalizePath(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}/meta`),
+        xid: `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}/meta`,
         epoch: 1,
         createdat: createdAt,
         modifiedat: modifiedAt,
@@ -745,7 +1040,7 @@ app.get(
         }),
         [`${RESOURCE_TYPE_SINGULAR}id`]: packageName,
         versionid: info.version,
-        self: normalizePath(req.originalUrl),
+        self: `${baseUrl}${req.path}`,
         name: info.name,
         description: info.summary,
         license: info.license,
@@ -793,8 +1088,6 @@ app.get(
       // Apply response headers
       setXRegistryHeaders(res, packageResponse);
       
-      // Log the structure of the response to debug
-      console.log("Package response includes meta:", !!packageResponse.meta);
       
       res.json(packageResponse);
     } catch (error) {
@@ -810,6 +1103,8 @@ app.get(
   `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName/meta`,
   async (req, res) => {
     const { packageName } = req.params;
+    const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
+    
     try {
       const response = await cachedGet(
         `https://pypi.org/pypi/${packageName}/json`
@@ -817,15 +1112,15 @@ app.get(
       const { info } = response;
       
       // Build resource URL paths
-      const resourceBasePath = `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}`;
-      const metaUrl = normalizePath(`${resourceBasePath}/meta`);
-      const defaultVersionUrl = normalizePath(`${resourceBasePath}/versions/${info.version}`);
+      const resourceBasePath = `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}`;
+      const metaUrl = `${resourceBasePath}/meta`;
+      const defaultVersionUrl = `${resourceBasePath}/versions/${info.version}`;
       
       // Create meta response according to spec
       const metaResponse = {
         [`${RESOURCE_TYPE_SINGULAR}id`]: packageName,
         self: metaUrl,
-        xid: normalizePath(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}/meta`),
+        xid: `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}/meta`,
         epoch: 1,
         createdat: info.created ? new Date(info.created).toISOString() : new Date().toISOString(),
         modifiedat: info.modified ? new Date(info.modified).toISOString() : new Date().toISOString(),
@@ -859,6 +1154,8 @@ app.get(
   `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName/versions`,
   async (req, res) => {
     const { packageName } = req.params;
+    const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
+    
     try {
       const response = await cachedGet(
         `https://pypi.org/pypi/${packageName}/json`
@@ -889,7 +1186,7 @@ app.get(
             type: "version",
           }),
           versionid: v,
-          self: normalizePath(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}/versions/${v}`),
+          self: `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}/versions/${v}`,
         };
       });
       
@@ -921,6 +1218,8 @@ app.get(
   `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName/versions/:version`,
   async (req, res) => {
     const { packageName, version } = req.params;
+    const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
+    
     try {
       // Get specific version data
       const versionData = await cachedGet(
@@ -971,8 +1270,8 @@ app.get(
         // Basic version attributes
         [`${RESOURCE_TYPE_SINGULAR}id`]: packageName,
         versionid: version,
-        self: normalizePath(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}/versions/${version}`),
-        resourceurl: normalizePath(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}`),
+        self: `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}/versions/${version}`,
+        resourceurl: `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}`,
         // Resource details (package information)
         name: info.name,
         description: info.summary,
@@ -1236,6 +1535,10 @@ async function processRequiresDist(requiresList) {
     return [];
   }
   
+  // Use baseUrl for creating absolute URLs - this function doesn't have access to req
+  // So we need to handle the baseUrl separately
+  const baseUrl = BASE_URL || null;
+  
   // Create promises for each dependency check
   const depPromises = requiresList.map(async dep => {
     // Extract the package name from the dependency string
@@ -1259,9 +1562,13 @@ async function processRequiresDist(requiresList) {
       }
     }
     
+    const relativePath = `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE_SINGULAR}/${depPackageName}${versionPath}`;
+    // Create absolute URL if baseUrl is available
+    const packageUrl = exists ? (baseUrl ? `${baseUrl}${relativePath}` : relativePath) : null;
+    
     return {
       specifier: dep,
-      package: exists ? normalizePath(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE_SINGULAR}/${depPackageName}${versionPath}`) : null
+      package: packageUrl
     };
   });
   
@@ -1396,7 +1703,8 @@ app.options(`/${GROUP_TYPE}/:groupId/${RESOURCE_TYPE}/:resourceId/meta`, (req, r
 
 // Utility function to convert relative docs URLs to absolute URLs
 function convertDocsToAbsoluteUrl(req, data) {
-  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  // Use the BASE_URL parameter if provided, otherwise construct from request
+  const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
   
   // Process root object
   if (data.docs && typeof data.docs === 'string' && !data.docs.startsWith('http')) {
@@ -1418,73 +1726,29 @@ function convertDocsToAbsoluteUrl(req, data) {
   return data;
 }
 
-// Add $details endpoint for resources (packages)
-// Use a regex pattern to match the $details suffix
-app.get(
-  new RegExp(`^\\/${GROUP_TYPE}\\/${GROUP_ID}\\/${RESOURCE_TYPE}\\/([^/]+)\\$details$`),
-  async (req, res) => {
-    // Extract the package name from the regex match
-    const packageName = req.params[0];
-    
-    // Construct new URL to forward to
-    const forwardUrl = `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}`;
-    
-    // Log the forwarding for debugging
-    console.log(`Forwarding $details request from ${req.url} to ${forwardUrl}`);
-    
-    // Modify the request URL
-    req.url = forwardUrl;
-    
-    // Set a header to indicate this was accessed via the $details endpoint
-    res.set('X-XRegistry-Details', 'true');
-    
-    // Forward to the regular resource endpoint handler
-    app._router.handle(req, res);
-  }
-);
+// Helper function to make URLs absolute
+function makeUrlAbsolute(req, url) {
+  if (!url || url.startsWith('http')) return url;
+  const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
+  return `${baseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
+}
 
-// Add $details endpoint for versions
-// Use a regex pattern to match the $details suffix
-app.get(
-  new RegExp(`^\\/${GROUP_TYPE}\\/${GROUP_ID}\\/${RESOURCE_TYPE}\\/([^/]+)\\/versions\\/([^/]+)\\$details$`),
-  async (req, res) => {
-    // Extract the package name and version from the regex match
-    const packageName = req.params[0];
-    const version = req.params[1];
-    
-    // Construct new URL to forward to
-    const forwardUrl = `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}/versions/${version}`;
-    
-    // Log the forwarding for debugging
-    console.log(`Forwarding version $details request from ${req.url} to ${forwardUrl}`);
-    
-    // Modify the request URL
-    req.url = forwardUrl;
-    
-    // Set a header to indicate this was accessed via the $details endpoint
-    res.set('X-XRegistry-Details', 'true');
-    
-    // Forward to the regular version endpoint handler
-    app._router.handle(req, res);
+// Graceful shutdown function
+function gracefulShutdown() {
+  console.log("Shutting down gracefully...");
+  if (logStream) {
+    logStream.end();
   }
-);
+  process.exit(0);
+}
 
-// OPTIONS handler for resource $details endpoint - using regex for proper matching
-app.options(
-  new RegExp(`^\\/${GROUP_TYPE}\\/${GROUP_ID}\\/${RESOURCE_TYPE}\\/([^/]+)\\$details$`),
-  (req, res) => {
-    handleOptionsRequest(req, res, 'GET');
-  }
-);
-
-// OPTIONS handler for version $details endpoint - using regex for proper matching
-app.options(
-  new RegExp(`^\\/${GROUP_TYPE}\\/${GROUP_ID}\\/${RESOURCE_TYPE}\\/([^/]+)\\/versions\\/([^/]+)\\$details$`),
-  (req, res) => {
-    handleOptionsRequest(req, res, 'GET');
-  }
-);
+// Listen for process termination signals
+process.on('SIGINT', gracefulShutdown);
+process.on('SIGTERM', gracefulShutdown);
 
 app.listen(PORT, () => {
   console.log(`xRegistry PyPI wrapper listening on port ${PORT}`);
+  if (BASE_URL) {
+    console.log(`Using base URL: ${BASE_URL}`);
+  }
 });

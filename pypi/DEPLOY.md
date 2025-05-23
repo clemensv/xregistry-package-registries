@@ -23,8 +23,8 @@ Optional parameters:
 - `-ImageTag`: Image tag to deploy (default: "latest")
 - `-ResourceGroup`: Azure resource group name (default: "xregistry-resources")
 - `-Location`: Azure region (default: "westeurope")
-- `-ContainerName`: Container name (default: "pypi-xregistry")
-- `-DnsNameLabel`: DNS name label (default: "pypi-xregistry")
+- `-ContainerName`: Container name (default: "xregistry-pypi-bridge")
+- `-DnsNameLabel`: DNS name label (default: "xregistry-pypi-bridge")
 - `-Port`: Container port (default: 3000)
 - `-CpuCores`: CPU cores (default: 1.0)
 - `-MemoryGB`: Memory in GB (default: 1.5)
@@ -44,8 +44,8 @@ Optional parameters:
 - `--tag`: Image tag to deploy (default: "latest")
 - `--resource-group`: Azure resource group name (default: "xregistry-resources")
 - `--location`: Azure region (default: "westeurope")
-- `--container-name`: Container name (default: "pypi-xregistry")
-- `--dns-label`: DNS name label (default: "pypi-xregistry")
+- `--container-name`: Container name (default: "xregistry-pypi-bridge")
+- `--dns-label`: DNS name label (default: "xregistry-pypi-bridge")
 - `--port`: Container port (default: 3000)
 - `--cpu`: CPU cores (default: 1.0)
 - `--memory`: Memory in GB (default: 1.5)
@@ -74,32 +74,32 @@ http://<dns-name-label>.<location>.azurecontainer.io:<port>
 
 For example, with default settings:
 ```
-http://pypi-xregistry.westeurope.azurecontainer.io:3000
+http://xregistry-pypi-bridge.westeurope.azurecontainer.io:3000
 ```
 
 ## Monitoring and Management
 
 Check container status:
 ```bash
-az container show --resource-group xregistry-resources --name pypi-xregistry --query instanceView.state
+az container show --resource-group xregistry-resources --name xregistry-pypi-bridge --query instanceView.state
 ```
 
 View container logs:
 ```bash
-az container logs --resource-group xregistry-resources --name pypi-xregistry
+az container logs --resource-group xregistry-resources --name xregistry-pypi-bridge
 ```
 
 Stop the container:
 ```bash
-az container stop --resource-group xregistry-resources --name pypi-xregistry
+az container stop --resource-group xregistry-resources --name xregistry-pypi-bridge
 ```
 
 Start the container:
 ```bash
-az container start --resource-group xregistry-resources --name pypi-xregistry
+az container start --resource-group xregistry-resources --name xregistry-pypi-bridge
 ```
 
 Delete the container:
 ```bash
-az container delete --resource-group xregistry-resources --name pypi-xregistry --yes
+az container delete --resource-group xregistry-resources --name xregistry-pypi-bridge --yes
 ``` 

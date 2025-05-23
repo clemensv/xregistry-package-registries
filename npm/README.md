@@ -1,66 +1,116 @@
 # NPM xRegistry Wrapper
 
-An xRegistry-compliant API wrapper for the NPM package registry.
+This is an xRegistry-compatible API wrapper for the NPM package registry.
 
-## Overview
+## Features
 
-This service provides an xRegistry-compliant API for interacting with the NPM package registry. It implements the xRegistry specification version 1.0-rc1, allowing clients to:
+- Provides xRegistry-compatible API for NPM packages
+- Includes Docker support for easy deployment
+- Supports caching to reduce load on the NPM registry
+- Implements all xRegistry v1.0-rc1 capabilities
 
-- Browse the registry structure
-- Query package information
-- Access package versions
-- Retrieve package metadata
+## Running Locally
 
-The API follows path-based XID formats as specified in the xRegistry v1.0-rc1 specification.
+### Prerequisites
 
-## Usage
+- Node.js 16.0.0 or higher
+- npm
 
-### Running Locally
-
-1. Install dependencies:
-   ```
-   npm install
-   ```
-
-2. Start the server:
-   ```
-   npm start
-   ```
-
-The server will start on port 3100 by default.
-
-### Endpoints
-
-- `GET /` - Registry root
-- `GET /noderegistries/npmjs.org` - NPM registry group
-- `GET /noderegistries/npmjs.org/packages` - List packages
-- `GET /noderegistries/npmjs.org/packages/{package-name}` - Package details
-- `GET /noderegistries/npmjs.org/packages/{package-name}/versions` - List package versions
-- `GET /noderegistries/npmjs.org/packages/{package-name}/versions/{version}` - Version details
-
-## Deployment
-
-### Using Docker
-
-Build and run the Docker image:
+### Installation
 
 ```bash
-docker build -t npm-xregistry .
-docker run -p 3100:3000 npm-xregistry
+# Install dependencies
+npm install
 ```
 
-### GitHub Container Registry
-
-Use the provided script to push to GitHub Container Registry:
+### Starting the Server
 
 ```bash
-# Windows PowerShell
-./push-to-ghcr.ps1
+# Start the server
+npm start
 
-# Unix/Linux
-./push-to-ghcr.sh
+# Start with development mode (auto-restart)
+npm run dev
 ```
 
-## License
+By default, the server runs on port 3100. You can customize this with environment variables:
 
-MIT 
+```bash
+# Set custom port
+XREGISTRY_NPM_PORT=4000 npm start
+
+# Enable logging to file
+XREGISTRY_NPM_LOG=./logs/npm.log npm start
+
+# Suppress console output
+XREGISTRY_NPM_QUIET=true npm start
+
+# Set base URL for self-referencing URLs
+XREGISTRY_NPM_BASEURL=https://npm.example.com npm start
+```
+
+## Using Docker
+
+### Building and Running with Docker Compose
+
+```bash
+# Build and start the container
+npm run docker
+
+# Start an existing container
+npm run docker:dev
+```
+
+### Using the Docker Scripts
+
+The repository includes convenient scripts for running the Docker container:
+
+#### Linux/Mac:
+
+```bash
+# Start with default settings
+./run-docker.sh
+
+# Start with custom settings
+./run-docker.sh --port 4000 --baseurl https://npm.example.com --log ./logs/npm.log --quiet
+```
+
+#### Windows (PowerShell):
+
+```powershell
+# Start with default settings
+.\run_docker.ps1
+
+# Start with custom settings
+.\run_docker.ps1 -p 4000 -b https://npm.example.com -l ./logs/npm.log -q
+```
+
+## API Endpoints
+
+- `GET /` - Root document with registry information
+- `GET /capabilities` - Lists supported features
+- `GET /model` - Registry data model
+- `GET /noderegistries` - Lists all groups
+- `GET /noderegistries/npmjs.org` - Group details
+- `GET /noderegistries/npmjs.org/packages` - Lists all packages
+- `GET /noderegistries/npmjs.org/packages/:packageName` - Package details
+- `GET /noderegistries/npmjs.org/packages/:packageName/versions` - Lists all versions
+- `GET /noderegistries/npmjs.org/packages/:packageName/versions/:version` - Version details
+- `GET /noderegistries/npmjs.org/packages/:packageName/meta` - Package metadata
+- `GET /noderegistries/npmjs.org/packages/:packageName/doc` - Package documentation
+
+## Query Parameters
+
+The API supports the following query parameters:
+
+- `filter` - Filter resources by substring match
+- `limit` - Maximum number of items to return
+- `offset` - Pagination offset
+- `inline` - Include inline resources
+- `collections` - Include collection URLs
+- `doc` - Include documentation URLs
+- `epoch` - Request specific epoch
+- `noepoch` - Exclude epoch information
+- `noreadonly` - Exclude read-only properties
+- `specversion` - Request specific spec version
+- `schema` - Include schema validation information 

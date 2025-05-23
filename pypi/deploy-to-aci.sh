@@ -7,11 +7,12 @@ set -e
 IMAGE_TAG="latest"
 RESOURCE_GROUP="xregistry-resources"
 LOCATION="westeurope"
-CONTAINER_NAME="pypi-xregistry"
-DNS_NAME_LABEL="pypi-xregistry"
+CONTAINER_NAME="xregistry-pypi-bridge"
+DNS_NAME_LABEL="xregistry-pypi-bridge"
 PORT=3000
 CPU_CORES=1.0
 MEMORY_GB=1.5
+API_KEY=""
 
 # Display help
 function show_help {
@@ -22,13 +23,14 @@ function show_help {
     echo ""
     echo "Options:"
     echo "  --tag <tag>                Image tag to deploy (default: latest)"
-    echo "  --resource-group <name>    Azure resource group name (default: xregistry-resources)"
+    echo "  --resource-group <n>       Azure resource group name (default: xregistry-resources)"
     echo "  --location <location>      Azure region (default: westeurope)"
-    echo "  --container-name <name>    Container name (default: pypi-xregistry)"
-    echo "  --dns-label <label>        DNS name label (default: pypi-xregistry)"
+    echo "  --container-name <n>       Container name (default: xregistry-pypi-bridge)"
+    echo "  --dns-label <label>        DNS name label (default: xregistry-pypi-bridge)"
     echo "  --port <port>              Container port (default: 3000)"
     echo "  --cpu <cores>              CPU cores (default: 1.0)"
     echo "  --memory <gb>              Memory in GB (default: 1.5)"
+    echo "  --api-key <key>            API key for authentication (optional)"
     echo "  --help                     Show this help message"
     exit 1
 }
@@ -76,6 +78,10 @@ while [ $# -gt 0 ]; do
             MEMORY_GB="$2"
             shift 2
             ;;
+        --api-key)
+            API_KEY="$2"
+            shift 2
+            ;;
         --help)
             show_help
             ;;
@@ -87,7 +93,7 @@ while [ $# -gt 0 ]; do
 done
 
 REPO_NAME="xregistry-package-registries"
-IMAGE_NAME="pypi-xregistry"
+IMAGE_NAME="xregistry-pypi-bridge"
 FULL_IMAGE_NAME="ghcr.io/${GITHUB_USERNAME}/${REPO_NAME}/${IMAGE_NAME}:${IMAGE_TAG}"
 
 echo "===== Checking Azure CLI installation ====="
@@ -136,10 +142,27 @@ CREDS=$(echo $AUTH | base64 -d)
 USERNAME=$(echo $CREDS | cut -d: -f1)
 PASSWORD=$(echo $CREDS | cut -d: -f2-)
 
+# Calculate the baseurl from DNS label and location
+BASEURL="http://${DNS_NAME_LABEL}.${LOCATION}.azurecontainer.io:${PORT}"
+
 echo "===== Deploying to Azure Container Instances ====="
 echo "Image: ${FULL_IMAGE_NAME}"
 echo "Container Name: ${CONTAINER_NAME}"
 echo "DNS Label: ${DNS_NAME_LABEL}.${LOCATION}.azurecontainer.io"
+echo "Base URL: ${BASEURL}"
+if [ -n "${API_KEY}" ]; then
+    echo "API Key Authentication: Enabled"
+else
+    echo "API Key Authentication: Disabled"
+fi
+
+# Prepare environment variables
+ENV_VARS="NODE_ENV=production PORT=${PORT} XREGISTRY_PYPI_PORT=${PORT} XREGISTRY_PYPI_BASEURL=${BASEURL} XREGISTRY_PYPI_QUIET=false"
+
+# Add API key if provided
+if [ -n "${API_KEY}" ]; then
+    ENV_VARS="${ENV_VARS} XREGISTRY_PYPI_API_KEY=${API_KEY}"
+fi
 
 az container create \
     --resource-group ${RESOURCE_GROUP} \
@@ -152,7 +175,7 @@ az container create \
     --registry-password "${PASSWORD}" \
     --dns-name-label ${DNS_NAME_LABEL} \
     --ports ${PORT} \
-    --environment-variables NODE_ENV=production PORT=${PORT}
+    --environment-variables ${ENV_VARS}
 
 if [ $? -ne 0 ]; then
     echo "Failed to deploy to Azure Container Instances"
@@ -161,7 +184,7 @@ fi
 
 echo "===== Deployment successful! ====="
 echo "Your xRegistry service is now available at:"
-echo "http://${DNS_NAME_LABEL}.${LOCATION}.azurecontainer.io:${PORT}"
+echo "${BASEURL}"
 echo ""
 echo "To check the container status:"
 echo "az container show --resource-group ${RESOURCE_GROUP} --name ${CONTAINER_NAME} --query instanceView.state"

@@ -1,0 +1,326 @@
+{
+  "description": "The xRegistry model for OCI container registries, describing the structure and metadata for container registries and images.",
+  "groups": {
+    "containerregistries": {
+      "description": "A group representing an OCI container registry provider (e.g., Docker Hub, GHCR). Contains all available container registries.",
+      "plural": "containerregistries",
+      "singular": "containerregistry",
+      "resources": {
+        "images": {
+          "description": "A resource representing a container image in the registry, including its metadata and available tags/versions.",
+          "plural": "images",
+          "singular": "image",
+          "maxversions": 0,
+          "setversionid": true,
+          "setdefaultversionsticky": true,
+          "hasdocument": false,
+          "attributes": {
+            "name": {
+              "type": "string",
+              "description": "The canonical name of the container image."
+            },
+            "description": {
+              "type": "string",
+              "description": "A short description of the container image."
+            },
+            "registry": {
+              "type": "string",
+              "description": "The registry URL where this image is hosted."
+            },
+            "namespace": {
+              "type": "string",
+              "description": "The namespace or organization under which the image is published."
+            },
+            "repository": {
+              "type": "string",
+              "description": "The repository name of the container image."
+            },
+            "metadata": {
+              "type": "object",
+              "description": "Comprehensive metadata about the container image.",
+              "attributes": {
+                "digest": {
+                  "type": "string",
+                  "description": "The content digest of the image manifest."
+                },
+                "manifest_mediatype": {
+                  "type": "string",
+                  "description": "The media type of the image manifest.",
+                  "enum": [
+                    "application/vnd.docker.distribution.manifest.v1+json",
+                    "application/vnd.docker.distribution.manifest.v2+json",
+                    "application/vnd.docker.distribution.manifest.list.v2+json",
+                    "application/vnd.oci.image.manifest.v1+json",
+                    "application/vnd.oci.image.index.v1+json"
+                  ]
+                },
+                "schema_version": {
+                  "type": "decimal",
+                  "description": "The schema version of the manifest."
+                },
+                "layers_count": {
+                  "type": "decimal",
+                  "description": "The number of layers in the image."
+                },
+                "architecture": {
+                  "type": "string",
+                  "description": "The target architecture for the container image.",
+                  "enum": [
+                    "amd64",
+                    "arm64",
+                    "arm",
+                    "386",
+                    "ppc64le",
+                    "s390x",
+                    "mips64le",
+                    "riscv64"
+                  ]
+                },
+                "os": {
+                  "type": "string",
+                  "description": "The target operating system for the container image.",
+                  "enum": [
+                    "linux",
+                    "windows",
+                    "darwin",
+                    "freebsd",
+                    "netbsd",
+                    "openbsd",
+                    "dragonfly",
+                    "solaris"
+                  ]
+                },
+                "size_bytes": {
+                  "type": "decimal",
+                  "description": "The total size of the container image in bytes."
+                },
+                "is_multi_platform": {
+                  "type": "boolean",
+                  "description": "Whether this is a multi-platform image (manifest list)."
+                },
+                "available_platforms": {
+                  "type": "array",
+                  "description": "Available platforms for multi-platform images.",
+                  "item": {
+                    "type": "object",
+                    "attributes": {
+                      "architecture": {
+                        "type": "string",
+                        "description": "Platform architecture."
+                      },
+                      "os": {
+                        "type": "string",
+                        "description": "Platform operating system."
+                      },
+                      "variant": {
+                        "type": "string",
+                        "description": "Platform variant (optional)."
+                      },
+                      "digest": {
+                        "type": "string",
+                        "description": "Platform-specific manifest digest."
+                      },
+                      "size": {
+                        "type": "decimal",
+                        "description": "Platform-specific size in bytes."
+                      },
+                      "mediaType": {
+                        "type": "string",
+                        "description": "Platform-specific media type."
+                      }
+                    }
+                  }
+                },
+                "oci_labels": {
+                  "type": "object",
+                  "description": "Standard OCI image labels.",
+                  "attributes": {
+                    "version": {
+                      "type": "string",
+                      "description": "org.opencontainers.image.version"
+                    },
+                    "revision": {
+                      "type": "string",
+                      "description": "org.opencontainers.image.revision"
+                    },
+                    "source": {
+                      "type": "string",
+                      "description": "org.opencontainers.image.source"
+                    },
+                    "documentation": {
+                      "type": "string",
+                      "description": "org.opencontainers.image.documentation"
+                    },
+                    "licenses": {
+                      "type": "string",
+                      "description": "org.opencontainers.image.licenses"
+                    },
+                    "vendor": {
+                      "type": "string",
+                      "description": "org.opencontainers.image.vendor"
+                    },
+                    "authors": {
+                      "type": "string",
+                      "description": "org.opencontainers.image.authors"
+                    },
+                    "url": {
+                      "type": "string",
+                      "description": "org.opencontainers.image.url"
+                    },
+                    "title": {
+                      "type": "string",
+                      "description": "org.opencontainers.image.title"
+                    },
+                    "created": {
+                      "type": "string",
+                      "description": "org.opencontainers.image.created"
+                    }
+                  }
+                },
+                "environment": {
+                  "type": "array",
+                  "description": "Environment variables defined in the image.",
+                  "item": {
+                    "type": "string"
+                  }
+                },
+                "working_dir": {
+                  "type": "string",
+                  "description": "Default working directory for the container."
+                },
+                "entrypoint": {
+                  "type": "array",
+                  "description": "Container entrypoint command.",
+                  "item": {
+                    "type": "string"
+                  }
+                },
+                "cmd": {
+                  "type": "array",
+                  "description": "Default command arguments.",
+                  "item": {
+                    "type": "string"
+                  }
+                },
+                "user": {
+                  "type": "string",
+                  "description": "Default user for running the container."
+                },
+                "exposed_ports": {
+                  "type": "array",
+                  "description": "Ports exposed by the container.",
+                  "item": {
+                    "type": "string"
+                  }
+                },
+                "volumes": {
+                  "type": "array",
+                  "description": "Volume mount points defined in the image.",
+                  "item": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "layers": {
+              "type": "array",
+              "description": "Information about the layers that make up the image.",
+              "item": {
+                "type": "object",
+                "attributes": {
+                  "digest": {
+                    "type": "string",
+                    "description": "The digest of the layer."
+                  },
+                  "size": {
+                    "type": "decimal",
+                    "description": "The size of the layer in bytes."
+                  },
+                  "mediaType": {
+                    "type": "string",
+                    "description": "The media type of the layer."
+                  }
+                }
+              }
+            },
+            "build_history": {
+              "type": "array",
+              "description": "Build history and layer creation commands.",
+              "item": {
+                "type": "object",
+                "attributes": {
+                  "step": {
+                    "type": "decimal",
+                    "description": "Build step number."
+                  },
+                  "created": {
+                    "type": "string",
+                    "description": "When this step was created."
+                  },
+                  "created_by": {
+                    "type": "string",
+                    "description": "The command that created this layer."
+                  },
+                  "empty_layer": {
+                    "type": "boolean",
+                    "description": "Whether this step created an empty layer."
+                  },
+                  "comment": {
+                    "type": "string",
+                    "description": "Comment for this build step."
+                  }
+                }
+              }
+            },
+            "urls": {
+              "type": "object",
+              "description": "Related URLs for the container image.",
+              "attributes": {
+                "pull": {
+                  "type": "url",
+                  "description": "The URL for pulling this image."
+                },
+                "manifest": {
+                  "type": "url",
+                  "description": "The URL for accessing the image manifest."
+                },
+                "config": {
+                  "type": "url",
+                  "description": "The URL for accessing the image configuration."
+                }
+              }
+            },
+            "labels": {
+              "type": "object",
+              "description": "Custom labels applied to the container image."
+            },
+            "annotations": {
+              "type": "object",
+              "description": "OCI annotations applied to the image."
+            },
+            "vulnerabilities": {
+              "type": "object",
+              "description": "Security vulnerability information if available."
+            },
+            "pushed": {
+              "type": "string",
+              "description": "The timestamp when the image was pushed to the registry."
+            },
+            "pulled": {
+              "type": "decimal",
+              "description": "Number of times this image has been pulled."
+            },
+            "starred": {
+              "type": "decimal",
+              "description": "Number of stars/favorites for this image."
+            },
+            "deprecated": {
+              "type": "string",
+              "description": "Deprecation notice if the image is deprecated."
+            }
+          }
+        }
+      }
+    }
+  }
+}

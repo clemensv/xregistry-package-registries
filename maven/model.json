@@ -1,0 +1,178 @@
+{
+  "registryid": "maven-wrapper",
+  "self": "/model",
+  "schema": "xRegistry-json/1.0-rc1",
+  "model": {
+    "groups": {
+      "javaregistries": {
+        "singular": "javaregistry",
+        "description": "Groups of Java package registries",
+        "resources": {
+          "packages": {
+            "singular": "package",
+            "description": "Maven packages (artifacts)",
+            "attributes": {
+              "name": {
+                "type": "string",
+                "description": "The display name of the package"
+              },
+              "description": {
+                "type": "string",
+                "description": "The description of the package"
+              },
+              "groupId": {
+                "type": "string",
+                "description": "Maven group ID"
+              },
+              "artifactId": {
+                "type": "string",
+                "description": "Maven artifact ID"
+              },
+              "version": {
+                "type": "string",
+                "description": "The version of the package"
+              },
+              "packaging": {
+                "type": "string",
+                "description": "Package type (jar, war, etc.)"
+              },
+              "organization": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Organization name"
+                  },
+                  "url": {
+                    "type": "string",
+                    "description": "Organization website URL"
+                  }
+                },
+                "description": "Organization information"
+              },
+              "developers": {
+                "type": "array",
+                "item": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "Developer ID"
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "Developer name"
+                    },
+                    "email": {
+                      "type": "string",
+                      "description": "Developer email"
+                    },
+                    "url": {
+                      "type": "string",
+                      "description": "Developer website"
+                    }
+                  }
+                },
+                "description": "List of developers"
+              },
+              "licenses": {
+                "type": "array",
+                "item": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "License name"
+                    },
+                    "url": {
+                      "type": "string",
+                      "description": "License URL"
+                    }
+                  }
+                },
+                "description": "List of licenses"
+              },
+              "scm": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "description": "Source code repository URL"
+                  },
+                  "connection": {
+                    "type": "string",
+                    "description": "Source control connection"
+                  },
+                  "developerConnection": {
+                    "type": "string",
+                    "description": "Developer connection to source control"
+                  }
+                },
+                "description": "Source control information"
+              },
+              "dependencies": {
+                "type": "array",
+                "description": "A list of package dependencies, processed from the POM.",
+                "item": {
+                  "type": "object",
+                  "properties": {
+                    "groupId": {
+                      "type": "string",
+                      "description": "The groupId of the dependent Maven artifact."
+                    },
+                    "artifactId": {
+                      "type": "string",
+                      "description": "The artifactId of the dependent Maven artifact."
+                    },
+                    "version": {
+                      "type": "string",
+                      "description": "The version or version range specified in the POM for the dependency."
+                    },
+                    "scope": {
+                      "type": "string",
+                      "description": "The scope of the dependency (e.g., compile, test, provided)."
+                    },
+                    "optional": {
+                      "type": "boolean",
+                      "description": "Whether this dependency is optional.",
+                      "optional": true
+                    },
+                    "package": {
+                      "type": "xid",
+                      "description": "An xRegistry link to the dependent package. This may point to a specific version if resolved, or to the base package.",
+                      "target": "/javaregistries/package",
+                      "optional": true
+                    },
+                    "resolved_version": {
+                      "type": "string",
+                      "description": "The specific version string if the dependency was resolved to an exact, existing version.",
+                      "optional": true
+                    }
+                  }
+                }
+              },
+              "homepage": {
+                "type": "string",
+                "description": "Project homepage URL"
+              },
+              "issueManagement": {
+                "type": "object",
+                "properties": {
+                  "system": {
+                    "type": "string",
+                    "description": "Issue tracking system"
+                  },
+                  "url": {
+                    "type": "string",
+                    "description": "Issue tracker URL"
+                  }
+                },
+                "description": "Issue management information"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+} 

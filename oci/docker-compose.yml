@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  xregistry-oci-proxy:
+    build: .
+    image: xregistry-oci-proxy
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - XREGISTRY_LOG_LEVEL=debug
+      - XREGISTRY_CACHE_DIR=./cache
+      - XREGISTRY_OCI_BACKENDS=[{"name":"dockerhub","registryUrl":"https://registry-1.docker.io"}]
+    volumes:
+      - .:/usr/src/app
+      - /usr/src/app/node_modules # Mount node_modules separately to avoid overwriting
+    # command: npm run dev # If you have a dev script 

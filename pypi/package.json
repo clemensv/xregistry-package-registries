@@ -1,5 +1,5 @@
 {
-  "name": "pypi-xregistry",
+  "name": "xregistry-pypi-wrapper",
   "version": "1.0.0",
   "description": "xRegistry API wrapper for PyPI",
   "main": "server.js",
@@ -7,9 +7,12 @@
     "start": "node server.js",
     "dev": "nodemon server.js"
   },
+  "author": "",
+  "license": "MIT",
   "dependencies": {
-    "axios": "^1.9.0",
-    "express": "^4.18.2"
+    "axios": "^1.6.0",
+    "express": "^4.18.2",
+    "yargs": "^17.7.2"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"

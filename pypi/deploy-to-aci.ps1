@@ -13,10 +13,10 @@ param(
     [string]$Location = "westeurope",
     
     [Parameter(Mandatory=$false)]
-    [string]$ContainerName = "pypi-xregistry",
+    [string]$ContainerName = "xregistry-pypi-bridge",
     
     [Parameter(Mandatory=$false)]
-    [string]$DnsNameLabel = "pypi-xregistry",
+    [string]$DnsNameLabel = "xregistry-pypi-bridge",
     
     [Parameter(Mandatory=$false)]
     [int]$Port = 3000,
@@ -25,11 +25,14 @@ param(
     [double]$CpuCores = 1.0,
     
     [Parameter(Mandatory=$false)]
-    [double]$MemoryGB = 1.5
+    [double]$MemoryGB = 1.5,
+    
+    [Parameter(Mandatory=$false)]
+    [string]$ApiKey = ""
 )
 
 $RepoName = "xregistry-package-registries"
-$ImageName = "pypi-xregistry"
+$ImageName = "xregistry-pypi-bridge"
 $FullImageName = "ghcr.io/${GitHubUsername}/${RepoName}/${ImageName}:${ImageTag}"
 
 Write-Host "===== Checking Azure CLI installation =====" -ForegroundColor Cyan
@@ -86,10 +89,39 @@ $auth = $dockerConfig.auths."ghcr.io".auth
 $decodedAuth = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($auth))
 $username, $password = $decodedAuth -split ":", 2
 
+# Calculate the baseurl from DNS label and location
+$BaseUrl = "http://$DnsNameLabel.$Location.azurecontainer.io:$Port"
+
 Write-Host "===== Deploying to Azure Container Instances =====" -ForegroundColor Cyan
 Write-Host "Image: $FullImageName" -ForegroundColor White
 Write-Host "Container Name: $ContainerName" -ForegroundColor White
 Write-Host "DNS Label: $DnsNameLabel.$Location.azurecontainer.io" -ForegroundColor White
+Write-Host "Base URL: $BaseUrl" -ForegroundColor White
+if (-not [string]::IsNullOrEmpty($ApiKey)) {
+    Write-Host "API Key Authentication: Enabled" -ForegroundColor Yellow
+} else {
+    Write-Host "API Key Authentication: Disabled" -ForegroundColor Cyan
+}
+
+# Prepare environment variables
+$envVars = @{
+    "NODE_ENV" = "production";
+    "PORT" = "$Port";
+    "XREGISTRY_PYPI_PORT" = "$Port";
+    "XREGISTRY_PYPI_BASEURL" = "$BaseUrl";
+    "XREGISTRY_PYPI_QUIET" = "false";
+}
+
+# Add API key if provided
+if (-not [string]::IsNullOrEmpty($ApiKey)) {
+    $envVars["XREGISTRY_PYPI_API_KEY"] = "$ApiKey"
+}
+
+# Convert environment variables to array format for az CLI
+$envVarArray = @()
+foreach ($key in $envVars.Keys) {
+    $envVarArray += "$key=$($envVars[$key])"
+}
 
 az container create `
     --resource-group $ResourceGroup `
@@ -102,7 +134,7 @@ az container create `
     --registry-password $password `
     --dns-name-label $DnsNameLabel `
     --ports $Port `
-    --environment-variables NODE_ENV=production PORT=$Port
+    --environment-variables $envVarArray
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Failed to deploy to Azure Container Instances" -ForegroundColor Red
@@ -111,7 +143,7 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "===== Deployment successful! =====" -ForegroundColor Green
 Write-Host "Your xRegistry service is now available at:" -ForegroundColor White
-Write-Host "http://$DnsNameLabel.$Location.azurecontainer.io:$Port" -ForegroundColor Cyan
+Write-Host "$BaseUrl" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "To check the container status:" -ForegroundColor White
 Write-Host "az container show --resource-group $ResourceGroup --name $ContainerName --query instanceView.state" -ForegroundColor Cyan

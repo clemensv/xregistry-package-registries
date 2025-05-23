@@ -1,0 +1,61 @@
+name: Deploy NPM xRegistry to Azure
+
+on:
+  workflow_run:
+    workflows: ["Build and Push NPM xRegistry"]
+    types:
+      - completed
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/xregistry-npm-bridge
+  AZURE_RESOURCE_GROUP: xregistry-resources
+  CONTAINER_NAME: xregistry-npm-bridge
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      
+      - name: Set ACI Context
+        id: set-context
+        run: |
+          echo "IMAGE_TAG=sha-$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+      
+      - name: Log into GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Deploy to Azure Container Instances
+        uses: azure/aci-deploy@v1
+        with:
+          resource-group: ${{ env.AZURE_RESOURCE_GROUP }}
+          dns-name-label: xregistry-npm-bridge
+          name: ${{ env.CONTAINER_NAME }}
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          registry-login-server: ${{ env.REGISTRY }}
+          registry-username: ${{ github.actor }}
+          registry-password: ${{ secrets.GITHUB_TOKEN }}
+          secure-environment-variables: NODE_ENV=production
+          ports: 3100
+          location: 'westeurope'
+          cpu: 1
+          memory: 1.5
+          environment-variables: PORT=3100
+      
+      - name: Output Container URL
+        run: |
+          echo "Deployed to: http://xregistry-npm-bridge.westeurope.azurecontainer.io:3100" 

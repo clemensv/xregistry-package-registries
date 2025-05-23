@@ -1,0 +1,21 @@
+version: '3'
+
+services:
+  pypi-wrapper:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: xregistry-pypi-bridge
+    ports:
+      - "3000:3000"
+    environment:
+      - XREGISTRY_PYPI_PORT=3000
+      # Uncomment the line below if running behind a proxy
+      # - XREGISTRY_PYPI_BASEURL=https://pypi.example.com
+      # Uncomment the line below to enable file logging
+      # - XREGISTRY_PYPI_LOG=/logs/pypi.log
+      # Uncomment the line below to suppress console output
+      # - XREGISTRY_PYPI_QUIET=true
+    volumes:
+      - ./logs:/logs
+    restart: unless-stopped 
