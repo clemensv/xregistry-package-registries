@@ -931,46 +931,13 @@ let registryModel;
 try {
   const modelPath = path.join(__dirname, "model.json");
   const modelData = fs.readFileSync(modelPath, "utf8");
-  const loadedModel = JSON.parse(modelData);
-
-  // Ensure registryModel is the core model definition
-  if (loadedModel && loadedModel.model) {
-    registryModel = loadedModel.model;
-  } else {
-    // If model.json doesn't have a 'model' property, assume it's already the core model
-    // or it's an invalid structure, which will be handled by the catch block or later validation
-    registryModel = loadedModel;
+  registryModel = JSON.parse(modelData);
+  if (registryModel && registryModel.model) {
+    registryModel = registryModel.model;
   }
-
-  // If the model used hardcoded group/resource names (e.g., "noderegistries", "packages"),
-  // and we use dynamic GROUP_TYPE/RESOURCE_TYPE constants, adjust the model structure.
-  if (registryModel.groups) {
-    const groupsObj = registryModel.groups;
-    if (groupsObj.noderegistries && GROUP_TYPE !== 'noderegistries') {
-      groupsObj[GROUP_TYPE] = groupsObj.noderegistries;
-      delete groupsObj.noderegistries;
-
-      if (groupsObj[GROUP_TYPE] && groupsObj[GROUP_TYPE].resources && groupsObj[GROUP_TYPE].resources.packages && RESOURCE_TYPE !== 'packages') {
-        groupsObj[GROUP_TYPE].resources[RESOURCE_TYPE] = groupsObj[GROUP_TYPE].resources.packages;
-        delete groupsObj[GROUP_TYPE].resources.packages;
-        
-        // Example: Update target paths if they were hardcoded
-        // This part is highly specific to the model.json structure and might need careful review
-        // For instance, if a package target was like "/noderegistries/package"
-        // const resourceData = groupsObj[GROUP_TYPE].resources[RESOURCE_TYPE];
-        // if (resourceData.attributes && 
-        //     resourceData.attributes.package && 
-        //     resourceData.attributes.package.target === "/noderegistries/package") {
-        //   resourceData.attributes.package.target = `/${GROUP_TYPE}/${RESOURCE_TYPE_SINGULAR}`;
-        // }
-      }
-    }
-  }
-
-  console.log("Registry model loaded successfully from model.json");
 } catch (error) {
-  console.error("Error loading model.json:", error.message);
-  process.exit(1);
+  console.error("NPM: Error loading model.json:", error.message);
+  throw error;
 }
 
 // Root endpoint
@@ -2107,6 +2074,74 @@ function gracefulShutdown() {
 process.on('SIGINT', gracefulShutdown);
 process.on('SIGTERM', gracefulShutdown);
 
+// Check if this module is being run directly or imported
+const isRunningStandalone = require.main === module;
+
+// Export the attachToApp function for use as a module
+module.exports = {
+  attachToApp: function(sharedApp, options = {}) {
+    const pathPrefix = options.pathPrefix || '';
+    const baseUrl = options.baseUrl || '';
+    const quiet = options.quiet || false;
+    
+    if (!quiet) {
+      console.log(`NPM: Attaching routes at ${pathPrefix}`);
+    }
+
+    // Mount all the existing routes from this server at the path prefix
+    // We need to create a new router and copy all existing routes
+    const router = express.Router();
+    
+    // Copy all routes from the main app to the router, adjusting paths
+    if (app._router && app._router.stack) {
+      app._router.stack.forEach(layer => {
+        if (layer.route) {
+          // Copy route handlers
+          const methods = Object.keys(layer.route.methods);
+          methods.forEach(method => {
+            if (layer.route.path) {
+              let routePath = layer.route.path;
+              
+              // Skip the root route when mounting as a sub-server
+              if (routePath === '/') {
+                return;
+              }
+              
+              // Adjust route paths for proper mounting
+              if (routePath === `/${GROUP_TYPE}`) {
+                // The group collection endpoint should be at the root of the path prefix
+                routePath = '/';
+              } else if (routePath.startsWith(`/${GROUP_TYPE}/`)) {
+                // Remove the GROUP_TYPE prefix from other routes
+                routePath = routePath.substring(GROUP_TYPE.length + 1);
+              }
+              
+              router[method](routePath, ...layer.route.stack.map(l => l.handle));
+            }
+          });
+        } else if (layer.name === 'router') {
+          // Copy middleware
+          router.use(layer.handle);
+        }
+      });
+    }
+
+    // Mount the router at the path prefix
+    sharedApp.use(pathPrefix, router);
+
+    // Return server information for the unified server
+    return {
+      name: "NPM",
+      groupType: GROUP_TYPE,
+      resourceType: RESOURCE_TYPE,
+      pathPrefix: pathPrefix,
+      getModel: () => registryModel
+    };
+  }
+};
+
+// If running as standalone, start the server - ONLY if this file is run directly
+if (require.main === module) {
 // Initialize package names cache and start the server
 (async () => {
   // Initial load of package names
@@ -2115,8 +2150,27 @@ process.on('SIGTERM', gracefulShutdown);
   // Schedule periodic refresh
   scheduleRefresh();
 
-// Start the server
-app.listen(PORT, () => {
+    // Create a new Express app only for standalone mode
+    const standaloneApp = express();
+    
+    // Add CORS
+    standaloneApp.use((req, res, next) => {
+      res.set('Access-Control-Allow-Origin', '*');
+      res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      res.set('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+      
+      if (req.method === 'OPTIONS') {
+        return res.status(204).end();
+      }
+      
+      next();
+    });
+    
+    // Use all the existing app routes by copying them to the standalone app
+    standaloneApp._router = app._router;
+
+    // Start the standalone server
+    standaloneApp.listen(PORT, () => {
     console.log(`NPM xRegistry wrapper listening on port ${PORT}`);
     if (BASE_URL) {
       console.log(`Using base URL: ${BASE_URL}`);
@@ -2124,3 +2178,4 @@ app.listen(PORT, () => {
     console.log(`Package names cache contains ${packageNamesCache.length} packages`);
   });
 })(); 
+} 

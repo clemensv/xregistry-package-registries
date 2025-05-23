@@ -1,38 +1,31 @@
 {
   "name": "xregistry-package-registries",
   "version": "1.0.0",
-  "description": "xRegistry wrappers for various package registries",
+  "description": "Unified xRegistry API wrapper for multiple package registries",
+  "main": "server.js",
   "scripts": {
-    "test": "node C:\\git\\xregistry-package-registries\\run-test-servers.js",
-    "test:dynamic": "node C:\\git\\xregistry-package-registries\\test-with-available-ports.js",
-    "test:nuget": "cd nuget && node test-server.js",
-    "test:maven": "cd maven && node test-server.js",
-    "start:nuget": "node C:\\git\\xregistry-package-registries\\nuget\\server.js",
-    "start:maven": "node C:\\git\\xregistry-package-registries\\maven\\server.js",
-    "start:all": "concurrently \"npm run start:nuget\" \"npm run start:maven\"",
-    "start:dynamic": "node C:\\git\\xregistry-package-registries\\test-with-available-ports.js"
-  },
-  "dependencies": {
-    "axios": "^1.6.7",
-    "concurrently": "^8.2.2",
-    "express": "^4.18.2",
-    "xml2js": "^0.6.2",
-    "yargs": "^17.7.2"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/xregistry/xregistry-package-registries.git"
+    "start": "node server.js",
+    "dev": "node server.js --enable=pypi",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
     "xregistry",
-    "npm",
     "pypi",
+    "npm",
+    "maven",
     "nuget",
-    "maven"
+    "oci",
+    "package-registry",
+    "api"
   ],
-  "author": "xRegistry Team",
-  "license": "MIT"
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "axios": "^1.6.0",
+    "yargs": "^17.7.2"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
 }

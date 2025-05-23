@@ -77,54 +77,13 @@ let registryModel;
 try {
   const modelPath = path.join(__dirname, "model.json");
   const modelData = fs.readFileSync(modelPath, "utf8");
-  const loadedModel = JSON.parse(modelData);
-
-  // Ensure registryModel is the core model definition
-  if (loadedModel && loadedModel.model) {
-    registryModel = loadedModel.model;
-  } else {
-    // If model.json doesn't have a 'model' property, assume it's already the core model
-    // or it's an invalid structure, which will be handled by the catch block or later validation
-    registryModel = loadedModel;
+  registryModel = JSON.parse(modelData);
+  if (registryModel && registryModel.model) {
+    registryModel = registryModel.model;
   }
-
-  // If the model used hardcoded group/resource names (e.g., "mavenrepositories", "artifacts"),
-  // and we use dynamic GROUP_TYPE/RESOURCE_TYPE constants, adjust the model structure.
-  if (registryModel.groups) {
-    const groupsObj = registryModel.groups;
-    if (groupsObj.mavenrepositories && GROUP_TYPE !== 'mavenrepositories') {
-      groupsObj[GROUP_TYPE] = groupsObj.mavenrepositories;
-      delete groupsObj.mavenrepositories;
-
-      if (groupsObj[GROUP_TYPE] && groupsObj[GROUP_TYPE].resources && groupsObj[GROUP_TYPE].resources.artifacts && RESOURCE_TYPE !== 'artifacts') {
-        groupsObj[GROUP_TYPE].resources[RESOURCE_TYPE] = groupsObj[GROUP_TYPE].resources.artifacts;
-        delete groupsObj[GROUP_TYPE].resources.artifacts;
-        // Add any further model adjustments specific to Maven if needed
-      }
-    }
-  }
-  if (!QUIET_MODE) console.log("Registry model loaded successfully from model.json");
 } catch (error) {
-  console.error("Error loading model.json:", error.message);
-  // Define a minimal fallback model if loading fails, focusing on the core structure
-  registryModel = {
-    groups: {
-      [GROUP_TYPE]: {
-        singular: GROUP_TYPE_SINGULAR,
-        resources: {
-          [RESOURCE_TYPE]: {
-            singular: RESOURCE_TYPE_SINGULAR,
-            attributes: { // Basic attributes, can be expanded
-              name: { type: "string" },
-              description: { type: "string" },
-              version: { type: "string" }
-            }
-          }
-        }
-      }
-    }
-  };
-  if (!QUIET_MODE) console.log("Using fallback registry model due to error.");
+  console.error("Maven: Error loading model.json:", error.message);
+  registryModel = {};
 }
 
 // Create cache directory
@@ -926,6 +885,7 @@ app.use((req, res) => {
 });
 
 // Start the server
+/* This is now handled in the standalone mode check at the end of the file
 app.listen(PORT, () => {
   console.log(`Maven Central xRegistry server started on port ${PORT}`);
   
@@ -954,6 +914,7 @@ process.on('SIGINT', () => {
   }
   process.exit(0);
 });
+*/
 
 // Generate RFC7807 compliant error responses
 function createErrorResponse(type, title, status, instance, detail = null, data = null) {
@@ -1609,4 +1570,114 @@ async function processMavenDependencies(pomDependencies, parentPackageXRegistryI
     processedDeps.push(depObj);
   }
   return processedDeps;
+}
+
+// Export the attachToApp function for use as a module
+module.exports = {
+  attachToApp: function(sharedApp, options = {}) {
+    const pathPrefix = options.pathPrefix || '';
+    const baseUrl = options.baseUrl || '';
+    const quiet = options.quiet || false;
+    
+    if (!quiet) {
+      console.log(`Maven: Attaching routes at ${pathPrefix}`);
+    }
+
+    // Mount all the existing routes from this server at the path prefix
+    // We need to create a new router and copy all existing routes
+    const router = express.Router();
+    
+    // Copy all routes from the main app to the router, adjusting paths
+    if (app._router && app._router.stack) {
+      app._router.stack.forEach(layer => {
+        if (layer.route) {
+          // Copy route handlers
+          const methods = Object.keys(layer.route.methods);
+          methods.forEach(method => {
+            if (layer.route.path) {
+              let routePath = layer.route.path;
+              
+              // Skip the root route when mounting as a sub-server
+              if (routePath === '/') {
+                return;
+              }
+              
+              // Adjust route paths for proper mounting
+              if (routePath === `/${GROUP_TYPE}`) {
+                // The group collection endpoint should be at the root of the path prefix
+                routePath = '/';
+              } else if (routePath.startsWith(`/${GROUP_TYPE}/`)) {
+                // Remove the GROUP_TYPE prefix from other routes
+                routePath = routePath.substring(GROUP_TYPE.length + 1);
+              }
+              
+              router[method](routePath, ...layer.route.stack.map(l => l.handle));
+            }
+          });
+        } else if (layer.name === 'router') {
+          // Copy middleware
+          router.use(layer.handle);
+        }
+      });
+    }
+
+    // Mount the router at the path prefix
+    sharedApp.use(pathPrefix, router);
+
+    // Return server information for the unified server
+    return {
+      name: "Maven",
+      groupType: GROUP_TYPE,
+      resourceType: RESOURCE_TYPE,
+      pathPrefix: pathPrefix,
+      getModel: () => registryModel
+    };
+  }
+};
+
+// If running as standalone, start the server - ONLY if this file is run directly
+if (require.main === module) {
+  // Create a new Express app only for standalone mode
+  const standaloneApp = express();
+  
+  // Add CORS
+  standaloneApp.use((req, res, next) => {
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.set('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    
+    if (req.method === 'OPTIONS') {
+      return res.status(204).end();
+    }
+    
+    next();
+  });
+  
+  // Use all the existing app routes by copying them to the standalone app
+  standaloneApp._router = app._router;
+
+  // Start the standalone server
+  standaloneApp.listen(PORT, () => {
+    console.log(`Maven xRegistry wrapper listening on port ${PORT}`);
+    if (BASE_URL) {
+      console.log(`Using base URL: ${BASE_URL}`);
+    }
+  });
+  
+  // Handle process termination for graceful shutdown
+  process.on('SIGTERM', () => {
+    console.log('SIGTERM received, shutting down gracefully');
+    if (logStream) {
+      logStream.end();
+    }
+    process.exit(0);
+  });
+
+  process.on('SIGINT', () => {
+    console.log('SIGINT received, shutting down gracefully');
+    if (logStream) {
+      logStream.end();
+    }
+    process.exit(0);
+  });
 } 

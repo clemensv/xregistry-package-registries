@@ -1746,75 +1746,9 @@ function gracefulShutdown() {
 process.on('SIGINT', gracefulShutdown);
 process.on('SIGTERM', gracefulShutdown);
 
-// Export the attachToApp function for use as a module
-module.exports = {
-  attachToApp: function(sharedApp, options = {}) {
-    const pathPrefix = options.pathPrefix || '';
-    const baseUrl = options.baseUrl || '';
-    const quiet = options.quiet || false;
-    
-    if (!quiet) {
-      console.log(`PyPI: Attaching routes at ${pathPrefix}`);
-    }
-
-    // Mount all the existing routes from this server at the path prefix
-    // We need to create a new router and copy all existing routes
-    const router = express.Router();
-    
-    // Copy all routes from the main app to the router, adjusting paths
-    if (app._router && app._router.stack) {
-      app._router.stack.forEach(layer => {
-        if (layer.route) {
-          // Copy route handlers
-          const methods = Object.keys(layer.route.methods);
-          methods.forEach(method => {
-            if (layer.route.path) {
-              let routePath = layer.route.path;
-              
-              // Skip the root route when mounting as a sub-server
-              if (routePath === '/') {
-                return;
-              }
-              
-              // Adjust route paths for proper mounting
-              if (routePath === `/${GROUP_TYPE}`) {
-                // The group collection endpoint should be at the root of the path prefix
-                routePath = '/';
-              } else if (routePath.startsWith(`/${GROUP_TYPE}/`)) {
-                // Remove the GROUP_TYPE prefix from other routes
-                routePath = routePath.substring(GROUP_TYPE.length + 1);
-              }
-              
-              router[method](routePath, ...layer.route.stack.map(l => l.handle));
-            }
-          });
-        } else if (layer.name === 'router') {
-          // Copy middleware
-          router.use(layer.handle);
-        }
-      });
-    }
-
-    // Mount the router at the path prefix
-    sharedApp.use(pathPrefix, router);
-
-    // Return server information for the unified server
-    return {
-      name: "PyPI",
-      groupType: GROUP_TYPE,
-      resourceType: RESOURCE_TYPE,
-      pathPrefix: pathPrefix,
-      getModel: () => registryModel
-    };
+app.listen(PORT, () => {
+  console.log(`xRegistry PyPI wrapper listening on port ${PORT}`);
+  if (BASE_URL) {
+    console.log(`Using base URL: ${BASE_URL}`);
   }
-};
-
-// If running as standalone, start the server - ONLY if this file is run directly
-if (require.main === module) {
-  app.listen(PORT, () => {
-    console.log(`xRegistry PyPI wrapper listening on port ${PORT}`);
-    if (BASE_URL) {
-      console.log(`Using base URL: ${BASE_URL}`);
-    }
-  });
-}
+});
