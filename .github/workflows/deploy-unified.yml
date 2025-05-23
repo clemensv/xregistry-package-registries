@@ -1,4 +1,4 @@
-name: Build and Deploy xRegistry Bridge for Package Registries
+name: Build and Deploy xRegistry Bridge
 
 on:
   push:
@@ -99,6 +99,12 @@ jobs:
     steps:
       - uses: sigstore/cosign-installer@v3
 
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Verify signature
         run: |
           REF="${{ env.REGISTRY }}/${{ env.IMAGE_REPO }}@${{ needs.build.outputs.digest }}"
@@ -181,5 +187,5 @@ jobs:
                          XREGISTRY_PYPI_QUIET=false
           fi
 
-      - run: | 
+      - run: |
           echo "Endpoint: https://$(az containerapp show --name $APP_NAME --resource-group $RESOURCE_GROUP --query 'properties.configuration.ingress.fqdn' -o tsv)"
