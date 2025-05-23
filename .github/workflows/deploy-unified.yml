@@ -1,172 +1,165 @@
-name: Deploy Unified xRegistry to Azure Container Apps
+name: Build and Deploy PyPI xRegistry
 
 on:
   push:
-    branches: [ main ]
-    paths-ignore:
-      - 'README.md'
-      - 'docs/**'
-      - '*.md'
-  pull_request:
-    branches: [ main ]
-    paths-ignore:
-      - 'README.md'
-      - 'docs/**'
-      - '*.md'
+    branches: [ "main" ]
+    paths:   [ "pypi/**" ]
+    tags:    [ "v*.*.*" ]
   workflow_dispatch:
+    inputs:
+      deploy:
+        description: Deploy to Azure Container Apps after build
+        default: false
+        type: boolean
+      resource_group:
+        description: Azure Resource Group
+        default: xregistry-resources
+        type: string
+      location:
+        description: Azure Region
+        default: westeurope
+        type: string
+      env_name:
+        description: Container App Environment Name
+        default: xregistry-env
+        type: string
+      app_name:
+        description: Container App Name
+        default: xregistry-pypi-bridge
+        type: string
 
 env:
-  REGISTRY: ${{ secrets.REGISTRY_LOGIN_SERVER }}
-  IMAGE_NAME: xregistry-unified
-  RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
-  CONTAINER_APP_NAME: ${{ secrets.AZURE_CONTAINER_APP_NAME }}
-  CONTAINER_APP_ENVIRONMENT: ${{ secrets.AZURE_CONTAINER_APP_ENVIRONMENT }}
+  REGISTRY: ghcr.io
+  IMAGE_REPO: ${{ github.repository }}
 
 jobs:
+# ────────────────────────────────────────────────────────────────────────────────
   build:
     runs-on: ubuntu-latest
-    outputs:
-      image-tag: ${{ steps.meta.outputs.tags }}
-      image-digest: ${{ steps.build.outputs.digest }}
-    
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      - uses: sigstore/cosign-installer@v3
 
-    - name: Log in to Container Registry
-      uses: docker/login-action@v3
-      with:
-        registry: ${{ env.REGISTRY }}
-        username: ${{ secrets.REGISTRY_USERNAME }}
-        password: ${{ secrets.REGISTRY_PASSWORD }}
+      - uses: docker/setup-buildx-action@v3
 
-    - name: Extract metadata
-      id: meta
-      uses: docker/metadata-action@v5
-      with:
-        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-        tags: |
-          type=ref,event=branch
-          type=ref,event=pr
-          type=sha,prefix={{branch}}-
-          type=raw,value=latest,enable={{is_default_branch}}
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Build and push Docker image
-      id: build
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        platforms: linux/amd64,linux/arm64
-        push: true
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_REPO }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ github.sha }}
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=ref,event=branch
+            type=ref,event=pr
 
-  test:
-    runs-on: ubuntu-latest
-    needs: build
-    if: github.event_name == 'pull_request'
-    
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: ./pypi
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+          provenance: mode=max
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '18'
-        cache: 'npm'
+      - name: Sign image (OIDC)
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          COSIGN_YES: "true"
+        run: |
+          REF="${{ env.REGISTRY }}/${{ env.IMAGE_REPO }}@${{ steps.build.outputs.digest }}"
+          cosign sign \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/${{ github.workflow }}" \
+            "$REF"
 
-    - name: Install dependencies
-      run: npm ci
-
-    - name: Run tests
-      run: npm test
-
-    - name: Test Docker image
-      run: |
-        echo "Testing Docker image startup..."
-        docker run --rm -d -p 3000:3000 --name test-container ${{ needs.build.outputs.image-tag }}
-        
-        # Wait for container to start
-        timeout 60 bash -c 'until curl -f http://localhost:3000/; do sleep 2; done'
-        
-        # Test endpoints
-        curl -f http://localhost:3000/ || exit 1
-        curl -f http://localhost:3000/capabilities || exit 1
-        curl -f http://localhost:3000/model || exit 1
-        
-        # Stop container
-        docker stop test-container
-
+# ────────────────────────────────────────────────────────────────────────────────
   deploy:
-    runs-on: ubuntu-latest
-    needs: [build, test]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    environment: production
-    
-    steps:
-    - name: Azure Login
-      uses: azure/login@v1
-      with:
-        creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-    - name: Deploy to Azure Container Apps
-      uses: azure/container-apps-deploy-action@v1
-      with:
-        resourceGroup: ${{ env.RESOURCE_GROUP }}
-        containerAppName: ${{ env.CONTAINER_APP_NAME }}
-        containerAppEnvironment: ${{ env.CONTAINER_APP_ENVIRONMENT }}
-        targetPort: 3000
-        ingress: external
-        image: ${{ needs.build.outputs.image-tag }}
-        environmentVariables: |
-          XREGISTRY_PORT=3000
-          XREGISTRY_ENABLE=pypi,npm,maven,nuget,oci
-          XREGISTRY_QUIET=false
-          NODE_ENV=production
-
-    - name: Get Container App URL
-      id: get-url
-      run: |
-        URL=$(az containerapp show \
-          --resource-group ${{ env.RESOURCE_GROUP }} \
-          --name ${{ env.CONTAINER_APP_NAME }} \
-          --query properties.configuration.ingress.fqdn \
-          --output tsv)
-        echo "app-url=https://$URL" >> $GITHUB_OUTPUT
-        echo "::notice title=Deployment Complete::Unified xRegistry deployed to https://$URL"
-
-    - name: Health Check
-      run: |
-        echo "Performing health check..."
-        timeout 300 bash -c 'until curl -f ${{ steps.get-url.outputs.app-url }}/; do sleep 10; done'
-        
-        echo "Testing all endpoints..."
-        curl -f ${{ steps.get-url.outputs.app-url }}/ || exit 1
-        curl -f ${{ steps.get-url.outputs.app-url }}/capabilities || exit 1
-        curl -f ${{ steps.get-url.outputs.app-url }}/model || exit 1
-        
-        echo "✅ All endpoints responding correctly"
-
-  security-scan:
-    runs-on: ubuntu-latest
     needs: build
-    if: github.event_name == 'pull_request'
-    
-    steps:
-    - name: Run Trivy vulnerability scanner
-      uses: aquasecurity/trivy-action@master
-      with:
-        image-ref: ${{ needs.build.outputs.image-tag }}
-        format: 'sarif'
-        output: 'trivy-results.sarif'
+    if: ${{ github.event.inputs.deploy == 'true' || (github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[deploy]')) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
 
-    - name: Upload Trivy scan results to GitHub Security tab
-      uses: github/codeql-action/upload-sarif@v3
-      with:
-        sarif_file: 'trivy-results.sarif' 
+    env:
+      RESOURCE_GROUP: ${{ github.event.inputs.resource_group || 'xregistry-resources' }}
+      LOCATION:       ${{ github.event.inputs.location       || 'westeurope' }}
+      ENV_NAME:       ${{ github.event.inputs.env_name       || 'xregistry-env' }}
+      APP_NAME:       ${{ github.event.inputs.app_name       || 'xregistry-pypi-bridge' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v1
+        with:
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - run: az extension add --name containerapp --yes
+
+      - id: tag
+        run: |
+          [[ "${{ github.ref }}" == refs/tags/v* ]] \
+            && echo "IMAGE_TAG=${{ github.ref_name }}" >> $GITHUB_ENV \
+            || echo "IMAGE_TAG=latest" >> $GITHUB_ENV
+
+      - name: Ensure Container App environment
+        run: |
+          if ! az containerapp env show --name $ENV_NAME --resource-group $RESOURCE_GROUP &>/dev/null; then
+            az containerapp env create \
+              --name $ENV_NAME \
+              --resource-group $RESOURCE_GROUP \
+              --location $LOCATION
+          fi
+
+      - name: Deploy/update Container App
+        run: |
+          IMG="${{ env.REGISTRY }}/${{ env.IMAGE_REPO }}:${{ env.IMAGE_TAG }}"
+          if az containerapp show --name $APP_NAME --resource-group $RESOURCE_GROUP &>/dev/null; then
+            az containerapp update \
+              --name $APP_NAME \
+              --resource-group $RESOURCE_GROUP \
+              --image "$IMG" \
+              --registry-server "${{ env.REGISTRY }}" \
+              --registry-username "${{ github.actor }}" \
+              --registry-password "${{ secrets.GITHUB_TOKEN }}"
+          else
+            az containerapp create \
+              --name $APP_NAME \
+              --resource-group $RESOURCE_GROUP \
+              --environment $ENV_NAME \
+              --image "$IMG" \
+              --target-port 3000 \
+              --ingress external \
+              --registry-server "${{ env.REGISTRY }}" \
+              --registry-username "${{ github.actor }}" \
+              --registry-password "${{ secrets.GITHUB_TOKEN }}" \
+              --cpu 0.5 \
+              --memory 1Gi \
+              --min-replicas 0 \
+              --max-replicas 2 \
+              --env-vars NODE_ENV=production PORT=3000 \
+                         XREGISTRY_PYPI_PORT=3000 \
+                         XREGISTRY_PYPI_BASEURL="https://${APP_NAME}.$(az containerapp env show --name $ENV_NAME --resource-group $RESOURCE_GROUP --query 'properties.defaultDomain' -o tsv)" \
+                         XREGISTRY_PYPI_QUIET=false
+          fi
+
+      - run: echo "https://$(az containerapp show --name $APP_NAME --resource-group $RESOURCE_GROUP --query 'properties.configuration.ingress.fqdn' -o tsv)"
