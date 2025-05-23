@@ -1,4 +1,4 @@
-name: Build and Deploy PyPI xRegistry
+name: Build and Deploy xRegistry Bridge for Package Registries
 
 on:
   push:
@@ -33,13 +33,16 @@ env:
   IMAGE_REPO: ${{ github.repository }}
 
 jobs:
-# ────────────────────────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────────────── build ─────
   build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
       id-token: write
+
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
 
     steps:
       - uses: actions/checkout@v4
@@ -61,8 +64,8 @@ jobs:
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=raw,value=${{ github.sha }}
-            type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
-            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref,'refs/tags/v') }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref,'refs/tags/v') }}
             type=ref,event=branch
             type=ref,event=pr
 
@@ -83,14 +86,30 @@ jobs:
           COSIGN_YES: "true"
         run: |
           REF="${{ env.REGISTRY }}/${{ env.IMAGE_REPO }}@${{ steps.build.outputs.digest }}"
-          cosign sign \
+          cosign sign "${REF}"
+
+# ──────────────────────────────────────────────────────── verify ─────
+  verify:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      packages: read
+      id-token: write
+
+    steps:
+      - uses: sigstore/cosign-installer@v3
+
+      - name: Verify signature
+        run: |
+          REF="${{ env.REGISTRY }}/${{ env.IMAGE_REPO }}@${{ needs.build.outputs.digest }}"
+          cosign verify \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/${{ github.workflow }}" \
-            "$REF"
+            "${REF}"
 
-# ────────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────── deploy ─────
   deploy:
-    needs: build
+    needs: [ build, verify ]
     if: ${{ github.event.inputs.deploy == 'true' || (github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[deploy]')) }}
     runs-on: ubuntu-latest
     permissions:
@@ -130,7 +149,7 @@ jobs:
               --location $LOCATION
           fi
 
-      - name: Deploy/update Container App
+      - name: Deploy / update Container App
         run: |
           IMG="${{ env.REGISTRY }}/${{ env.IMAGE_REPO }}:${{ env.IMAGE_TAG }}"
           if az containerapp show --name $APP_NAME --resource-group $RESOURCE_GROUP &>/dev/null; then
@@ -162,4 +181,4 @@ jobs:
                          XREGISTRY_PYPI_QUIET=false
           fi
 
-      - run: echo "https://$(az containerapp show --name $APP_NAME --resource-group $RESOURCE_GROUP --query 'properties.configuration.ingress.fqdn' -o tsv)"
+      - run: echo "Endpoint: https://$(az containerapp show --name $APP_NAME --resource-group $RESOURCE_GROUP --query 'properties.configuration.ingress.fqdn' -o tsv)"
