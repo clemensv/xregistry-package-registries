@@ -133,11 +133,7 @@ jobs:
 
       - uses: azure/login@v2
         with:
-          auth-type:           'service-principal'   # implicit when client-secret supplied
-          client-id:           ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id:           ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id:     ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          client-secret:       ${{ secrets.AZURE_CLIENT_SECRET }}
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - run: az extension add --name containerapp --yes
 
