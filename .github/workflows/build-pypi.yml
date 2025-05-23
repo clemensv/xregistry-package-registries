@@ -3,35 +3,29 @@ name: Build and Deploy PyPI xRegistry
 on:
   push:
     branches: [ "main" ]
-    paths:
-      - 'pypi/**'
-    tags: [ 'v*.*.*' ]
+    paths: [ "pypi/**" ]
+    tags:   [ "v*.*.*" ]
   workflow_dispatch:
     inputs:
       deploy:
-        description: 'Deploy to Azure Container Apps after build'
-        required: false
+        description: Deploy to Azure Container Apps after build
         default: false
         type: boolean
       resource_group:
-        description: 'Azure Resource Group'
-        required: false
-        default: 'xregistry-resources'
+        description: Azure Resource Group
+        default: xregistry-resources
         type: string
       location:
-        description: 'Azure Region'
-        required: false
-        default: 'westeurope'
+        description: Azure Region
+        default: westeurope
         type: string
       env_name:
-        description: 'Container App Environment Name'
-        required: false
-        default: 'xregistry-env'
+        description: Container App Environment Name
+        default: xregistry-env
         type: string
       app_name:
-        description: 'Container App Name'
-        required: false
-        default: 'xregistry-pypi-bridge'
+        description: Container App Name
+        default: xregistry-pypi-bridge
         type: string
 
 env:
@@ -39,26 +33,25 @@ env:
   IMAGE_NAME: ${{ github.repository }}/xregistry-pypi-bridge
 
 jobs:
+# ────────────────────────────────────────────────────────────────────────────────
   build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-      id-token: write  # Required for container signing
+      id-token: write          # OIDC for keyless signing
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3.1.1
-        with:
-          cosign-release: 'v2.2.4'
+        uses: sigstore/cosign-installer@v3     # always latest stable ≥ v2.5
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log into registry ${{ env.REGISTRY }}
+      - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -78,8 +71,8 @@ jobs:
             type=ref,event=branch
             type=ref,event=pr
 
-      - name: Build and push Docker image
-        id: build-and-push
+      - name: Build & push image
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: ./pypi
@@ -87,16 +80,21 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to:   type=gha,mode=max
           provenance: mode=max
 
-      - name: Sign the published Docker image
+      - name: Sign image (OIDC)
         if: ${{ github.event_name != 'pull_request' }}
         env:
-          TAGS: ${{ steps.meta.outputs.tags }}
-          DIGEST: ${{ steps.build-and-push.outputs.digest }}
-        run: echo "${TAGS}" | xargs -I {} cosign sign --yes {}@${DIGEST}
+          COSIGN_YES: "true"
+        run: |
+          REF="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}"
+          cosign sign \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/${{ github.workflow }}" \
+            "${REF}"
 
+# ────────────────────────────────────────────────────────────────────────────────
   deploy:
     needs: build
     if: ${{ github.event.inputs.deploy == 'true' || (github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[deploy]')) }}
@@ -104,88 +102,74 @@ jobs:
     permissions:
       contents: read
       packages: read
-      id-token: write  # Required for Azure login
-      
+      id-token: write          # Azure OIDC login
+
     env:
       RESOURCE_GROUP: ${{ github.event.inputs.resource_group || 'xregistry-resources' }}
-      LOCATION: ${{ github.event.inputs.location || 'westeurope' }}
-      ENV_NAME: ${{ github.event.inputs.env_name || 'xregistry-env' }}
-      APP_NAME: ${{ github.event.inputs.app_name || 'xregistry-pypi-bridge' }}
-      
+      LOCATION:       ${{ github.event.inputs.location       || 'westeurope' }}
+      ENV_NAME:       ${{ github.event.inputs.env_name       || 'xregistry-env' }}
+      APP_NAME:       ${{ github.event.inputs.app_name       || 'xregistry-pypi-bridge' }}
+
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
-      
+
       - name: Azure login
         uses: azure/login@v1
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Install Azure CLI extensions
-        run: |
-          az extension add --name containerapp --yes
+      - name: Install Container Apps extension
+        run: az extension add --name containerapp --yes
 
-      - name: Determine image tag
-        id: image-tag
+      - name: Select image tag
+        id: tag
         run: |
-          if [[ "${{ github.ref }}" == "refs/tags/v"* ]]; then
-            TAG="${{ github.ref_name }}"
-          else
-            TAG="latest"
-          fi
-          echo "IMAGE_TAG=$TAG" >> $GITHUB_ENV
-          echo "Using image tag: $TAG"
-      
-      - name: Deploy to Azure Container Apps
+          [[ "${{ github.ref }}" == refs/tags/v* ]] && echo "IMAGE_TAG=${{ github.ref_name }}" >> $GITHUB_ENV || echo "IMAGE_TAG=latest" >> $GITHUB_ENV
+
+      - name: Ensure Container App environment
         run: |
-          # Check if Container App environment exists
-          if ! az containerapp env show --name ${{ env.ENV_NAME }} --resource-group ${{ env.RESOURCE_GROUP }} &> /dev/null; then
-            echo "Creating Container App environment '${{ env.ENV_NAME }}'..."
+          if ! az containerapp env show --name $ENV_NAME --resource-group $RESOURCE_GROUP &>/dev/null; then
             az containerapp env create \
-              --name ${{ env.ENV_NAME }} \
-              --resource-group ${{ env.RESOURCE_GROUP }} \
-              --location ${{ env.LOCATION }}
+              --name $ENV_NAME \
+              --resource-group $RESOURCE_GROUP \
+              --location $LOCATION
           fi
-          
-          # Get the environment domain
-          ENV_DOMAIN=$(az containerapp env show --name ${{ env.ENV_NAME }} --resource-group ${{ env.RESOURCE_GROUP }} --query "properties.defaultDomain" -o tsv)
-          BASEURL="https://${{ env.APP_NAME }}.$ENV_DOMAIN"
-          
-          # Check if app exists and deploy or update
-          if az containerapp show --name ${{ env.APP_NAME }} --resource-group ${{ env.RESOURCE_GROUP }} &> /dev/null; then
-            echo "Updating existing Container App '${{ env.APP_NAME }}'..."
+
+      - name: Deploy / update Container App
+        run: |
+          IMG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          if az containerapp show --name $APP_NAME --resource-group $RESOURCE_GROUP &>/dev/null; then
             az containerapp update \
-              --name ${{ env.APP_NAME }} \
-              --resource-group ${{ env.RESOURCE_GROUP }} \
-              --image ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} \
+              --name $APP_NAME \
+              --resource-group $RESOURCE_GROUP \
+              --image "$IMG" \
               --registry-server "${{ env.REGISTRY }}" \
               --registry-username "${{ github.actor }}" \
               --registry-password "${{ secrets.GITHUB_TOKEN }}"
           else
-            echo "Creating new Container App '${{ env.APP_NAME }}'..."
             az containerapp create \
-              --name ${{ env.APP_NAME }} \
-              --resource-group ${{ env.RESOURCE_GROUP }} \
-              --environment ${{ env.ENV_NAME }} \
-              --image ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} \
+              --name $APP_NAME \
+              --resource-group $RESOURCE_GROUP \
+              --environment $ENV_NAME \
+              --image "$IMG" \
               --target-port 3000 \
               --ingress external \
               --registry-server "${{ env.REGISTRY }}" \
               --registry-username "${{ github.actor }}" \
               --registry-password "${{ secrets.GITHUB_TOKEN }}" \
               --cpu 0.5 \
-              --memory "1Gi" \
+              --memory 1Gi \
               --min-replicas 0 \
               --max-replicas 2 \
-              --env-vars "NODE_ENV=production" "PORT=3000" "XREGISTRY_PYPI_PORT=3000" "XREGISTRY_PYPI_BASEURL=$BASEURL" "XREGISTRY_PYPI_QUIET=false"
+              --env-vars NODE_ENV=production PORT=3000 \
+                         XREGISTRY_PYPI_PORT=3000 \
+                         XREGISTRY_PYPI_BASEURL="https://${APP_NAME}.$(az containerapp env show --name $ENV_NAME --resource-group $RESOURCE_GROUP --query 'properties.defaultDomain' -o tsv)" \
+                         XREGISTRY_PYPI_QUIET=false
           fi
-          
-          # Get the FQDN
-          FQDN=$(az containerapp show --name ${{ env.APP_NAME }} --resource-group ${{ env.RESOURCE_GROUP }} --query "properties.configuration.ingress.fqdn" -o tsv)
-          echo "Deployment successful! Your xRegistry service is now available at:"
-          echo "https://$FQDN"
-      
-      - name: Azure logout
-        run: az logout 
+
+      - name: Show endpoint
+        run: |
+          echo "https://$(az containerapp show --name $APP_NAME --resource-group $RESOURCE_GROUP --query 'properties.configuration.ingress.fqdn' -o tsv)"
