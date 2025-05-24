@@ -1,0 +1,146 @@
+services:
+  # NPM Registry Service
+  npm-registry:
+    build:
+      context: ../../npm
+      dockerfile: Dockerfile
+    container_name: bridge-test-npm
+    ports:
+      - "4873:3100"
+    environment:
+      - XREGISTRY_NPM_PORT=3100
+      - XREGISTRY_NPM_API_KEY=npm-api-key-test-123
+      - XREGISTRY_NPM_QUIET=false
+    networks:
+      - bridge-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "const http=require('http');const options={hostname:'localhost',port:3100,path:'/',timeout:2000};const req=http.request(options,(res)=>{process.exit(res.statusCode<500?0:1)});req.on('error',()=>process.exit(1));req.end();"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # PyPI Registry Service  
+  pypi-registry:
+    build:
+      context: ../../pypi
+      dockerfile: Dockerfile
+    container_name: bridge-test-pypi
+    ports:
+      - "8081:3000"
+    environment:
+      - XREGISTRY_PYPI_PORT=3000
+      - XREGISTRY_PYPI_API_KEY=pypi-api-key-test-123
+      - XREGISTRY_PYPI_QUIET=false
+    networks:
+      - bridge-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "const http=require('http');const options={hostname:'localhost',port:3000,path:'/',timeout:2000};const req=http.request(options,(res)=>{process.exit(res.statusCode<500?0:1)});req.on('error',()=>process.exit(1));req.end();"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Maven Registry Service
+  maven-registry:
+    build:
+      context: ../../maven
+      dockerfile: Dockerfile
+    container_name: bridge-test-maven
+    ports:
+      - "8082:3300"
+    environment:
+      - XREGISTRY_MAVEN_PORT=3300
+      - XREGISTRY_MAVEN_API_KEY=maven-api-key-test-123
+      - XREGISTRY_MAVEN_QUIET=false
+    networks:
+      - bridge-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "const http=require('http');const options={hostname:'localhost',port:3300,path:'/',timeout:2000};const req=http.request(options,(res)=>{process.exit(res.statusCode<500?0:1)});req.on('error',()=>process.exit(1));req.end();"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # NuGet Registry Service
+  nuget-registry:
+    build:
+      context: ../../nuget
+      dockerfile: Dockerfile
+    container_name: bridge-test-nuget
+    ports:
+      - "8083:3200"
+    environment:
+      - XREGISTRY_NUGET_PORT=3200
+      - XREGISTRY_NUGET_API_KEY=nuget-api-key-test-123
+      - XREGISTRY_NUGET_QUIET=false
+    networks:
+      - bridge-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "const http=require('http');const options={hostname:'localhost',port:3200,path:'/',timeout:2000};const req=http.request(options,(res)=>{process.exit(res.statusCode<500?0:1)});req.on('error',()=>process.exit(1));req.end();"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # OCI Registry Service
+  oci-registry:
+    build:
+      context: ../../oci
+      dockerfile: Dockerfile
+    container_name: bridge-test-oci
+    ports:
+      - "8084:3000"
+    environment:
+      - XREGISTRY_OCI_PORT=3000
+      - XREGISTRY_OCI_API_KEY=oci-api-key-test-123
+      - XREGISTRY_OCI_QUIET=false
+    networks:
+      - bridge-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "const http=require('http');const options={hostname:'localhost',port:3000,path:'/',timeout:2000};const req=http.request(options,(res)=>{process.exit(res.statusCode<500?0:1)});req.on('error',()=>process.exit(1));req.end();"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Bridge Proxy Service
+  bridge-proxy:
+    build:
+      context: ../../bridge
+      dockerfile: Dockerfile
+    container_name: bridge-test-proxy
+    ports:
+      - "8080:8080"
+    environment:
+      - BRIDGE_PORT=8080
+      - BRIDGE_QUIET=false
+      - BRIDGE_CONFIG_FILE=/app/downstreams-test.json
+    volumes:
+      - ./bridge-downstreams-test.json:/app/downstreams-test.json:ro
+    networks:
+      - bridge-network
+    depends_on:
+      npm-registry:
+        condition: service_healthy
+      pypi-registry:
+        condition: service_healthy
+      maven-registry:
+        condition: service_healthy
+      nuget-registry:
+        condition: service_healthy
+      oci-registry:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "const http=require('http');const options={hostname:'localhost',port:8080,path:'/',timeout:2000};const req=http.request(options,(res)=>{process.exit(res.statusCode<500?0:1)});req.on('error',()=>process.exit(1));req.end();"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+networks:
+  bridge-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16 

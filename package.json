@@ -10,6 +10,8 @@
     "test": "npx mocha 'test/**/*.test.js' --recursive --timeout 10000",
     "test:unit": "npx mocha 'test/unit/**/*.test.js' --recursive --timeout 5000",
     "test:integration": "npx mocha 'test/integration/**/*.test.js' --recursive --timeout 15000",
+    "test:integration:docker": "powershell -ExecutionPolicy Bypass -File test/run-docker-integration-tests.ps1",
+    "test:integration:bridge": "powershell -ExecutionPolicy Bypass -File test/run-bridge-integration-tests.ps1",
     "test:regression": "npx mocha 'test/regression/**/*.test.js' --recursive --timeout 10000",
     "test:install": "npm install",
     "docker:build": "docker build -t xregistry-unified .",

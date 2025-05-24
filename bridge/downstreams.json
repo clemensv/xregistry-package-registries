@@ -2,23 +2,23 @@
   "servers": [
     {
       "url": "http://localhost:4873",
-      "apiKey": "npm-api-key"
+      "apikey": "npm-api-key-test-123"
     },
     {
-      "url": "http://localhost:8081",
-      "apiKey": "pypi-api-key"
+      "url": "http://localhost:3000",
+      "apikey": "pypi-api-key-test-123"
     },
     {
-      "url": "http://localhost:8082",
-      "apiKey": "maven-api-key"
+      "url": "http://localhost:3300",
+      "apikey": "maven-api-key-test-123"
     },
     {
-      "url": "http://localhost:8083",
-      "apiKey": "nuget-api-key"
+      "url": "http://localhost:3200",
+      "apikey": "nuget-api-key-test-123"
     },
     {
       "url": "http://localhost:8084",
-      "apiKey": "oci-api-key"
+      "apikey": "oci-api-key-test-123"
     }
   ]
 } 

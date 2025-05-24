@@ -2,15 +2,7 @@
 
 A TypeScript-based reverse proxy for xRegistry package registries that provides a unified gateway to multiple package registry types including NPM, PyPI, Maven, NuGet, and OCI.
 
-## 🚀 Features
-
-- **Multi-Registry Support**: Proxies requests to NPM, PyPI, Maven, NuGet, and OCI registries
-- **TypeScript**: Fully typed codebase with strict TypeScript configuration
-- **Security**: Built-in authentication, CORS, and security headers
-- **Health Monitoring**: Health check endpoints for container orchestration
-- **Docker Ready**: Multi-stage Dockerfile for production deployments
-- **Azure Container Apps**: Ready-to-deploy scripts for Azure Container Apps
-- **CI/CD**: GitHub Actions workflow for automated deployments
+## 🚀 Features- **Multi-Registry Support**: Proxies requests to NPM, PyPI, Maven, NuGet, and OCI registries- **Resilient Startup**: Gracefully handles unavailable downstream servers with configurable retry logic- **Resilient Startup**: Gracefully handles unavailable downstream servers with configurable retry logic- **TypeScript**: Fully typed codebase with strict TypeScript configuration- **Security**: Built-in authentication, CORS, and security headers- **Health Monitoring**: Health check endpoints for container orchestration- **Docker Ready**: Multi-stage Dockerfile for production deployments- **Azure Container Apps**: Ready-to-deploy scripts for Azure Container Apps- **CI/CD**: GitHub Actions workflow for automated deployments
 
 ## 📦 Prerequisites
 

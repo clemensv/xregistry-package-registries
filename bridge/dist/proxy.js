@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const axios_1 = __importDefault(require("axios"));
+const http_proxy_middleware_1 = require("http-proxy-middleware");
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
 const morgan_1 = __importDefault(require("morgan"));
@@ -17,7 +18,8 @@ const BASE_URL = process.env['BASE_URL'] || `http://localhost:${PORT}`;
 const BASE_URL_HEADER = process.env['BASE_URL_HEADER'] || 'x-base-url';
 const PROXY_API_KEY = process.env['PROXY_API_KEY'] || '';
 const REQUIRED_GROUPS = process.env['REQUIRED_GROUPS']?.split(',') || [];
-const downstreams = JSON.parse(fs_1.default.readFileSync('downstreams.json', 'utf-8')).servers;
+const configFile = process.env['BRIDGE_CONFIG_FILE'] || 'downstreams.json';
+const downstreams = JSON.parse(fs_1.default.readFileSync(configFile, 'utf-8')).servers;
 // Logging
 const logDirectory = path_1.default.join(__dirname, 'logs');
 fs_1.default.existsSync(logDirectory) || fs_1.default.mkdirSync(logDirectory);
@@ -51,7 +53,7 @@ let groupTypeToBackend = {};
 async function fetchMeta(server) {
     const headers = {};
     if (server.apiKey)
-        headers['x-api-key'] = server.apiKey;
+        headers['Authorization'] = `Bearer ${server.apiKey}`;
     const [model, capabilities] = await Promise.all([
         axios_1.default.get(`${server.url}/model`, { headers }).then(r => r.data),
         axios_1.default.get(`${server.url}/capabilities`, { headers }).then(r => r.data),
@@ -62,7 +64,19 @@ async function initialize() {
     for (const server of downstreams) {
         try {
             const { model, capabilities } = await fetchMeta(server);
-            consolidatedModel = { ...consolidatedModel, ...model };
+            // Properly merge models - merge groups instead of overwriting
+            if (model.groups) {
+                if (!consolidatedModel.groups) {
+                    consolidatedModel.groups = {};
+                }
+                consolidatedModel.groups = { ...consolidatedModel.groups, ...model.groups };
+            }
+            // Merge other model properties (description, etc.)
+            consolidatedModel = {
+                ...consolidatedModel,
+                ...model,
+                groups: consolidatedModel.groups // Preserve merged groups
+            };
             consolidatedCapabilities = { ...consolidatedCapabilities, ...capabilities };
             if (model.groups) {
                 for (const groupType of Object.keys(model.groups)) {
@@ -83,7 +97,26 @@ async function initialize() {
 app.get('/', (_, res) => res.json({ model: consolidatedModel, capabilities: consolidatedCapabilities }));
 app.get('/model', (_, res) => res.json(consolidatedModel));
 app.get('/capabilities', (_, res) => res.json(consolidatedCapabilities));
-// Proxy handlerapp.use('/:groupType/*', (req, res, next) => {  const { groupType } = req.params;  const backend = groupTypeToBackend[groupType];  if (!backend) {    res.status(404).send(`Unknown groupType: "${groupType}"`);    return;  }  const pathTail = req.originalUrl.split(groupType).slice(1).join(groupType);  return createProxyMiddleware({    target: backend.url,    changeOrigin: true,    pathRewrite: () => `/${groupType}${pathTail}`,    onProxyReq: proxyReq => {      proxyReq.setHeader(BASE_URL_HEADER, BASE_URL);      if (backend.apiKey) proxyReq.setHeader('x-api-key', backend.apiKey);    },  })(req, res, next);});
+// Proxy handler
+app.use('/:groupType/*', (req, res, next) => {
+    const { groupType } = req.params;
+    const backend = groupTypeToBackend[groupType];
+    if (!backend) {
+        res.status(404).send(`Unknown groupType: "${groupType}"`);
+        return;
+    }
+    const pathTail = req.originalUrl.split(groupType).slice(1).join(groupType);
+    return (0, http_proxy_middleware_1.createProxyMiddleware)({
+        target: backend.url,
+        changeOrigin: true,
+        pathRewrite: () => `/${groupType}${pathTail}`,
+        onProxyReq: proxyReq => {
+            proxyReq.setHeader(BASE_URL_HEADER, BASE_URL);
+            if (backend.apiKey)
+                proxyReq.setHeader('Authorization', `Bearer ${backend.apiKey}`);
+        },
+    })(req, res, next);
+});
 // Start
 initialize().then(() => {
     app.listen(PORT, () => {

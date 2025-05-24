@@ -1,19 +1,19 @@
-name: Build NuGet xRegistry
+name: Build Maven xRegistry
 
 on:
   push:
     branches: [ "main" ]
     paths:
-      - 'nuget/**'
+      - 'maven/**'
     tags: [ 'v*.*.*' ]
   pull_request:
     paths:
-      - 'nuget/**'
+      - 'maven/**'
   workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_REPO: ${{ github.repository }}/xregistry-nuget-bridge
+  IMAGE_REPO: ${{ github.repository }}/xregistry-maven-bridge
 
 jobs:
 # ───────────────────────────────────────────────────────── build ─────
@@ -54,7 +54,7 @@ jobs:
       - id: build
         uses: docker/build-push-action@v5
         with:
-          context: ./nuget
+          context: ./maven
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

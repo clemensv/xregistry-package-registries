@@ -1,131 +1,296 @@
+<img src="https://github.com/cncf/artwork/raw/main/projects/xregistry/horizontal/color/xregistry-horizontal-color.svg" alt="xRegistry" style="max-height: 30px;">
+
 # xRegistry Package Registries
 
-This repository contains xRegistry implementations for various package registries.
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Node.js](https://img.shields.io/badge/node-%3E%3D16.0.0-brightgreen.svg)
+![Docker](https://img.shields.io/badge/docker-supported-blue.svg)
 
-## Supported Package Registries
+![Build NPM](https://github.com/clemensv/xregistry-package-registries/actions/workflows/build-npm.yml/badge.svg)
+![Build PyPI](https://github.com/clemensv/xregistry-package-registries/actions/workflows/build-pypi.yml/badge.svg)
+![Build Maven](https://github.com/clemensv/xregistry-package-registries/actions/workflows/build-maven.yml/badge.svg)
+![Build NuGet](https://github.com/clemensv/xregistry-package-registries/actions/workflows/build-nuget.yml/badge.svg)
+![Build OCI](https://github.com/clemensv/xregistry-package-registries/actions/workflows/build-oci.yml/badge.svg)
+![Build Bridge](https://github.com/clemensv/xregistry-package-registries/actions/workflows/build-bridge.yml/badge.svg)
+![Deploy](https://github.com/clemensv/xregistry-package-registries/actions/workflows/deploy.yml/badge.svg)
 
-The following package registries are currently supported:
+A unified xRegistry implementation that provides a single API interface for multiple package registries. Access NPM, PyPI, Maven, NuGet, and OCI registries through one consistent xRegistry-compliant API.
 
-1. **NPM** - Node.js package registry (port 3100)
-2. **PyPI** - Python package registry (port 3000)
-3. **NuGet** - .NET package registry (port 3200)
-4. **Maven** - Java package registry (port 3300)
+## 🌟 Features
 
-## Installation
+- **Unified API**: Single endpoint for all package registries
+- **xRegistry Compliant**: Follows the official xRegistry specification
+- **Multi-Registry Support**: NPM, PyPI, Maven, NuGet, and OCI registries
+- **Docker Ready**: Containerized deployment with Docker Compose
+- **Azure Integration**: Deploy to Azure Container Apps with GitHub Actions
+- **Bridge Architecture**: Intelligent proxy routing to backend services
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- **Node.js** v16 or later
+- **Docker** (optional, for containerized deployment)
+- **Git**
+
+### Installation
 
 ```bash
 # Clone the repository
 git clone https://github.com/xregistry/xregistry-package-registries.git
-cd C:\git\xregistry-package-registries
+cd xregistry-package-registries
 
 # Install dependencies
 npm install
 ```
 
-## Running the Servers
+### Running the Services
 
-### Using Windows Scripts (Recommended)
+#### Option 1: All-in-One Script (Recommended)
 
-The easiest way to start both the NuGet and Maven servers is to use one of the provided scripts:
-
-#### Command Prompt:
-```
-C:\git\xregistry-package-registries\start-servers.bat
-```
-
-#### PowerShell:
-```powershell
-C:\git\xregistry-package-registries\start-servers.ps1
-```
-
-Both scripts will open separate windows for each server.
-
-### Using npm Scripts
-
-You can also start the servers using npm scripts:
+For Windows with automatic port detection:
 
 ```bash
-# Start NuGet xRegistry
-npm run start:nuget
+# Command Prompt
+start-servers-dynamic.bat
 
-# Start Maven xRegistry
-npm run start:maven
-
-# Start both servers simultaneously
-npm run start:all
+# PowerShell
+.\start-servers.ps1
 ```
 
-### Running Manually
-
-You can run the servers directly using Node.js:
+For cross-platform using npm:
 
 ```bash
-# Start NuGet xRegistry
-node C:\git\xregistry-package-registries\nuget\server.js --port 3200
-
-# Start Maven xRegistry
-node C:\git\xregistry-package-registries\maven\server.js --port 3300
+npm start
 ```
 
-## Testing the Servers
+#### Option 2: Docker Compose
 
-You can test if the servers are running correctly by visiting:
+```bash
+# Start all services
+docker-compose up
 
-- NuGet xRegistry: http://localhost:3200/
-- Maven xRegistry: http://localhost:3300/
+# Start in background
+docker-compose up -d
 
-Additional endpoints to test:
+# Start specific services
+docker-compose up npm pypi
+```
 
-- NuGet Capabilities: http://localhost:3200/capabilities
-- Maven Capabilities: http://localhost:3300/capabilities
-- NuGet .NET Registries: http://localhost:3200/dotnetregistries
-- Maven Java Registries: http://localhost:3300/javaregistries
+#### Option 3: Individual Services
 
-## Server File Locations
+```bash
+# Start NPM registry
+npm run start:npm
 
-The server implementation files are located at:
+# Start PyPI registry
+npm run start:pypi
 
-- NuGet Server: `C:\git\xregistry-package-registries\nuget\server.js`
-- Maven Server: `C:\git\xregistry-package-registries\maven\server.js`
-- Test Script: `C:\git\xregistry-package-registries\run-test-servers.js`
+# Start unified bridge (requires other services running)
+npm run start:bridge
+```
 
-## Deployment
+## 📡 API Endpoints
 
-Deployment scripts for Azure Container Apps are available:
+Once running, the unified bridge provides these endpoints at `http://localhost:8092`:
 
-- NuGet: `C:\git\xregistry-package-registries\nuget\deploy-to-aca.ps1`
-- Maven: `C:\git\xregistry-package-registries\maven\deploy-to-aca.ps1`
+### Core xRegistry Endpoints
 
-These scripts deploy the servers to Azure Container Apps, enabling HTTPS support and scalability.
+- **`GET /`** - Root document with all registry information
+- **`GET /model`** - Unified data model from all registries
+- **`GET /capabilities`** - Combined capabilities from all services
 
-## API Endpoints
+### Registry-Specific Endpoints
 
-Each implementation follows the xRegistry specification and provides the following endpoints:
+- **`GET /noderegistries`** - NPM packages (Node.js)
+- **`GET /pythonregistries`** - PyPI packages (Python)
+- **`GET /javaregistries`** - Maven packages (Java)
+- **`GET /dotnetregistries`** - NuGet packages (.NET)
+- **`GET /containerregistries`** - OCI images (Containers)
 
-- `/` - Root document with registry information
-- `/capabilities` - Capabilities of the registry
-- `/model` - Data model of the registry
-- `/{groupType}` - List of package groups
-- `/{groupType}/{groupId}` - Details of a specific group
-- `/{groupType}/{groupId}/{resourceType}` - List of packages
-- `/{groupType}/{groupId}/{resourceType}/{packageId}` - Package details
-- `/{groupType}/{groupId}/{resourceType}/{packageId}/versions` - List of package versions
-- `/{groupType}/{groupId}/{resourceType}/{packageId}/versions/{versionId}` - Version details
-- `/{groupType}/{groupId}/{resourceType}/{packageId}/meta` - Package metadata
-- `/{groupType}/{groupId}/{resourceType}/{packageId}/doc` - Package documentation
+### Example Usage
 
-## Environment Variables
+```bash
+# Get unified model showing all registry types
+curl http://localhost:8092/model
 
-Each registry supports the following environment variables:
+# Browse NPM packages
+curl http://localhost:8092/noderegistries
 
-- `XREGISTRY_<REGISTRY>_PORT` - Port to listen on (default: registry-specific)
-- `XREGISTRY_<REGISTRY>_LOG` - Path to log file
-- `XREGISTRY_<REGISTRY>_QUIET` - Suppress logging to stdout
-- `XREGISTRY_<REGISTRY>_BASEURL` - Base URL for self-referencing URLs
-- `XREGISTRY_<REGISTRY>_API_KEY` - API key for authentication
+# Get capabilities from all registries
+curl http://localhost:8092/capabilities
+```
 
-Where `<REGISTRY>` is one of `NPM`, `PYPI`, `NUGET`, or `MAVEN`.
+## 🏗️ Architecture
 
-## License
+The project uses a bridge architecture where:
 
-MIT 
+1. **Individual Registry Services** run on separate ports:
+   - NPM: 4873
+   - PyPI: 8081
+   - Maven: 8082
+   - NuGet: 8083
+   - OCI: 8084
+
+2. **Unified Bridge Service** (port 8092) provides:
+   - Single API endpoint
+   - Model and capability merging
+   - Intelligent request routing
+   - Authentication management
+
+## 🧪 Testing the Installation
+
+### Quick Health Check
+
+```bash
+# Test unified bridge
+curl http://localhost:8092/
+
+# Check all registries are merged
+curl http://localhost:8092/model | jq '.groups | keys'
+# Should return: ["containerregistries", "dotnetregistries", "javaregistries", "noderegistries", "pythonregistries"]
+```
+
+### Run Demo Scripts
+
+```bash
+# Comprehensive demonstration
+node run-unified-demo.js
+
+# PowerShell demo (Windows)
+.\run-unified-demo.ps1
+
+# Test with actual packages
+node test-actual-packages.js
+```
+
+## 🐳 Docker Deployment
+
+### Quick Start with Docker
+
+```bash
+# Start all services
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop services
+docker-compose down
+```
+
+### Production Deployment
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for:
+- Azure Container Apps deployment
+- GitHub Actions CI/CD setup
+- Production configuration options
+- Monitoring and health checks
+
+## 🔧 Configuration
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `XREGISTRY_PORT` | `8092` | Bridge server port |
+| `XREGISTRY_ENABLE` | `npm,pypi,maven,nuget,oci` | Enabled registries |
+| `XREGISTRY_BASEURL` | Auto-detected | Base URL for responses |
+| `XREGISTRY_API_KEY` | None | Global API key |
+| `NODE_ENV` | `development` | Environment mode |
+
+### Registry-Specific Ports
+
+Each registry can be configured individually:
+
+```bash
+# Custom ports
+XREGISTRY_NPM_PORT=5000 npm run start:npm
+XREGISTRY_PYPI_PORT=5001 npm run start:pypi
+```
+
+## 🤝 Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for:
+
+- Development setup
+- Coding standards
+- Testing guidelines
+- Pull request process
+
+### Development Quick Start
+
+```bash
+# Set up development environment
+npm install
+
+# Start services for development
+cd test/integration
+node run-docker-integration-tests.js
+
+# In another terminal, start bridge
+cd ../../bridge
+npm run build
+PORT=8092 node dist/proxy.js
+```
+
+See [DEVELOPMENT.md](DEVELOPMENT.md) for detailed development documentation.
+
+## 📚 Documentation
+
+- **[DEVELOPMENT.md](DEVELOPMENT.md)** - Comprehensive development guide
+- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Production deployment guide
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribution guidelines
+- **[GITHUB-WORKFLOWS.md](GITHUB-WORKFLOWS.md)** - CI/CD pipeline documentation
+- **[CHANGELOG.md](CHANGELOG.md)** - Project change history
+- **API Documentation** - Available at `http://localhost:8092/` when running
+
+## 🔍 Troubleshooting
+
+### Common Issues
+
+**Port conflicts:**
+```bash
+# Use dynamic port assignment
+.\start-servers-dynamic.bat
+```
+
+**Services not starting:**
+```bash
+# Check dependencies
+npm install
+
+# Verify Node.js version
+node --version  # Should be v16+
+```
+
+**Bridge not connecting:**
+```bash
+# Rebuild bridge
+cd bridge && npm run build
+
+# Check backend services are running
+curl http://localhost:4873/noderegistries
+curl http://localhost:8081/pythonregistries
+```
+
+### Getting Help
+
+- 📝 **Check existing issues** in the GitHub repository
+- 🐛 **Report bugs** with detailed steps to reproduce
+- 💡 **Request features** through GitHub Discussions
+- 📖 **Read the docs** in the linked guides above
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🌟 Acknowledgments
+
+- Built following the [xRegistry specification](https://github.com/xregistry/spec)
+- Supports NPM, PyPI, Maven, NuGet, and OCI registries
+- Designed for cloud-native deployment on Azure Container Apps
+
+---
+
+**Ready to get started?** Run `npm start` and visit `http://localhost:8092` to see all your package registries unified in one API! 

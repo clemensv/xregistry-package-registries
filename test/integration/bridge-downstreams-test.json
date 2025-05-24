@@ -1,0 +1,24 @@
+{
+  "servers": [
+    {
+      "url": "http://npm-registry:3100",
+      "apiKey": "npm-api-key-test-123"
+    },
+    {
+      "url": "http://pypi-registry:3000",
+      "apiKey": "pypi-api-key-test-123"
+    },
+    {
+      "url": "http://maven-registry:3300",
+      "apiKey": "maven-api-key-test-123"
+    },
+    {
+      "url": "http://nuget-registry:3200",
+      "apiKey": "nuget-api-key-test-123"
+    },
+    {
+      "url": "http://oci-registry:3000",
+      "apiKey": "oci-api-key-test-123"
+    }
+  ]
+} 

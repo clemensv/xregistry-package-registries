@@ -10,13 +10,25 @@ import { Buffer } from 'buffer';
 dotenv.config();
 
 const app = express();
-const PORT = process.env['PORT'] || '8080';const BASE_URL = process.env['BASE_URL'] || `http://localhost:${PORT}`;const BASE_URL_HEADER = process.env['BASE_URL_HEADER'] || 'x-base-url';const PROXY_API_KEY = process.env['PROXY_API_KEY'] || '';const REQUIRED_GROUPS = process.env['REQUIRED_GROUPS']?.split(',') || [];
+const PORT = process.env['PORT'] || '8080';
+const BASE_URL = process.env['BASE_URL'] || `http://localhost:${PORT}`;
+const BASE_URL_HEADER = process.env['BASE_URL_HEADER'] || 'x-base-url';
+const PROXY_API_KEY = process.env['PROXY_API_KEY'] || '';
+const REQUIRED_GROUPS = process.env['REQUIRED_GROUPS']?.split(',') || [];
+
+// Initialization timeout configuration
+const INITIALIZATION_TIMEOUT = parseInt(process.env['INITIALIZATION_TIMEOUT'] || '120000'); // 120 seconds
+const RETRY_INITIAL_DELAY = parseInt(process.env['RETRY_INITIAL_DELAY'] || '1000'); // 1 second
+const RETRY_MAX_DELAY = parseInt(process.env['RETRY_MAX_DELAY'] || '10000'); // 10 seconds
+const RETRY_BACKOFF_FACTOR = parseFloat(process.env['RETRY_BACKOFF_FACTOR'] || '2.0');
 
 interface DownstreamConfig {
   url: string;
   apiKey?: string;
 }
-const downstreams: DownstreamConfig[] = JSON.parse(fs.readFileSync('downstreams.json', 'utf-8')).servers;
+
+const configFile = process.env['BRIDGE_CONFIG_FILE'] || 'downstreams.json';
+const downstreams: DownstreamConfig[] = JSON.parse(fs.readFileSync(configFile, 'utf-8')).servers;
 
 // Logging
 const logDirectory = path.join(__dirname, 'logs');
@@ -58,7 +70,7 @@ let groupTypeToBackend: Record<string, DownstreamConfig> = {};
 
 async function fetchMeta(server: DownstreamConfig) {
   const headers: Record<string, string> = {};
-  if (server.apiKey) headers['x-api-key'] = server.apiKey;
+  if (server.apiKey) headers['Authorization'] = `Bearer ${server.apiKey}`;
 
   const [model, capabilities] = await Promise.all([
     axios.get(`${server.url}/model`, { headers }).then(r => r.data),
@@ -67,22 +79,148 @@ async function fetchMeta(server: DownstreamConfig) {
   return { model, capabilities };
 }
 
-async function initialize() {
-  for (const server of downstreams) {
+// Sleep utility function
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Retry with exponential backoff
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  maxRetries: number,
+  initialDelay: number = RETRY_INITIAL_DELAY,
+  maxDelay: number = RETRY_MAX_DELAY,
+  backoffFactor: number = RETRY_BACKOFF_FACTOR
+): Promise<T> {
+  let delay = initialDelay;
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const { model, capabilities } = await fetchMeta(server);
-      consolidatedModel = { ...consolidatedModel, ...model };
+      return await fn();
+    } catch (error) {
+      if (attempt === maxRetries) {
+        throw error;
+      }
+      
+      console.log(`Attempt ${attempt + 1} failed, retrying in ${delay}ms...`);
+      await sleep(delay);
+      delay = Math.min(delay * backoffFactor, maxDelay);
+    }
+  }
+  
+  throw new Error('Max retries exceeded');
+}
+
+// Initialize with timeout and retry logic
+async function initializeServerWithRetry(server: DownstreamConfig, timeoutMs: number): Promise<{ model: any, capabilities: any } | null> {
+  const startTime = Date.now();
+  
+  console.log(`Initializing server ${server.url}...`);
+  
+  while (Date.now() - startTime < timeoutMs) {
+    try {
+      const remainingTime = timeoutMs - (Date.now() - startTime);
+      const maxRetries = Math.max(1, Math.floor(remainingTime / RETRY_INITIAL_DELAY));
+      
+      const result = await retryWithBackoff(
+        () => fetchMeta(server),
+        maxRetries,
+        RETRY_INITIAL_DELAY,
+        RETRY_MAX_DELAY
+      );
+      
+      console.log(`Successfully initialized server ${server.url}`);
+      return result;
+    } catch (error) {
+      const elapsed = Date.now() - startTime;
+      if (elapsed >= timeoutMs) {
+        console.error(`Timeout reached for server ${server.url} after ${elapsed}ms`);
+        return null;
+      }
+      
+      console.warn(`Failed to initialize ${server.url}: ${error instanceof Error ? error.message : String(error)}`);
+      console.log(`Retrying in ${RETRY_INITIAL_DELAY}ms... (${Math.round((timeoutMs - elapsed) / 1000)}s remaining)`);
+      await sleep(RETRY_INITIAL_DELAY);
+    }
+  }
+  
+  return null;
+}
+
+async function initialize() {
+  console.log(`Starting bridge initialization with ${INITIALIZATION_TIMEOUT / 1000}s timeout...`);
+  const initPromises = downstreams.map(server => initializeServerWithRetry(server, INITIALIZATION_TIMEOUT));
+  
+  const results = await Promise.all(initPromises);
+  let successCount = 0;
+  let failureCount = 0;
+  
+  for (let i = 0; i < downstreams.length; i++) {
+    const server = downstreams[i];
+    const result = results[i];
+    
+    if (result) {
+      const { model, capabilities } = result;
+      
+      // Properly merge models - merge groups instead of overwriting
+      if (model.groups) {
+        if (!consolidatedModel.groups) {
+          consolidatedModel.groups = {};
+        }
+        consolidatedModel.groups = { ...consolidatedModel.groups, ...model.groups };
+      }
+      
+      // Merge other model properties (description, etc.)
+      consolidatedModel = { 
+        ...consolidatedModel, 
+        ...model, 
+        groups: consolidatedModel.groups // Preserve merged groups
+      };
+      
       consolidatedCapabilities = { ...consolidatedCapabilities, ...capabilities };
 
       if (model.groups) {
         for (const groupType of Object.keys(model.groups)) {
           if (groupTypeToBackend[groupType]) {
-            throw new Error(`Conflict: groupType "${groupType}" defined by multiple servers`);
+            console.warn(`Warning: groupType "${groupType}" defined by multiple servers. Using server ${server.url}`);
           }
           groupTypeToBackend[groupType] = server;
         }
       }
-            } catch (err) {      console.error(`Initialization failed for ${server.url}: ${err instanceof Error ? err.message : String(err)}`);      process.exit(1);    }
+      
+      successCount++;
+      console.log(`✓ Server ${server.url} initialized successfully`);
+    } else {
+      failureCount++;
+      console.error(`✗ Server ${server.url} failed to initialize within timeout period`);
+    }
+  }
+  
+  console.log(`Initialization complete: ${successCount} servers available, ${failureCount} servers unavailable`);
+  
+  if (successCount === 0) {
+    console.error('No downstream servers are available. Exiting...');
+    process.exit(1);
+  }
+  
+  if (failureCount > 0) {
+    console.warn(`Bridge started with ${failureCount} unavailable servers. Some registry types may not be accessible.`);
+  }
+}
+
+// Health check for downstream servers
+async function checkServerHealth(server: DownstreamConfig): Promise<boolean> {
+  try {
+    const headers: Record<string, string> = {};
+    if (server.apiKey) headers['Authorization'] = `Bearer ${server.apiKey}`;
+    
+    await axios.get(`${server.url}/model`, { 
+      headers, 
+      timeout: 5000 // 5 second timeout for health checks
+    });
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -91,7 +229,52 @@ app.get('/', (_, res) => res.json({ model: consolidatedModel, capabilities: cons
 app.get('/model', (_, res) => res.json(consolidatedModel));
 app.get('/capabilities', (_, res) => res.json(consolidatedCapabilities));
 
-// Proxy handlerapp.use('/:groupType/*', (req, res, next) => {  const { groupType } = req.params;  const backend = groupTypeToBackend[groupType];  if (!backend) {    res.status(404).send(`Unknown groupType: "${groupType}"`);    return;  }  const pathTail = req.originalUrl.split(groupType).slice(1).join(groupType);  return createProxyMiddleware({    target: backend.url,    changeOrigin: true,    pathRewrite: () => `/${groupType}${pathTail}`,    onProxyReq: proxyReq => {      proxyReq.setHeader(BASE_URL_HEADER, BASE_URL);      if (backend.apiKey) proxyReq.setHeader('x-api-key', backend.apiKey);    },  })(req, res, next);});
+// Health endpoint
+app.get('/health', async (_, res) => {
+  const healthPromises = downstreams.map(async (server) => {
+    const isHealthy = await checkServerHealth(server);
+    const hasGroups = Object.values(groupTypeToBackend).some(backend => backend.url === server.url);
+    
+    return {
+      url: server.url,
+      healthy: isHealthy,
+      initialized: hasGroups,
+      groups: Object.keys(groupTypeToBackend).filter(groupType => 
+        groupTypeToBackend[groupType].url === server.url
+      )
+    };
+  });
+  
+  const healthChecks = await Promise.all(healthPromises);
+  const overallHealthy = healthChecks.some(check => check.healthy && check.initialized);
+  
+  res.status(overallHealthy ? 200 : 503).json({
+    status: overallHealthy ? 'healthy' : 'unhealthy',
+    timestamp: new Date().toISOString(),
+    downstreams: healthChecks,
+    consolidatedGroups: Object.keys(groupTypeToBackend)
+  });
+});
+
+// Proxy handler
+app.use('/:groupType/*', (req, res, next) => {
+  const { groupType } = req.params;
+  const backend = groupTypeToBackend[groupType];
+  if (!backend) {
+    res.status(404).send(`Unknown groupType: "${groupType}"`);
+    return;
+  }
+  const pathTail = req.originalUrl.split(groupType).slice(1).join(groupType);
+  return createProxyMiddleware({
+    target: backend.url,
+    changeOrigin: true,
+    pathRewrite: () => `/${groupType}${pathTail}`,
+    onProxyReq: proxyReq => {
+      proxyReq.setHeader(BASE_URL_HEADER, BASE_URL);
+      if (backend.apiKey) proxyReq.setHeader('Authorization', `Bearer ${backend.apiKey}`);
+    },
+  })(req, res, next);
+});
 
 // Start
 initialize().then(() => {
