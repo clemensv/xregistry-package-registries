@@ -604,7 +604,8 @@ function handleSchemaFlag(req, data, entityType) {
 app.use((req, res, next) => {
   res.set('Access-Control-Allow-Origin', '*');
   res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.set('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, If-None-Match, If-Modified-Since');
+  res.set('Access-Control-Allow-Headers', 'Link, Origin, X-Requested-With, Content-Type, Accept, If-None-Match, If-Modified-Since');
+  res.set('Access-Control-Expose-Headers', 'Link');   
   
   if (req.method === 'OPTIONS') {
     return res.status(204).end();
@@ -1641,7 +1642,8 @@ function handleOptionsRequest(req, res, allowedMethods) {
   const allowHeader = `OPTIONS, ${allowedMethods}`;
   res.set('Allow', allowHeader);
   res.set('Access-Control-Allow-Methods', allowHeader);
-  res.set('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, If-None-Match, If-Modified-Since');
+  res.set('Access-Control-Allow-Headers', 'Link, Origin, X-Requested-With, Content-Type, Accept, If-None-Match, If-Modified-Since');
+  res.set('Access-Control-Expose-Headers', 'Link');   
   res.set('Access-Control-Max-Age', '86400'); // 24 hours
   res.status(204).end();
 }

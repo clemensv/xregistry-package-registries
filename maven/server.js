@@ -1645,7 +1645,7 @@ if (require.main === module) {
     res.set('Access-Control-Allow-Origin', '*');
     res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.set('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
-    
+    res.set('Access-Control-Expose-Headers', 'Link');
     if (req.method === 'OPTIONS') {
       return res.status(204).end();
     }

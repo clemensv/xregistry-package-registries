@@ -90,15 +90,15 @@ services:
       dockerfile: Dockerfile
     container_name: bridge-test-oci
     ports:
-      - "8084:3000"
+      - "8084:3400"
     environment:
-      - XREGISTRY_OCI_PORT=3000
+      - XREGISTRY_OCI_PORT=3400
       - XREGISTRY_OCI_API_KEY=oci-api-key-test-123
       - XREGISTRY_OCI_QUIET=false
     networks:
       - bridge-network
     healthcheck:
-      test: ["CMD", "node", "-e", "const http=require('http');const options={hostname:'localhost',port:3000,path:'/',timeout:2000};const req=http.request(options,(res)=>{process.exit(res.statusCode<500?0:1)});req.on('error',()=>process.exit(1));req.end();"]
+      test: ["CMD", "node", "-e", "const http=require('http');const options={hostname:'localhost',port:3400,path:'/',timeout:2000};const req=http.request(options,(res)=>{process.exit(res.statusCode<500?0:1)});req.on('error',()=>process.exit(1));req.end();"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -113,9 +113,13 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - BRIDGE_PORT=8080
-      - BRIDGE_QUIET=false
+      - PORT=8080
+      - BASE_URL=http://localhost:8080
       - BRIDGE_CONFIG_FILE=/app/downstreams-test.json
+      - NODE_ENV=development
+      - STARTUP_WAIT_TIME=15000
+      - RETRY_INTERVAL=60000
+      - SERVER_HEALTH_TIMEOUT=10000
     volumes:
       - ./bridge-downstreams-test.json:/app/downstreams-test.json:ro
     networks:

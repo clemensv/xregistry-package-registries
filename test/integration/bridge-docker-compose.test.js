@@ -153,14 +153,14 @@ describe('Bridge Docker Compose Integration Tests', function() {
 
   describe('NPM Registry Integration', () => {
     it('should access NPM packages through bridge', async () => {
-      const response = await loggedAxiosGet(`${bridgeUrl}/npmregistries`);
+      const response = await loggedAxiosGet(`${bridgeUrl}/noderegistries`);
       expect(response.status).to.equal(200);
       expect(response.data).to.be.an('object');
     });
 
     it('should access specific NPM registry through bridge', async () => {
       try {
-        const response = await loggedAxiosGet(`${bridgeUrl}/npmregistries/npmjs-org`);
+        const response = await loggedAxiosGet(`${bridgeUrl}/noderegistries/npmjs-org`);
         expect(response.status).to.equal(200);
         expect(response.data).to.be.an('object');
       } catch (error) {
@@ -182,15 +182,15 @@ describe('Bridge Docker Compose Integration Tests', function() {
     });
 
     it('should access specific PyPI registry through bridge', async () => {
-      const response = await loggedAxiosGet(`${bridgeUrl}/pythonregistries/pypi-org`);
+      const response = await loggedAxiosGet(`${bridgeUrl}/pythonregistries/pypi.org`);
       expect(response.status).to.equal(200);
       expect(response.data).to.be.an('object');
-      expect(response.data).to.have.property('registryid', 'pypi-org');
+      expect(response.data).to.have.property('name', 'pypi.org');
     });
 
     it('should access PyPI packages through bridge', async () => {
       try {
-        const response = await loggedAxiosGet(`${bridgeUrl}/pythonregistries/pypi-org/packages/requests`);
+        const response = await loggedAxiosGet(`${bridgeUrl}/pythonregistries/pypi.org/packages/requests`);
         expect(response.status).to.equal(200);
         expect(response.data).to.be.an('object');
       } catch (error) {
@@ -215,7 +215,7 @@ describe('Bridge Docker Compose Integration Tests', function() {
       const response = await loggedAxiosGet(`${bridgeUrl}/javaregistries/maven-central`);
       expect(response.status).to.equal(200);
       expect(response.data).to.be.an('object');
-      expect(response.data).to.have.property('registryid', 'maven-central');
+      expect(response.data).to.have.property('name', 'Maven Central');
     });
 
     it('should access Maven packages through bridge', async () => {
@@ -242,15 +242,15 @@ describe('Bridge Docker Compose Integration Tests', function() {
     });
 
     it('should access specific NuGet registry through bridge', async () => {
-      const response = await loggedAxiosGet(`${bridgeUrl}/dotnetregistries/nuget-org`);
+      const response = await loggedAxiosGet(`${bridgeUrl}/dotnetregistries/nuget.org`);
       expect(response.status).to.equal(200);
       expect(response.data).to.be.an('object');
-      expect(response.data).to.have.property('registryid', 'nuget-org');
+      expect(response.data).to.have.property('name', 'nuget.org');
     });
 
     it('should access NuGet packages through bridge', async () => {
       try {
-        const response = await loggedAxiosGet(`${bridgeUrl}/dotnetregistries/nuget-org/packages/Newtonsoft.Json`);
+        const response = await loggedAxiosGet(`${bridgeUrl}/dotnetregistries/nuget.org/packages/Newtonsoft.Json`);
         expect(response.status).to.equal(200);
         expect(response.data).to.be.an('object');
       } catch (error) {
@@ -275,7 +275,7 @@ describe('Bridge Docker Compose Integration Tests', function() {
       const response = await loggedAxiosGet(`${bridgeUrl}/containerregistries/microsoft`);
       expect(response.status).to.equal(200);
       expect(response.data).to.be.an('object');
-      expect(response.data).to.have.property('registryid', 'microsoft');
+      expect(response.data).to.have.property('id', 'microsoft');
     });
 
     it('should access OCI images through bridge', async () => {
@@ -372,7 +372,7 @@ describe('Bridge Docker Compose Integration Tests', function() {
 
     it('should handle individual service calls', async () => {
       const services = [
-        { name: 'NPM', url: `${bridgeUrl}/npmregistries` },
+        { name: 'NPM', url: `${bridgeUrl}/noderegistries` },
         { name: 'PyPI', url: `${bridgeUrl}/pythonregistries` },
         { name: 'Maven', url: `${bridgeUrl}/javaregistries` },
         { name: 'NuGet', url: `${bridgeUrl}/dotnetregistries` },
