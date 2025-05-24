@@ -478,11 +478,17 @@ jobs:
           DOWNSTREAMS_JSON=$(echo "$DOWNSTREAMS_JSON" | envsubst)
           
           # Create updated YAML with correct base URL
+          BRIDGE_IMG="${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-bridge:${{ env.IMAGE_TAG }}"
+          
           cat > containerapp-update.yaml << EOF
           properties:
             template:
               containers:
                 - name: bridge
+                  image: $BRIDGE_IMG
+                  resources:
+                    cpu: 0.5
+                    memory: 1Gi
                   env:
                     - name: NODE_ENV
                       value: production
