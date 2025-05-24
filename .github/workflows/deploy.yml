@@ -273,6 +273,40 @@ jobs:
                       value: "false"
                     - name: XREGISTRY_NPM_API_KEY
                       secretRef: npm-api-key
+                  probes:
+                    - type: liveness
+                      httpGet:
+                        path: /model
+                        port: 3100
+                        httpHeaders:
+                          - name: Authorization
+                            value: Bearer $NPM_API_KEY
+                      initialDelaySeconds: 30
+                      periodSeconds: 10
+                      timeoutSeconds: 5
+                      failureThreshold: 3
+                    - type: readiness
+                      httpGet:
+                        path: /model
+                        port: 3100
+                        httpHeaders:
+                          - name: Authorization
+                            value: Bearer $NPM_API_KEY
+                      initialDelaySeconds: 5
+                      periodSeconds: 5
+                      timeoutSeconds: 5
+                      failureThreshold: 3
+                    - type: startup
+                      httpGet:
+                        path: /model
+                        port: 3100
+                        httpHeaders:
+                          - name: Authorization
+                            value: Bearer $NPM_API_KEY
+                      initialDelaySeconds: 10
+                      periodSeconds: 5
+                      timeoutSeconds: 5
+                      failureThreshold: 30
                 - name: pypi
                   image: $PYPI_IMG
                   resources:
@@ -296,6 +330,40 @@ jobs:
                       value: "false"
                     - name: XREGISTRY_PYPI_API_KEY
                       secretRef: pypi-api-key
+                  probes:
+                    - type: liveness
+                      httpGet:
+                        path: /model
+                        port: 3000
+                        httpHeaders:
+                          - name: Authorization
+                            value: Bearer $PYPI_API_KEY
+                      initialDelaySeconds: 30
+                      periodSeconds: 10
+                      timeoutSeconds: 5
+                      failureThreshold: 3
+                    - type: readiness
+                      httpGet:
+                        path: /model
+                        port: 3000
+                        httpHeaders:
+                          - name: Authorization
+                            value: Bearer $PYPI_API_KEY
+                      initialDelaySeconds: 5
+                      periodSeconds: 5
+                      timeoutSeconds: 5
+                      failureThreshold: 3
+                    - type: startup
+                      httpGet:
+                        path: /model
+                        port: 3000
+                        httpHeaders:
+                          - name: Authorization
+                            value: Bearer $PYPI_API_KEY
+                      initialDelaySeconds: 10
+                      periodSeconds: 5
+                      timeoutSeconds: 5
+                      failureThreshold: 30
                 - name: maven
                   image: $MAVEN_IMG
                   resources:
@@ -319,6 +387,40 @@ jobs:
                       value: "false"
                     - name: XREGISTRY_MAVEN_API_KEY
                       secretRef: maven-api-key
+                  probes:
+                    - type: liveness
+                      httpGet:
+                        path: /model
+                        port: 3300
+                        httpHeaders:
+                          - name: Authorization
+                            value: Bearer $MAVEN_API_KEY
+                      initialDelaySeconds: 30
+                      periodSeconds: 10
+                      timeoutSeconds: 5
+                      failureThreshold: 3
+                    - type: readiness
+                      httpGet:
+                        path: /model
+                        port: 3300
+                        httpHeaders:
+                          - name: Authorization
+                            value: Bearer $MAVEN_API_KEY
+                      initialDelaySeconds: 5
+                      periodSeconds: 5
+                      timeoutSeconds: 5
+                      failureThreshold: 3
+                    - type: startup
+                      httpGet:
+                        path: /model
+                        port: 3300
+                        httpHeaders:
+                          - name: Authorization
+                            value: Bearer $MAVEN_API_KEY
+                      initialDelaySeconds: 10
+                      periodSeconds: 5
+                      timeoutSeconds: 5
+                      failureThreshold: 30
                 - name: nuget
                   image: $NUGET_IMG
                   resources:
@@ -342,6 +444,40 @@ jobs:
                       value: "false"
                     - name: XREGISTRY_NUGET_API_KEY
                       secretRef: nuget-api-key
+                  probes:
+                    - type: liveness
+                      httpGet:
+                        path: /model
+                        port: 3200
+                        httpHeaders:
+                          - name: Authorization
+                            value: Bearer $NUGET_API_KEY
+                      initialDelaySeconds: 30
+                      periodSeconds: 10
+                      timeoutSeconds: 5
+                      failureThreshold: 3
+                    - type: readiness
+                      httpGet:
+                        path: /model
+                        port: 3200
+                        httpHeaders:
+                          - name: Authorization
+                            value: Bearer $NUGET_API_KEY
+                      initialDelaySeconds: 5
+                      periodSeconds: 5
+                      timeoutSeconds: 5
+                      failureThreshold: 3
+                    - type: startup
+                      httpGet:
+                        path: /model
+                        port: 3200
+                        httpHeaders:
+                          - name: Authorization
+                            value: Bearer $NUGET_API_KEY
+                      initialDelaySeconds: 10
+                      periodSeconds: 5
+                      timeoutSeconds: 5
+                      failureThreshold: 30
                 - name: oci
                   image: $OCI_IMG
                   resources:
@@ -365,6 +501,40 @@ jobs:
                       value: "false"
                     - name: XREGISTRY_OCI_API_KEY
                       secretRef: oci-api-key
+                  probes:
+                    - type: liveness
+                      httpGet:
+                        path: /model
+                        port: 3400
+                        httpHeaders:
+                          - name: Authorization
+                            value: Bearer $OCI_API_KEY
+                      initialDelaySeconds: 30
+                      periodSeconds: 10
+                      timeoutSeconds: 5
+                      failureThreshold: 3
+                    - type: readiness
+                      httpGet:
+                        path: /model
+                        port: 3400
+                        httpHeaders:
+                          - name: Authorization
+                            value: Bearer $OCI_API_KEY
+                      initialDelaySeconds: 5
+                      periodSeconds: 5
+                      timeoutSeconds: 5
+                      failureThreshold: 3
+                    - type: startup
+                      httpGet:
+                        path: /model
+                        port: 3400
+                        httpHeaders:
+                          - name: Authorization
+                            value: Bearer $OCI_API_KEY
+                      initialDelaySeconds: 10
+                      periodSeconds: 5
+                      timeoutSeconds: 5
+                      failureThreshold: 30
               scale:
                 minReplicas: 1
                 maxReplicas: 3
