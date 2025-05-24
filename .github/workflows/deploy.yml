@@ -327,20 +327,90 @@ jobs:
                 maxReplicas: 3
           EOF
           
-          # Deploy or update the container app using YAML
-          if az containerapp show --name $APP_NAME --resource-group $RESOURCE_GROUP &>/dev/null; then
-            echo "Updating Container App with all services..."
-            az containerapp update \
-              --name $APP_NAME \
-              --resource-group $RESOURCE_GROUP \
-              --yaml containerapp.yaml
-          else
-            echo "Creating Container App with all services..."
-            az containerapp create \
-              --name $APP_NAME \
-              --resource-group $RESOURCE_GROUP \
-              --yaml containerapp.yaml
-          fi
+          # Function to wait for any ongoing operations to complete
+          wait_for_containerapp_ready() {
+            local max_attempts=30
+            local attempt=1
+            
+            echo "Checking for ongoing operations..."
+            while [ $attempt -le $max_attempts ]; do
+              # Get the provisioning state
+              PROVISIONING_STATE=$(az containerapp show --name $APP_NAME --resource-group $RESOURCE_GROUP --query 'properties.provisioningState' -o tsv 2>/dev/null || echo "NotFound")
+              
+              if [ "$PROVISIONING_STATE" = "Succeeded" ] || [ "$PROVISIONING_STATE" = "NotFound" ]; then
+                echo "✅ Container App is ready for operations (State: $PROVISIONING_STATE)"
+                return 0
+              elif [ "$PROVISIONING_STATE" = "InProgress" ] || [ "$PROVISIONING_STATE" = "Running" ]; then
+                echo "⏳ Container App operation in progress (State: $PROVISIONING_STATE). Waiting... (attempt $attempt/$max_attempts)"
+                sleep 30
+              else
+                echo "⚠️  Unexpected provisioning state: $PROVISIONING_STATE (attempt $attempt/$max_attempts)"
+                sleep 15
+              fi
+              
+              ((attempt++))
+            done
+            
+            echo "❌ Timeout waiting for Container App to be ready after $max_attempts attempts"
+            return 1
+          }
+          
+          # Function to deploy/update with retry logic
+          deploy_containerapp() {
+            local max_retries=5
+            local retry=1
+            local base_delay=30
+            
+            while [ $retry -le $max_retries ]; do
+              echo "Deployment attempt $retry/$max_retries..."
+              
+              # Check if container app exists
+              if az containerapp show --name $APP_NAME --resource-group $RESOURCE_GROUP &>/dev/null; then
+                echo "Updating Container App with all services..."
+                if az containerapp update \
+                  --name $APP_NAME \
+                  --resource-group $RESOURCE_GROUP \
+                  --yaml containerapp.yaml; then
+                  echo "✅ Container App updated successfully"
+                  return 0
+                fi
+              else
+                echo "Creating Container App with all services..."
+                if az containerapp create \
+                  --name $APP_NAME \
+                  --resource-group $RESOURCE_GROUP \
+                  --yaml containerapp.yaml; then
+                  echo "✅ Container App created successfully"
+                  return 0
+                fi
+              fi
+              
+              # If we get here, the operation failed
+              local exit_code=$?
+              echo "❌ Deployment attempt $retry failed with exit code $exit_code"
+              
+              if [ $retry -eq $max_retries ]; then
+                echo "❌ All deployment attempts failed"
+                return $exit_code
+              fi
+              
+              # Wait before retry with exponential backoff
+              local delay=$((base_delay * retry))
+              echo "⏳ Waiting ${delay}s before retry..."
+              sleep $delay
+              
+              # Wait for any ongoing operations to complete before retrying
+              wait_for_containerapp_ready
+              
+              ((retry++))
+            done
+          }
+          
+          # Wait for any ongoing operations to complete first
+          wait_for_containerapp_ready
+          
+          # Deploy or update the container app using YAML with retry logic
+          deploy_containerapp
 
       - name: Update Bridge with Correct Base URL
         run: |
@@ -400,11 +470,30 @@ jobs:
                       value: '$DOWNSTREAMS_JSON'
           EOF
           
-          # Update only the bridge container environment
-          az containerapp update \
-            --name $APP_NAME \
-            --resource-group $RESOURCE_GROUP \
-            --yaml containerapp-update.yaml
+          # Update only the bridge container environment with retry logic
+          echo "Updating bridge with correct base URL..."
+          for retry in {1..3}; do
+            echo "Bridge update attempt $retry/3..."
+            
+            # Wait for container app to be ready
+            wait_for_containerapp_ready
+            
+            if az containerapp update \
+              --name $APP_NAME \
+              --resource-group $RESOURCE_GROUP \
+              --yaml containerapp-update.yaml; then
+              echo "✅ Bridge updated successfully with correct base URL"
+              break
+            else
+              echo "❌ Bridge update attempt $retry failed"
+              if [ $retry -eq 3 ]; then
+                echo "❌ All bridge update attempts failed"
+                exit 1
+              fi
+              echo "⏳ Waiting 60s before retry..."
+              sleep 60
+            fi
+          done
 
       - name: Health Checks and URLs
         run: |
