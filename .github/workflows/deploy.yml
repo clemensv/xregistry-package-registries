@@ -175,7 +175,7 @@ jobs:
                 "apikey": "$NUGET_API_KEY"
               },
               {
-                "url": "http://localhost:3000",
+                "url": "http://localhost:3400",
                 "apikey": "$OCI_API_KEY"
               }
             ]
@@ -219,6 +219,9 @@ jobs:
                   resources:
                     cpu: 0.5
                     memory: 1Gi
+                  ports:
+                    - containerPort: 8092
+                      protocol: TCP
                   env:
                     - name: NODE_ENV
                       value: production
@@ -227,6 +230,8 @@ jobs:
                     - name: XREGISTRY_BRIDGE_PORT
                       value: "8092"
                     - name: XREGISTRY_BRIDGE_BASEURL
+                      value: "https://\$APP_FQDN_PLACEHOLDER"
+                    - name: BASE_URL
                       value: "https://\$APP_FQDN_PLACEHOLDER"
                     - name: XREGISTRY_BRIDGE_QUIET
                       value: "false"
@@ -237,6 +242,9 @@ jobs:
                   resources:
                     cpu: 0.75
                     memory: 1.5Gi
+                  ports:
+                    - containerPort: 3100
+                      protocol: TCP
                   env:
                     - name: NODE_ENV
                       value: production
@@ -245,7 +253,9 @@ jobs:
                     - name: XREGISTRY_NPM_PORT
                       value: "3100"
                     - name: XREGISTRY_NPM_BASEURL
-                      value: "http://localhost:3100"
+                      value: "https://\$APP_FQDN_PLACEHOLDER"
+                    - name: BASE_URL
+                      value: "https://\$APP_FQDN_PLACEHOLDER"
                     - name: XREGISTRY_NPM_QUIET
                       value: "false"
                     - name: XREGISTRY_NPM_API_KEY
@@ -255,6 +265,9 @@ jobs:
                   resources:
                     cpu: 0.75
                     memory: 1.5Gi
+                  ports:
+                    - containerPort: 3000
+                      protocol: TCP
                   env:
                     - name: NODE_ENV
                       value: production
@@ -263,7 +276,9 @@ jobs:
                     - name: XREGISTRY_PYPI_PORT
                       value: "3000"
                     - name: XREGISTRY_PYPI_BASEURL
-                      value: "http://localhost:3000"
+                      value: "https://\$APP_FQDN_PLACEHOLDER"
+                    - name: BASE_URL
+                      value: "https://\$APP_FQDN_PLACEHOLDER"
                     - name: XREGISTRY_PYPI_QUIET
                       value: "false"
                     - name: XREGISTRY_PYPI_API_KEY
@@ -273,6 +288,9 @@ jobs:
                   resources:
                     cpu: 0.75
                     memory: 1.5Gi
+                  ports:
+                    - containerPort: 3300
+                      protocol: TCP
                   env:
                     - name: NODE_ENV
                       value: production
@@ -281,7 +299,9 @@ jobs:
                     - name: XREGISTRY_MAVEN_PORT
                       value: "3300"
                     - name: XREGISTRY_MAVEN_BASEURL
-                      value: "http://localhost:3300"
+                      value: "https://\$APP_FQDN_PLACEHOLDER"
+                    - name: BASE_URL
+                      value: "https://\$APP_FQDN_PLACEHOLDER"
                     - name: XREGISTRY_MAVEN_QUIET
                       value: "false"
                     - name: XREGISTRY_MAVEN_API_KEY
@@ -291,6 +311,9 @@ jobs:
                   resources:
                     cpu: 0.75
                     memory: 1.5Gi
+                  ports:
+                    - containerPort: 3200
+                      protocol: TCP
                   env:
                     - name: NODE_ENV
                       value: production
@@ -299,7 +322,9 @@ jobs:
                     - name: XREGISTRY_NUGET_PORT
                       value: "3200"
                     - name: XREGISTRY_NUGET_BASEURL
-                      value: "http://localhost:3200"
+                      value: "https://\$APP_FQDN_PLACEHOLDER"
+                    - name: BASE_URL
+                      value: "https://\$APP_FQDN_PLACEHOLDER"
                     - name: XREGISTRY_NUGET_QUIET
                       value: "false"
                     - name: XREGISTRY_NUGET_API_KEY
@@ -309,15 +334,20 @@ jobs:
                   resources:
                     cpu: 0.5
                     memory: 1Gi
+                  ports:
+                    - containerPort: 3400
+                      protocol: TCP
                   env:
                     - name: NODE_ENV
                       value: production
                     - name: PORT
-                      value: "3000"
+                      value: "3400"
                     - name: XREGISTRY_OCI_PORT
-                      value: "3000"
+                      value: "3400"
                     - name: XREGISTRY_OCI_BASEURL
-                      value: "http://localhost:3000"
+                      value: "https://\$APP_FQDN_PLACEHOLDER"
+                    - name: BASE_URL
+                      value: "https://\$APP_FQDN_PLACEHOLDER"
                     - name: XREGISTRY_OCI_QUIET
                       value: "false"
                     - name: XREGISTRY_OCI_API_KEY
@@ -411,6 +441,18 @@ jobs:
           
           # Deploy or update the container app using YAML with retry logic
           deploy_containerapp
+          
+          # Get the actual FQDN and update the containerapp.yaml with real URLs
+          APP_FQDN=$(az containerapp show --name $APP_NAME --resource-group $RESOURCE_GROUP --query 'properties.configuration.ingress.fqdn' -o tsv)
+          echo "Updating BASE_URLs with actual FQDN: $APP_FQDN"
+          
+          # Replace placeholders with actual FQDN
+          sed -i "s|\\\$APP_FQDN_PLACEHOLDER|$APP_FQDN|g" containerapp.yaml
+          
+          # Deploy again with correct URLs
+          echo "Updating Container App with correct BASE_URLs..."
+          wait_for_containerapp_ready
+          deploy_containerapp
 
       - name: Update Bridge with Correct Base URL
         run: |
@@ -466,7 +508,7 @@ jobs:
                 "apikey": "$NUGET_API_KEY"
               },
               {
-                "url": "http://localhost:3000",
+                "url": "http://localhost:3400",
                 "apikey": "$OCI_API_KEY"
               }
             ]
