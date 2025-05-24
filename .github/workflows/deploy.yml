@@ -48,7 +48,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ${{ github.repository }}/xregistry
 
 jobs:
   deploy:
@@ -147,12 +146,12 @@ jobs:
       - name: Deploy xRegistry Container App (All Services)
         run: |
           # Image URIs
-          BRIDGE_IMG="${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-bridge:${{ env.IMAGE_TAG }}"
-          NPM_IMG="${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-npm-bridge:${{ env.IMAGE_TAG }}"
-          PYPI_IMG="${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-pypi-bridge:${{ env.IMAGE_TAG }}"
-          MAVEN_IMG="${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-maven-bridge:${{ env.IMAGE_TAG }}"
-          NUGET_IMG="${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-nuget-bridge:${{ env.IMAGE_TAG }}"
-          OCI_IMG="${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-oci-bridge:${{ env.IMAGE_TAG }}"
+          BRIDGE_IMG="${{ env.REGISTRY }}/${{ github.repository }}/xregistry-bridge:${{ env.IMAGE_TAG }}"
+          NPM_IMG="${{ env.REGISTRY }}/${{ github.repository }}/xregistry-npm-bridge:${{ env.IMAGE_TAG }}"
+          PYPI_IMG="${{ env.REGISTRY }}/${{ github.repository }}/xregistry-pypi-bridge:${{ env.IMAGE_TAG }}"
+          MAVEN_IMG="${{ env.REGISTRY }}/${{ github.repository }}/xregistry-maven-bridge:${{ env.IMAGE_TAG }}"
+          NUGET_IMG="${{ env.REGISTRY }}/${{ github.repository }}/xregistry-nuget-bridge:${{ env.IMAGE_TAG }}"
+          OCI_IMG="${{ env.REGISTRY }}/${{ github.repository }}/xregistry-oci-bridge:${{ env.IMAGE_TAG }}"
           
           # Create downstreams configuration for bridge
           DOWNSTREAMS_JSON=$(cat << 'EOF'
