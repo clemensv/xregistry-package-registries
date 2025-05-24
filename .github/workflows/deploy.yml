@@ -160,23 +160,23 @@ jobs:
             "servers": [
               {
                 "url": "http://localhost:3100",
-                "apikey": "$NPM_API_KEY"
+                "apiKey": "$NPM_API_KEY"
               },
               {
                 "url": "http://localhost:3000",
-                "apikey": "$PYPI_API_KEY"
+                "apiKey": "$PYPI_API_KEY"
               },
               {
                 "url": "http://localhost:3300",
-                "apikey": "$MAVEN_API_KEY"
+                "apiKey": "$MAVEN_API_KEY"
               },
               {
                 "url": "http://localhost:3200",
-                "apikey": "$NUGET_API_KEY"
+                "apiKey": "$NUGET_API_KEY"
               },
               {
                 "url": "http://localhost:3400",
-                "apikey": "$OCI_API_KEY"
+                "apiKey": "$OCI_API_KEY"
               }
             ]
           }
@@ -206,7 +206,7 @@ jobs:
             configuration:
               ingress:
                 external: true
-                targetPort: 8092
+                targetPort: 8080
                 allowInsecure: false
               registries:
                 - server: ${{ env.REGISTRY }}
@@ -233,23 +233,23 @@ jobs:
                     cpu: 0.5
                     memory: 1Gi
                   ports:
-                    - containerPort: 8092
+                    - containerPort: 8080
                       protocol: TCP
                   env:
                     - name: NODE_ENV
                       value: production
                     - name: PORT
-                      value: "8092"
-                    - name: XREGISTRY_BRIDGE_PORT
-                      value: "8092"
-                    - name: XREGISTRY_BRIDGE_BASEURL
-                      value: "https://$fqdn"
+                      value: "8080"
                     - name: BASE_URL
                       value: "https://$fqdn"
-                    - name: XREGISTRY_BRIDGE_QUIET
-                      value: "false"
                     - name: DOWNSTREAMS_JSON
                       value: '$DOWNSTREAMS_JSON'
+                    - name: STARTUP_WAIT_TIME
+                      value: "15000"
+                    - name: RETRY_INTERVAL
+                      value: "60000"
+                    - name: SERVER_HEALTH_TIMEOUT
+                      value: "10000"
                 - name: npm
                   image: $NPM_IMG
                   resources:
@@ -483,12 +483,12 @@ jobs:
           echo "🔗 xRegistry (Unified): https://$APP_FQDN"
           echo ""
           echo "📊 Container App Architecture:"
-          echo "  • Bridge (External):   Port 8092 → https://$APP_FQDN"
+          echo "  • Bridge (External):   Port 8080 → https://$APP_FQDN"
           echo "  • NPM Registry:        Port 3100 → http://localhost:3100 (internal)"
           echo "  • PyPI Registry:       Port 3000 → http://localhost:3000 (internal)"
           echo "  • Maven Registry:      Port 3300 → http://localhost:3300 (internal)"
           echo "  • NuGet Registry:      Port 3200 → http://localhost:3200 (internal)"
-          echo "  • OCI Registry:        Port 3000 → http://localhost:3000 (internal)"
+          echo "  • OCI Registry:        Port 3400 → http://localhost:3400 (internal)"
           echo ""
           echo "🏥 Test the unified endpoint:"
           echo "curl https://$APP_FQDN/"
