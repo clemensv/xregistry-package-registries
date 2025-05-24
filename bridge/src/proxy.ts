@@ -27,8 +27,33 @@ interface DownstreamConfig {
   apiKey?: string;
 }
 
-const configFile = process.env['BRIDGE_CONFIG_FILE'] || 'downstreams.json';
-const downstreams: DownstreamConfig[] = JSON.parse(fs.readFileSync(configFile, 'utf-8')).servers;
+// Load downstream configuration from file or environment variable
+function loadDownstreamConfig(): DownstreamConfig[] {
+  // First try to read from environment variable (useful for container deployments)
+  const downstreamsEnv = process.env['DOWNSTREAMS_JSON'];
+  if (downstreamsEnv) {
+    console.log('Loading downstream configuration from DOWNSTREAMS_JSON environment variable');
+    try {
+      const config = JSON.parse(downstreamsEnv);
+      return config.servers || [];
+    } catch (error) {
+      console.error('Failed to parse DOWNSTREAMS_JSON environment variable:', error);
+      throw new Error('Invalid DOWNSTREAMS_JSON format');
+    }
+  }
+  
+  // Fallback to file-based configuration
+  const configFile = process.env['BRIDGE_CONFIG_FILE'] || 'downstreams.json';
+  console.log(`Loading downstream configuration from file: ${configFile}`);
+  try {
+    return JSON.parse(fs.readFileSync(configFile, 'utf-8')).servers;
+  } catch (error) {
+    console.error(`Failed to read configuration file ${configFile}:`, error);
+    throw new Error(`Configuration file ${configFile} not found or invalid`);
+  }
+}
+
+const downstreams: DownstreamConfig[] = loadDownstreamConfig();
 
 // Logging
 const logDirectory = path.join(__dirname, 'logs');

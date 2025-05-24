@@ -109,6 +109,13 @@ jobs:
               --logs-destination none
           fi
 
+      - name: Get Environment ID
+        id: get-env-id
+        run: |
+          SUBSCRIPTION_ID=$(az account show --query id --output tsv)
+          echo "subscription-id=$SUBSCRIPTION_ID" >> $GITHUB_OUTPUT
+          echo "Subscription ID: $SUBSCRIPTION_ID"
+
       - name: Generate API Keys
         id: api-keys
         run: |
@@ -142,7 +149,7 @@ jobs:
           {
             "servers": [
               {
-                "url": "http://localhost:4873",
+                "url": "http://localhost:3100",
                 "apikey": "$NPM_API_KEY"
               },
               {
@@ -158,7 +165,7 @@ jobs:
                 "apikey": "$NUGET_API_KEY"
               },
               {
-                "url": "http://localhost:8084",
+                "url": "http://localhost:3000",
                 "apikey": "$OCI_API_KEY"
               }
             ]
@@ -169,130 +176,161 @@ jobs:
           # Substitute environment variables in downstreams JSON
           DOWNSTREAMS_JSON=$(echo "$DOWNSTREAMS_JSON" | envsubst)
           
+          # Create Container App YAML configuration
+          cat > containerapp.yaml << EOF
+          properties:
+            environmentId: /subscriptions/${{ steps.get-env-id.outputs.subscription-id }}/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.App/managedEnvironments/$ENV_NAME
+            configuration:
+              ingress:
+                external: true
+                targetPort: 8092
+                allowInsecure: false
+              registries:
+                - server: ${{ env.REGISTRY }}
+                  username: ${{ github.actor }}
+                  passwordSecretRef: registry-password
+              secrets:
+                - name: registry-password
+                  value: ${{ secrets.GITHUB_TOKEN }}
+                - name: npm-api-key
+                  value: $NPM_API_KEY
+                - name: pypi-api-key
+                  value: $PYPI_API_KEY
+                - name: maven-api-key
+                  value: $MAVEN_API_KEY
+                - name: nuget-api-key
+                  value: $NUGET_API_KEY
+                - name: oci-api-key
+                  value: $OCI_API_KEY
+            template:
+              containers:
+                - name: bridge
+                  image: $BRIDGE_IMG
+                  resources:
+                    cpu: 2
+                    memory: 4Gi
+                  env:
+                    - name: NODE_ENV
+                      value: production
+                    - name: PORT
+                      value: "8092"
+                    - name: XREGISTRY_BRIDGE_PORT
+                      value: "8092"
+                    - name: XREGISTRY_BRIDGE_BASEURL
+                      value: "https://\$APP_FQDN_PLACEHOLDER"
+                    - name: XREGISTRY_BRIDGE_QUIET
+                      value: "false"
+                    - name: DOWNSTREAMS_JSON
+                      value: '$DOWNSTREAMS_JSON'
+                - name: npm
+                  image: $NPM_IMG
+                  resources:
+                    cpu: 2
+                    memory: 4Gi
+                  env:
+                    - name: NODE_ENV
+                      value: production
+                    - name: PORT
+                      value: "3100"
+                    - name: XREGISTRY_NPM_PORT
+                      value: "3100"
+                    - name: XREGISTRY_NPM_BASEURL
+                      value: "http://localhost:3100"
+                    - name: XREGISTRY_NPM_QUIET
+                      value: "false"
+                    - name: XREGISTRY_NPM_API_KEY
+                      secretRef: npm-api-key
+                - name: pypi
+                  image: $PYPI_IMG
+                  resources:
+                    cpu: 2
+                    memory: 4Gi
+                  env:
+                    - name: NODE_ENV
+                      value: production
+                    - name: PORT
+                      value: "3000"
+                    - name: XREGISTRY_PYPI_PORT
+                      value: "3000"
+                    - name: XREGISTRY_PYPI_BASEURL
+                      value: "http://localhost:3000"
+                    - name: XREGISTRY_PYPI_QUIET
+                      value: "false"
+                    - name: XREGISTRY_PYPI_API_KEY
+                      secretRef: pypi-api-key
+                - name: maven
+                  image: $MAVEN_IMG
+                  resources:
+                    cpu: 2
+                    memory: 4Gi
+                  env:
+                    - name: NODE_ENV
+                      value: production
+                    - name: PORT
+                      value: "3300"
+                    - name: XREGISTRY_MAVEN_PORT
+                      value: "3300"
+                    - name: XREGISTRY_MAVEN_BASEURL
+                      value: "http://localhost:3300"
+                    - name: XREGISTRY_MAVEN_QUIET
+                      value: "false"
+                    - name: XREGISTRY_MAVEN_API_KEY
+                      secretRef: maven-api-key
+                - name: nuget
+                  image: $NUGET_IMG
+                  resources:
+                    cpu: 2
+                    memory: 4Gi
+                  env:
+                    - name: NODE_ENV
+                      value: production
+                    - name: PORT
+                      value: "3200"
+                    - name: XREGISTRY_NUGET_PORT
+                      value: "3200"
+                    - name: XREGISTRY_NUGET_BASEURL
+                      value: "http://localhost:3200"
+                    - name: XREGISTRY_NUGET_QUIET
+                      value: "false"
+                    - name: XREGISTRY_NUGET_API_KEY
+                      secretRef: nuget-api-key
+                - name: oci
+                  image: $OCI_IMG
+                  resources:
+                    cpu: 2
+                    memory: 4Gi
+                  env:
+                    - name: NODE_ENV
+                      value: production
+                    - name: PORT
+                      value: "3000"
+                    - name: XREGISTRY_OCI_PORT
+                      value: "3000"
+                    - name: XREGISTRY_OCI_BASEURL
+                      value: "http://localhost:3000"
+                    - name: XREGISTRY_OCI_QUIET
+                      value: "false"
+                    - name: XREGISTRY_OCI_API_KEY
+                      secretRef: oci-api-key
+              scale:
+                minReplicas: 1
+                maxReplicas: 3
+          EOF
+          
+          # Deploy or update the container app using YAML
           if az containerapp show --name $APP_NAME --resource-group $RESOURCE_GROUP &>/dev/null; then
             echo "Updating Container App with all services..."
-            
-            # For updates, we need to configure the registry credentials first, then update the container
-            az containerapp registry set \
-              --name $APP_NAME \
-              --resource-group $RESOURCE_GROUP \
-              --server "${{ env.REGISTRY }}" \
-              --username "${{ github.actor }}" \
-              --password "${{ secrets.GITHUB_TOKEN }}"
-            
-            # Then update the container image (without --container-name for main container)
             az containerapp update \
               --name $APP_NAME \
               --resource-group $RESOURCE_GROUP \
-              --image "$BRIDGE_IMG"
+              --yaml containerapp.yaml
           else
             echo "Creating Container App with all services..."
-            
-            # Get external FQDN placeholder for bridge baseurl
-            APP_FQDN_PLACEHOLDER="xregistry-placeholder.domain"
-            
             az containerapp create \
               --name $APP_NAME \
               --resource-group $RESOURCE_GROUP \
-              --environment $ENV_NAME \
-              --target-port 8092 \
-              --ingress external \
-              --registry-server "${{ env.REGISTRY }}" \
-              --registry-username "${{ github.actor }}" \
-              --registry-password "${{ secrets.GITHUB_TOKEN }}" \
-              --cpu 2.0 \
-              --memory 4Gi \
-              --min-replicas 1 \
-              --max-replicas 3 \
-              --image "$BRIDGE_IMG" \
-              --container-name bridge \
-              --env-vars NODE_ENV=production \
-                         PORT=8092 \
-                         XREGISTRY_BRIDGE_PORT=8092 \
-                         XREGISTRY_BRIDGE_BASEURL="https://$APP_FQDN_PLACEHOLDER" \
-                         XREGISTRY_BRIDGE_QUIET=false \
-                         DOWNSTREAMS_JSON="$DOWNSTREAMS_JSON"
+              --yaml containerapp.yaml
           fi
-
-      - name: Add NPM Registry Container
-        run: |
-          NPM_IMG="${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-npm-bridge:${{ env.IMAGE_TAG }}"
-          
-          az containerapp container add \
-            --name $APP_NAME \
-            --resource-group $RESOURCE_GROUP \
-            --container-name npm \
-            --image "$NPM_IMG" \
-            --env-vars NODE_ENV=production \
-                       PORT=4873 \
-                       XREGISTRY_NPM_PORT=4873 \
-                       XREGISTRY_NPM_BASEURL="http://localhost:4873" \
-                       XREGISTRY_NPM_QUIET=false \
-                       XREGISTRY_NPM_API_KEY="$NPM_API_KEY" || true
-
-      - name: Add PyPI Registry Container
-        run: |
-          PYPI_IMG="${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-pypi-bridge:${{ env.IMAGE_TAG }}"
-          
-          az containerapp container add \
-            --name $APP_NAME \
-            --resource-group $RESOURCE_GROUP \
-            --container-name pypi \
-            --image "$PYPI_IMG" \
-            --env-vars NODE_ENV=production \
-                       PORT=3000 \
-                       XREGISTRY_PYPI_PORT=3000 \
-                       XREGISTRY_PYPI_BASEURL="http://localhost:3000" \
-                       XREGISTRY_PYPI_QUIET=false \
-                       XREGISTRY_PYPI_API_KEY="$PYPI_API_KEY" || true
-
-      - name: Add Maven Registry Container
-        run: |
-          MAVEN_IMG="${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-maven-bridge:${{ env.IMAGE_TAG }}"
-          
-          az containerapp container add \
-            --name $APP_NAME \
-            --resource-group $RESOURCE_GROUP \
-            --container-name maven \
-            --image "$MAVEN_IMG" \
-            --env-vars NODE_ENV=production \
-                       PORT=3300 \
-                       XREGISTRY_MAVEN_PORT=3300 \
-                       XREGISTRY_MAVEN_BASEURL="http://localhost:3300" \
-                       XREGISTRY_MAVEN_QUIET=false \
-                       XREGISTRY_MAVEN_API_KEY="$MAVEN_API_KEY" || true
-
-      - name: Add NuGet Registry Container
-        run: |
-          NUGET_IMG="${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-nuget-bridge:${{ env.IMAGE_TAG }}"
-          
-          az containerapp container add \
-            --name $APP_NAME \
-            --resource-group $RESOURCE_GROUP \
-            --container-name nuget \
-            --image "$NUGET_IMG" \
-            --env-vars NODE_ENV=production \
-                       PORT=3200 \
-                       XREGISTRY_NUGET_PORT=3200 \
-                       XREGISTRY_NUGET_BASEURL="http://localhost:3200" \
-                       XREGISTRY_NUGET_QUIET=false \
-                       XREGISTRY_NUGET_API_KEY="$NUGET_API_KEY" || true
-
-      - name: Add OCI Registry Container
-        run: |
-          OCI_IMG="${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-oci-bridge:${{ env.IMAGE_TAG }}"
-          
-          az containerapp container add \
-            --name $APP_NAME \
-            --resource-group $RESOURCE_GROUP \
-            --container-name oci \
-            --image "$OCI_IMG" \
-            --env-vars NODE_ENV=production \
-                       PORT=8084 \
-                       XREGISTRY_OCI_PORT=8084 \
-                       XREGISTRY_OCI_BASEURL="http://localhost:8084" \
-                       XREGISTRY_OCI_QUIET=false \
-                       XREGISTRY_OCI_API_KEY="$OCI_API_KEY" || true
 
       - name: Update Bridge with Correct Base URL
         run: |
@@ -304,7 +342,7 @@ jobs:
           {
             "servers": [
               {
-                "url": "http://localhost:4873",
+                "url": "http://localhost:3100",
                 "apikey": "$NPM_API_KEY"
               },
               {
@@ -320,7 +358,7 @@ jobs:
                 "apikey": "$NUGET_API_KEY"
               },
               {
-                "url": "http://localhost:8084",
+                "url": "http://localhost:3000",
                 "apikey": "$OCI_API_KEY"
               }
             ]
@@ -331,17 +369,32 @@ jobs:
           # Substitute environment variables in downstreams JSON
           DOWNSTREAMS_JSON=$(echo "$DOWNSTREAMS_JSON" | envsubst)
           
-          # Update bridge container with correct base URL
-          az containerapp container set \
+          # Create updated YAML with correct base URL
+          cat > containerapp-update.yaml << EOF
+          properties:
+            template:
+              containers:
+                - name: bridge
+                  env:
+                    - name: NODE_ENV
+                      value: production
+                    - name: PORT
+                      value: "8092"
+                    - name: XREGISTRY_BRIDGE_PORT
+                      value: "8092"
+                    - name: XREGISTRY_BRIDGE_BASEURL
+                      value: "https://$APP_FQDN"
+                    - name: XREGISTRY_BRIDGE_QUIET
+                      value: "false"
+                    - name: DOWNSTREAMS_JSON
+                      value: '$DOWNSTREAMS_JSON'
+          EOF
+          
+          # Update only the bridge container environment
+          az containerapp update \
             --name $APP_NAME \
             --resource-group $RESOURCE_GROUP \
-            --container-name bridge \
-            --set-env-vars NODE_ENV=production \
-                           PORT=8092 \
-                           XREGISTRY_BRIDGE_PORT=8092 \
-                           XREGISTRY_BRIDGE_BASEURL="https://$APP_FQDN" \
-                           XREGISTRY_BRIDGE_QUIET=false \
-                           DOWNSTREAMS_JSON="$DOWNSTREAMS_JSON"
+            --yaml containerapp-update.yaml
 
       - name: Health Checks and URLs
         run: |
@@ -353,11 +406,11 @@ jobs:
           echo ""
           echo "📊 Container App Architecture:"
           echo "  • Bridge (External):   Port 8092 → https://$APP_FQDN"
-          echo "  • NPM Registry:        Port 4873 → http://localhost:4873 (internal)"
+          echo "  • NPM Registry:        Port 3100 → http://localhost:3100 (internal)"
           echo "  • PyPI Registry:       Port 3000 → http://localhost:3000 (internal)"
           echo "  • Maven Registry:      Port 3300 → http://localhost:3300 (internal)"
           echo "  • NuGet Registry:      Port 3200 → http://localhost:3200 (internal)"
-          echo "  • OCI Registry:        Port 8084 → http://localhost:8084 (internal)"
+          echo "  • OCI Registry:        Port 3000 → http://localhost:3000 (internal)"
           echo ""
           echo "🏥 Test the unified endpoint:"
           echo "curl https://$APP_FQDN/"
