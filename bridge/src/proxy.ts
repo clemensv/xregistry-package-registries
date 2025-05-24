@@ -103,6 +103,10 @@ let consolidatedModel: any = {};
 let consolidatedCapabilities: any = {};
 let groupTypeToBackend: Record<string, DownstreamConfig> = {};
 
+// Bridge startup tracking
+const bridgeStartTime = new Date().toISOString();
+let bridgeEpoch = 1;
+
 // Sleep utility function
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -188,6 +192,9 @@ function rebuildConsolidatedModel(): boolean {
   
   if (hasChanges) {
     console.log(`Model updated. Available groups: [${currentGroups.join(', ')}]`);
+    
+    // Increment epoch on model changes
+    bridgeEpoch++;
     
     // Set up dynamic routes when groups change
     if (isServerRunning) {
@@ -370,20 +377,65 @@ function setupDynamicRoutes() {
 }
 
 // API Routes (defined before dynamic routes)
-app.get('/', (_, res) => {
-  res.json({
-    message: 'xRegistry Bridge',
-    version: '1.0.0',
-    activeServers: Array.from(serverStates.values()).filter(s => s.isActive).length,
-    totalServers: serverStates.size,
-    availableGroups: Object.keys(groupTypeToBackend),
-    endpoints: {
-      health: '/health',
-      status: '/status',
-      model: '/model', 
-      capabilities: '/capabilities'
+app.get('/', (req, res) => {
+  // Handle query parameters
+  const inline = req.query.inline as string;
+  const specversion = (req.query.specversion as string) || '1.0';
+  
+  // Check if requested specversion is supported
+  if (specversion !== '1.0' && specversion !== '1.0-rc1') {
+    return res.status(400).json({
+      error: 'unsupported_specversion',
+      message: `Specversion '${specversion}' is not supported. Supported versions: 1.0, 1.0-rc1`
+    });
+  }
+  
+  const now = new Date().toISOString();
+  const groups = Object.keys(groupTypeToBackend);
+  
+  // Build the base registry response according to xRegistry spec
+  const registryResponse: any = {
+    specversion: specversion,
+    registryid: 'xregistry-bridge',
+    self: BASE_URL,
+    xid: '/',
+    epoch: bridgeEpoch,
+    name: 'xRegistry Bridge',
+    description: 'Unified xRegistry bridge for multiple package registry backends',
+    createdat: bridgeStartTime,
+    modifiedat: now
+  };
+  
+  // Add group collections (REQUIRED)
+  for (const groupType of groups) {
+    const plural = consolidatedModel.groups?.[groupType]?.plural || groupType;
+    registryResponse[`${plural}url`] = `${BASE_URL}/${groupType}`;
+    registryResponse[`${plural}count`] = 0; // TODO: implement actual count
+  }
+  
+  // Handle inline parameters
+  if (inline) {
+    const inlineRequests = inline.split(',').map(s => s.trim());
+    
+    if (inlineRequests.includes('model')) {
+      registryResponse.model = consolidatedModel;
     }
-  });
+    
+    if (inlineRequests.includes('capabilities')) {
+      registryResponse.capabilities = consolidatedCapabilities;
+    }
+    
+    // Handle inline group collections
+    for (const groupType of groups) {
+      const plural = consolidatedModel.groups?.[groupType]?.plural || groupType;
+      if (inlineRequests.includes(plural)) {
+        // TODO: implement actual group collection inlining
+        registryResponse[plural] = {};
+      }
+    }
+  }
+  
+  return res.json(registryResponse);
 });
 
 app.get('/model', (_, res) => {

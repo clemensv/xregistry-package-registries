@@ -84,6 +84,9 @@ app.use((req, res, next) => {
 let consolidatedModel = {};
 let consolidatedCapabilities = {};
 let groupTypeToBackend = {};
+// Bridge startup tracking
+const bridgeStartTime = new Date().toISOString();
+let bridgeEpoch = 1;
 // Sleep utility function
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -157,6 +160,12 @@ function rebuildConsolidatedModel() {
         !previousGroups.every(group => currentGroups.includes(group));
     if (hasChanges) {
         console.log(`Model updated. Available groups: [${currentGroups.join(', ')}]`);
+        // Increment epoch on model changes
+        bridgeEpoch++;
+        // Set up dynamic routes when groups change
+        if (isServerRunning) {
+            setupDynamicRoutes();
+        }
     }
     return hasChanges;
 }
@@ -184,6 +193,8 @@ function startHttpServer() {
         isServerRunning = true;
         console.log(`xRegistry Proxy running at ${BASE_URL}`);
         console.log(`Available registry groups: [${Object.keys(groupTypeToBackend).join(', ')}]`);
+        // Set up dynamic routes after server starts
+        setupDynamicRoutes();
     });
 }
 // Periodic retry of sidelined servers
@@ -276,20 +287,13 @@ async function checkServerHealth(server) {
 }
 // Dynamic route setup based on active backends
 function setupDynamicRoutes() {
-    // Remove existing dynamic routes only, not all routes
-    for (const [groupType] of Object.entries(groupTypeToBackend)) {
-        const basePath = `/${groupType}*`;
-        // Remove existing routes for this group type if they exist
-        app._router?.stack?.forEach((layer, index) => {
-            if (layer.route?.path === basePath) {
-                app._router.stack.splice(index, 1);
-            }
-        });
-    }
+    console.log(`Setting up dynamic routes for groups: [${Object.keys(groupTypeToBackend).join(', ')}]`);
     // Add new dynamic routes
     for (const [groupType, backend] of Object.entries(groupTypeToBackend)) {
         const targetUrl = backend.url;
-        const basePath = `/${groupType}*`;
+        const basePath = `/${groupType}`;
+        console.log(`Setting up route ${basePath} -> ${targetUrl}`);
+        // Use app.use with specific path pattern
         app.use(basePath, (req, res, next) => {
             req.headers[BASE_URL_HEADER] = BASE_URL;
             next();
@@ -297,7 +301,6 @@ function setupDynamicRoutes() {
         app.use(basePath, (0, http_proxy_middleware_1.createProxyMiddleware)({
             target: targetUrl,
             changeOrigin: true,
-            pathRewrite: { [`^/${groupType}`]: '' },
             onProxyReq: (proxyReq, req) => {
                 if (backend.apiKey) {
                     proxyReq.setHeader('Authorization', `Bearer ${backend.apiKey}`);
@@ -315,26 +318,66 @@ function setupDynamicRoutes() {
     }
 }
 // API Routes (defined before dynamic routes)
-app.get('/', (_, res) => {
-    res.json({
-        message: 'xRegistry Bridge',
-        version: '1.0.0',
-        activeServers: Array.from(serverStates.values()).filter(s => s.isActive).length,
-        totalServers: serverStates.size,
-        availableGroups: Object.keys(groupTypeToBackend),
-        endpoints: {
-            health: '/health',
-            status: '/status',
-            model: '/model',
-            capabilities: '/capabilities'
+app.get('/', (req, res) => {
+    // Handle query parameters
+    const inline = req.query.inline;
+    const specversion = req.query.specversion || '1.0';
+    // Check if requested specversion is supported
+    if (specversion !== '1.0' && specversion !== '1.0-rc1') {
+        return res.status(400).json({
+            error: 'unsupported_specversion',
+            message: `Specversion '${specversion}' is not supported. Supported versions: 1.0, 1.0-rc1`
+        });
+    }
+    const now = new Date().toISOString();
+    const groups = Object.keys(groupTypeToBackend);
+    // Build the base registry response according to xRegistry spec
+    const registryResponse = {
+        specversion: specversion,
+        registryid: 'xregistry-bridge',
+        self: BASE_URL,
+        xid: '/',
+        epoch: bridgeEpoch,
+        name: 'xRegistry Bridge',
+        description: 'Unified xRegistry bridge for multiple package registry backends',
+        createdat: bridgeStartTime,
+        modifiedat: now
+    };
+    // Add group collections (REQUIRED)
+    for (const groupType of groups) {
+        const plural = consolidatedModel.groups?.[groupType]?.plural || groupType;
+        registryResponse[`${plural}url`] = `${BASE_URL}/${groupType}`;
+        registryResponse[`${plural}count`] = 0; // TODO: implement actual count
+    }
+    // Handle inline parameters
+    if (inline) {
+        const inlineRequests = inline.split(',').map(s => s.trim());
+        if (inlineRequests.includes('model')) {
+            registryResponse.model = consolidatedModel;
         }
-    });
+        if (inlineRequests.includes('capabilities')) {
+            registryResponse.capabilities = consolidatedCapabilities;
+        }
+        // Handle inline group collections
+        for (const groupType of groups) {
+            const plural = consolidatedModel.groups?.[groupType]?.plural || groupType;
+            if (inlineRequests.includes(plural)) {
+                // TODO: implement actual group collection inlining
+                registryResponse[plural] = {};
+            }
+        }
+    }
+    return res.json(registryResponse);
 });
 app.get('/model', (_, res) => {
     res.json(consolidatedModel);
 });
 app.get('/capabilities', (_, res) => {
     res.json(consolidatedCapabilities);
+});
+// Registries endpoint - returns the groups from consolidated model
+app.get('/registries', (_, res) => {
+    res.json(consolidatedModel.groups || {});
 });
 // Health endpoint
 app.get('/health', async (_, res) => {
