@@ -3,12 +3,8 @@ name: Build Bridge xRegistry
 on:
   push:
     branches: [ "main" ]
-    paths:
-      - 'bridge/**'
     tags: [ 'v*.*.*' ]
   pull_request:
-    paths:
-      - 'bridge/**'
   workflow_dispatch:
 
 env:

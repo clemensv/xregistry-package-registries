@@ -3,12 +3,8 @@ name: Build NPM xRegistry
 on:
   push:
     branches: [ "main" ]
-    paths:
-      - 'npm/**'
     tags: [ 'v*.*.*' ]
   pull_request:
-    paths:
-      - 'npm/**'
   workflow_dispatch:
 
 env:

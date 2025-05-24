@@ -3,12 +3,8 @@ name: Build PyPI xRegistry
 on:
   push:
     branches: [ "main" ]
-    paths:
-      - 'pypi/**'
     tags: [ 'v*.*.*' ]
   pull_request:
-    paths:
-      - 'pypi/**'
   workflow_dispatch:
 
 env:

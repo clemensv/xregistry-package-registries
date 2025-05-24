@@ -3,12 +3,8 @@ name: Build Maven xRegistry
 on:
   push:
     branches: [ "main" ]
-    paths:
-      - 'maven/**'
     tags: [ 'v*.*.*' ]
   pull_request:
-    paths:
-      - 'maven/**'
   workflow_dispatch:
 
 env:

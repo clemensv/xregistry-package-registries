@@ -3,12 +3,8 @@ name: Build NuGet xRegistry
 on:
   push:
     branches: [ "main" ]
-    paths:
-      - 'nuget/**'
     tags: [ 'v*.*.*' ]
   pull_request:
-    paths:
-      - 'nuget/**'
   workflow_dispatch:
 
 env:

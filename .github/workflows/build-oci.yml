@@ -3,12 +3,8 @@ name: Build OCI xRegistry
 on:
   push:
     branches: [ "main" ]
-    paths:
-      - 'oci/**'
     tags: [ 'v*.*.*' ]
   pull_request:
-    paths:
-      - 'oci/**'
   workflow_dispatch:
 
 env:
