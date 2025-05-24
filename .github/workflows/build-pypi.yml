@@ -59,9 +59,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
-          cache-to:   type=gha,mode=max
           provenance: mode=max
-
       - name: Sign image (OIDC)
         if: ${{ github.event_name != 'pull_request' }}
         env:
