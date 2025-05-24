@@ -186,8 +186,21 @@ jobs:
           # Substitute environment variables in downstreams JSON
           DOWNSTREAMS_JSON=$(echo "$DOWNSTREAMS_JSON" | envsubst)
           
-          # Create Container App YAML configuration
-          cat > containerapp.yaml << EOF
+          # Determine the base URL to use
+          if az containerapp show --name $APP_NAME --resource-group $RESOURCE_GROUP &>/dev/null; then
+            # App exists, get the current FQDN
+            APP_FQDN=$(az containerapp show --name $APP_NAME --resource-group $RESOURCE_GROUP --query 'properties.configuration.ingress.fqdn' -o tsv)
+            echo "Using existing app FQDN: $APP_FQDN"
+          else
+            # App doesn't exist, we'll use a placeholder for now
+            APP_FQDN="APP_FQDN_PLACEHOLDER"
+            echo "App doesn't exist yet, using placeholder for initial creation"
+          fi
+          
+          # Create Container App YAML configuration (single source of truth)
+          create_containerapp_yaml() {
+            local fqdn=$1
+            cat > containerapp.yaml << EOF
           properties:
             environmentId: /subscriptions/${{ steps.get-env-id.outputs.subscription-id }}/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.App/managedEnvironments/$ENV_NAME
             configuration:
@@ -230,9 +243,9 @@ jobs:
                     - name: XREGISTRY_BRIDGE_PORT
                       value: "8092"
                     - name: XREGISTRY_BRIDGE_BASEURL
-                      value: "https://\$APP_FQDN_PLACEHOLDER"
+                      value: "https://$fqdn"
                     - name: BASE_URL
-                      value: "https://\$APP_FQDN_PLACEHOLDER"
+                      value: "https://$fqdn"
                     - name: XREGISTRY_BRIDGE_QUIET
                       value: "false"
                     - name: DOWNSTREAMS_JSON
@@ -253,9 +266,9 @@ jobs:
                     - name: XREGISTRY_NPM_PORT
                       value: "3100"
                     - name: XREGISTRY_NPM_BASEURL
-                      value: "https://\$APP_FQDN_PLACEHOLDER"
+                      value: "https://$fqdn"
                     - name: BASE_URL
-                      value: "https://\$APP_FQDN_PLACEHOLDER"
+                      value: "https://$fqdn"
                     - name: XREGISTRY_NPM_QUIET
                       value: "false"
                     - name: XREGISTRY_NPM_API_KEY
@@ -276,9 +289,9 @@ jobs:
                     - name: XREGISTRY_PYPI_PORT
                       value: "3000"
                     - name: XREGISTRY_PYPI_BASEURL
-                      value: "https://\$APP_FQDN_PLACEHOLDER"
+                      value: "https://$fqdn"
                     - name: BASE_URL
-                      value: "https://\$APP_FQDN_PLACEHOLDER"
+                      value: "https://$fqdn"
                     - name: XREGISTRY_PYPI_QUIET
                       value: "false"
                     - name: XREGISTRY_PYPI_API_KEY
@@ -299,9 +312,9 @@ jobs:
                     - name: XREGISTRY_MAVEN_PORT
                       value: "3300"
                     - name: XREGISTRY_MAVEN_BASEURL
-                      value: "https://\$APP_FQDN_PLACEHOLDER"
+                      value: "https://$fqdn"
                     - name: BASE_URL
-                      value: "https://\$APP_FQDN_PLACEHOLDER"
+                      value: "https://$fqdn"
                     - name: XREGISTRY_MAVEN_QUIET
                       value: "false"
                     - name: XREGISTRY_MAVEN_API_KEY
@@ -322,9 +335,9 @@ jobs:
                     - name: XREGISTRY_NUGET_PORT
                       value: "3200"
                     - name: XREGISTRY_NUGET_BASEURL
-                      value: "https://\$APP_FQDN_PLACEHOLDER"
+                      value: "https://$fqdn"
                     - name: BASE_URL
-                      value: "https://\$APP_FQDN_PLACEHOLDER"
+                      value: "https://$fqdn"
                     - name: XREGISTRY_NUGET_QUIET
                       value: "false"
                     - name: XREGISTRY_NUGET_API_KEY
@@ -345,9 +358,9 @@ jobs:
                     - name: XREGISTRY_OCI_PORT
                       value: "3400"
                     - name: XREGISTRY_OCI_BASEURL
-                      value: "https://\$APP_FQDN_PLACEHOLDER"
+                      value: "https://$fqdn"
                     - name: BASE_URL
-                      value: "https://\$APP_FQDN_PLACEHOLDER"
+                      value: "https://$fqdn"
                     - name: XREGISTRY_OCI_QUIET
                       value: "false"
                     - name: XREGISTRY_OCI_API_KEY
@@ -356,6 +369,10 @@ jobs:
                 minReplicas: 1
                 maxReplicas: 3
           EOF
+          }
+          
+          # Generate the initial YAML file
+          create_containerapp_yaml "$APP_FQDN"
           
           # Function to wait for any ongoing operations to complete
           wait_for_containerapp_ready() {
@@ -442,134 +459,20 @@ jobs:
           # Deploy or update the container app using YAML with retry logic
           deploy_containerapp
           
-          # Get the actual FQDN and update the containerapp.yaml with real URLs
-          APP_FQDN=$(az containerapp show --name $APP_NAME --resource-group $RESOURCE_GROUP --query 'properties.configuration.ingress.fqdn' -o tsv)
-          echo "Updating BASE_URLs with actual FQDN: $APP_FQDN"
-          
-          # Replace placeholders with actual FQDN
-          sed -i "s|\\\$APP_FQDN_PLACEHOLDER|$APP_FQDN|g" containerapp.yaml
-          
-          # Deploy again with correct URLs
-          echo "Updating Container App with correct BASE_URLs..."
-          wait_for_containerapp_ready
-          deploy_containerapp
-
-      - name: Update Bridge with Correct Base URL
-        run: |
-          # Function to wait for any ongoing operations to complete
-          wait_for_containerapp_ready() {
-            local max_attempts=30
-            local attempt=1
-            
-            echo "Checking for ongoing operations..."
-            while [ $attempt -le $max_attempts ]; do
-              # Get the provisioning state
-              PROVISIONING_STATE=$(az containerapp show --name $APP_NAME --resource-group $RESOURCE_GROUP --query 'properties.provisioningState' -o tsv 2>/dev/null || echo "NotFound")
-              
-              if [ "$PROVISIONING_STATE" = "Succeeded" ] || [ "$PROVISIONING_STATE" = "NotFound" ]; then
-                echo "✅ Container App is ready for operations (State: $PROVISIONING_STATE)"
-                return 0
-              elif [ "$PROVISIONING_STATE" = "InProgress" ] || [ "$PROVISIONING_STATE" = "Running" ]; then
-                echo "⏳ Container App operation in progress (State: $PROVISIONING_STATE). Waiting... (attempt $attempt/$max_attempts)"
-                sleep 30
-              else
-                echo "⚠️  Unexpected provisioning state: $PROVISIONING_STATE (attempt $attempt/$max_attempts)"
-                sleep 15
-              fi
-              
-              ((attempt++))
-            done
-            
-            echo "❌ Timeout waiting for Container App to be ready after $max_attempts attempts"
-            return 1
-          }
-          
-          # Get the actual FQDN now that the app is created
-          APP_FQDN=$(az containerapp show --name $APP_NAME --resource-group $RESOURCE_GROUP --query 'properties.configuration.ingress.fqdn' -o tsv)
-          
-          # Create updated downstreams configuration
-          DOWNSTREAMS_JSON=$(cat << 'EOF'
-          {
-            "servers": [
-              {
-                "url": "http://localhost:3100",
-                "apikey": "$NPM_API_KEY"
-              },
-              {
-                "url": "http://localhost:3000",
-                "apikey": "$PYPI_API_KEY"
-              },
-              {
-                "url": "http://localhost:3300",
-                "apikey": "$MAVEN_API_KEY"
-              },
-              {
-                "url": "http://localhost:3200",
-                "apikey": "$NUGET_API_KEY"
-              },
-              {
-                "url": "http://localhost:3400",
-                "apikey": "$OCI_API_KEY"
-              }
-            ]
-          }
-          EOF
-          )
-          
-          # Substitute environment variables in downstreams JSON
-          DOWNSTREAMS_JSON=$(echo "$DOWNSTREAMS_JSON" | envsubst)
-          
-          # Create updated YAML with correct base URL
-          BRIDGE_IMG="${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-bridge:${{ env.IMAGE_TAG }}"
-          
-          cat > containerapp-update.yaml << EOF
-          properties:
-            template:
-              containers:
-                - name: bridge
-                  image: $BRIDGE_IMG
-                  resources:
-                    cpu: 0.5
-                    memory: 1Gi
-                  env:
-                    - name: NODE_ENV
-                      value: production
-                    - name: PORT
-                      value: "8092"
-                    - name: XREGISTRY_BRIDGE_PORT
-                      value: "8092"
-                    - name: XREGISTRY_BRIDGE_BASEURL
-                      value: "https://$APP_FQDN"
-                    - name: XREGISTRY_BRIDGE_QUIET
-                      value: "false"
-                    - name: DOWNSTREAMS_JSON
-                      value: '$DOWNSTREAMS_JSON'
-          EOF
-          
-          # Update only the bridge container environment with retry logic
-          echo "Updating bridge with correct base URL..."
-          for retry in {1..3}; do
-            echo "Bridge update attempt $retry/3..."
-            
-            # Wait for container app to be ready
+          # If we used a placeholder, regenerate with the actual FQDN and deploy again
+          if [ "$APP_FQDN" = "APP_FQDN_PLACEHOLDER" ]; then
+            echo "Getting actual FQDN for final deployment..."
             wait_for_containerapp_ready
+            ACTUAL_FQDN=$(az containerapp show --name $APP_NAME --resource-group $RESOURCE_GROUP --query 'properties.configuration.ingress.fqdn' -o tsv)
+            echo "Regenerating configuration with actual FQDN: $ACTUAL_FQDN"
             
-            if az containerapp update \
-              --name $APP_NAME \
-              --resource-group $RESOURCE_GROUP \
-              --yaml containerapp-update.yaml; then
-              echo "✅ Bridge updated successfully with correct base URL"
-              break
-            else
-              echo "❌ Bridge update attempt $retry failed"
-              if [ $retry -eq 3 ]; then
-                echo "❌ All bridge update attempts failed"
-                exit 1
-              fi
-              echo "⏳ Waiting 60s before retry..."
-              sleep 60
-            fi
-          done
+            # Regenerate YAML with correct FQDN
+            create_containerapp_yaml "$ACTUAL_FQDN"
+            
+            # Deploy final configuration with correct URLs
+            echo "Deploying final configuration with correct BASE_URLs..."
+            deploy_containerapp
+          fi
 
       - name: Health Checks and URLs
         run: |
