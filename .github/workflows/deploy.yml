@@ -414,6 +414,34 @@ jobs:
 
       - name: Update Bridge with Correct Base URL
         run: |
+          # Function to wait for any ongoing operations to complete
+          wait_for_containerapp_ready() {
+            local max_attempts=30
+            local attempt=1
+            
+            echo "Checking for ongoing operations..."
+            while [ $attempt -le $max_attempts ]; do
+              # Get the provisioning state
+              PROVISIONING_STATE=$(az containerapp show --name $APP_NAME --resource-group $RESOURCE_GROUP --query 'properties.provisioningState' -o tsv 2>/dev/null || echo "NotFound")
+              
+              if [ "$PROVISIONING_STATE" = "Succeeded" ] || [ "$PROVISIONING_STATE" = "NotFound" ]; then
+                echo "✅ Container App is ready for operations (State: $PROVISIONING_STATE)"
+                return 0
+              elif [ "$PROVISIONING_STATE" = "InProgress" ] || [ "$PROVISIONING_STATE" = "Running" ]; then
+                echo "⏳ Container App operation in progress (State: $PROVISIONING_STATE). Waiting... (attempt $attempt/$max_attempts)"
+                sleep 30
+              else
+                echo "⚠️  Unexpected provisioning state: $PROVISIONING_STATE (attempt $attempt/$max_attempts)"
+                sleep 15
+              fi
+              
+              ((attempt++))
+            done
+            
+            echo "❌ Timeout waiting for Container App to be ready after $max_attempts attempts"
+            return 1
+          }
+          
           # Get the actual FQDN now that the app is created
           APP_FQDN=$(az containerapp show --name $APP_NAME --resource-group $RESOURCE_GROUP --query 'properties.configuration.ingress.fqdn' -o tsv)
           
@@ -518,6 +546,37 @@ jobs:
 
       - name: Wait for Services and Test
         run: |
+          # Function to wait for any ongoing operations to complete
+          wait_for_containerapp_ready() {
+            local max_attempts=30
+            local attempt=1
+            
+            echo "Checking for ongoing operations..."
+            while [ $attempt -le $max_attempts ]; do
+              # Get the provisioning state
+              PROVISIONING_STATE=$(az containerapp show --name $APP_NAME --resource-group $RESOURCE_GROUP --query 'properties.provisioningState' -o tsv 2>/dev/null || echo "NotFound")
+              
+              if [ "$PROVISIONING_STATE" = "Succeeded" ] || [ "$PROVISIONING_STATE" = "NotFound" ]; then
+                echo "✅ Container App is ready for operations (State: $PROVISIONING_STATE)"
+                return 0
+              elif [ "$PROVISIONING_STATE" = "InProgress" ] || [ "$PROVISIONING_STATE" = "Running" ]; then
+                echo "⏳ Container App operation in progress (State: $PROVISIONING_STATE). Waiting... (attempt $attempt/$max_attempts)"
+                sleep 30
+              else
+                echo "⚠️  Unexpected provisioning state: $PROVISIONING_STATE (attempt $attempt/$max_attempts)"
+                sleep 15
+              fi
+              
+              ((attempt++))
+            done
+            
+            echo "❌ Timeout waiting for Container App to be ready after $max_attempts attempts"
+            return 1
+          }
+          
+          # Wait for container app to be fully ready before testing
+          wait_for_containerapp_ready
+          
           APP_FQDN=$(az containerapp show --name $APP_NAME --resource-group $RESOURCE_GROUP --query 'properties.configuration.ingress.fqdn' -o tsv)
           BRIDGE_URL="https://$APP_FQDN"
           
