@@ -91,7 +91,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref,'refs/tags/v') }}
             type=ref,event=branch
             type=ref,event=pr
-      - id: build
+      - id: build-pypi
         uses: docker/build-push-action@v5
         with:
           context: ./pypi
@@ -166,7 +166,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref,'refs/tags/v') }}
             type=ref,event=branch
             type=ref,event=pr
-      - id: build
+      - id: build-npm
         uses: docker/build-push-action@v5
         with:
           context: ./npm
@@ -243,7 +243,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref,'refs/tags/v') }}
             type=ref,event=branch
             type=ref,event=pr
-      - id: build
+      - id: build-oci
         uses: docker/build-push-action@v5
         with:
           context: ./oci
@@ -320,7 +320,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref,'refs/tags/v') }}
             type=ref,event=branch
             type=ref,event=pr
-      - id: build
+      - id: build-nuget
         uses: docker/build-push-action@v5
         with:
           context: ./nuget
@@ -398,7 +398,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref,'refs/tags/v') }}
             type=ref,event=branch
             type=ref,event=pr
-      - id: build
+      - id: build-maven
         uses: docker/build-push-action@v5
         with:
           context: ./maven
@@ -475,7 +475,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref,'refs/tags/v') }}
             type=ref,event=branch
             type=ref,event=pr
-      - id: build
+      - id: build-bridge
         uses: docker/build-push-action@v5
         with:
           context: ./bridge
