@@ -4,7 +4,13 @@ on:
   push:
     branches: [ "main" ]
     tags: [ 'v*.*.*' ]
+    paths:
+      - 'nuget/**'
+      - '.github/workflows/build-nuget.yml'
   pull_request:
+    paths:
+      - 'nuget/**'
+      - '.github/workflows/build-nuget.yml'
   workflow_dispatch:
 
 env:

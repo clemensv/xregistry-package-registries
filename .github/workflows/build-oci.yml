@@ -4,7 +4,13 @@ on:
   push:
     branches: [ "main" ]
     tags: [ 'v*.*.*' ]
+    paths:
+      - 'oci/**'
+      - '.github/workflows/build-oci.yml'
   pull_request:
+    paths:
+      - 'oci/**'
+      - '.github/workflows/build-oci.yml'
   workflow_dispatch:
 
 env:

@@ -4,6 +4,16 @@ on:
   push:
     branches: [ "main" ]
     tags: [ 'v*.*.*' ]
+    paths:
+      - 'bridge/**'
+      - 'npm/**'
+      - 'pypi/**'
+      - 'maven/**'
+      - 'nuget/**'
+      - 'oci/**'
+      - 'docker-compose.yml'
+      - 'Dockerfile'
+      - '.github/workflows/deploy.yml'
   workflow_run:
     workflows: ["Build NPM xRegistry", "Build PyPI xRegistry", "Build Maven xRegistry", "Build NuGet xRegistry", "Build OCI xRegistry", "Build Bridge xRegistry"]
     types: [completed]
@@ -207,8 +217,8 @@ jobs:
                 - name: bridge
                   image: $BRIDGE_IMG
                   resources:
-                    cpu: 2
-                    memory: 4Gi
+                    cpu: 0.5
+                    memory: 1Gi
                   env:
                     - name: NODE_ENV
                       value: production
@@ -225,8 +235,8 @@ jobs:
                 - name: npm
                   image: $NPM_IMG
                   resources:
-                    cpu: 2
-                    memory: 4Gi
+                    cpu: 0.75
+                    memory: 1.5Gi
                   env:
                     - name: NODE_ENV
                       value: production
@@ -243,8 +253,8 @@ jobs:
                 - name: pypi
                   image: $PYPI_IMG
                   resources:
-                    cpu: 2
-                    memory: 4Gi
+                    cpu: 0.75
+                    memory: 1.5Gi
                   env:
                     - name: NODE_ENV
                       value: production
@@ -261,8 +271,8 @@ jobs:
                 - name: maven
                   image: $MAVEN_IMG
                   resources:
-                    cpu: 2
-                    memory: 4Gi
+                    cpu: 0.75
+                    memory: 1.5Gi
                   env:
                     - name: NODE_ENV
                       value: production
@@ -279,8 +289,8 @@ jobs:
                 - name: nuget
                   image: $NUGET_IMG
                   resources:
-                    cpu: 2
-                    memory: 4Gi
+                    cpu: 0.75
+                    memory: 1.5Gi
                   env:
                     - name: NODE_ENV
                       value: production
@@ -297,8 +307,8 @@ jobs:
                 - name: oci
                   image: $OCI_IMG
                   resources:
-                    cpu: 2
-                    memory: 4Gi
+                    cpu: 0.5
+                    memory: 1Gi
                   env:
                     - name: NODE_ENV
                       value: production

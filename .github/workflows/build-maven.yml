@@ -4,7 +4,13 @@ on:
   push:
     branches: [ "main" ]
     tags: [ 'v*.*.*' ]
+    paths:
+      - 'maven/**'
+      - '.github/workflows/build-maven.yml'
   pull_request:
+    paths:
+      - 'maven/**'
+      - '.github/workflows/build-maven.yml'
   workflow_dispatch:
 
 env:
