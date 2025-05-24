@@ -143,58 +143,6 @@ jobs:
           
           echo "✅ Generated unique API keys for all services"
 
-      - name: Verify Container Images Exist
-        run: |
-          # Image URIs to verify
-          BRIDGE_IMG="${{ env.REGISTRY }}/${{ github.repository }}/xregistry-bridge:${{ env.IMAGE_TAG }}"
-          NPM_IMG="${{ env.REGISTRY }}/${{ github.repository }}/xregistry-npm-bridge:${{ env.IMAGE_TAG }}"
-          PYPI_IMG="${{ env.REGISTRY }}/${{ github.repository }}/xregistry-pypi-bridge:${{ env.IMAGE_TAG }}"
-          MAVEN_IMG="${{ env.REGISTRY }}/${{ github.repository }}/xregistry-maven-bridge:${{ env.IMAGE_TAG }}"
-          NUGET_IMG="${{ env.REGISTRY }}/${{ github.repository }}/xregistry-nuget-bridge:${{ env.IMAGE_TAG }}"
-          OCI_IMG="${{ env.REGISTRY }}/${{ github.repository }}/xregistry-oci-bridge:${{ env.IMAGE_TAG }}"
-          
-          echo "🔍 Verifying all required container images exist..."
-          
-          # Function to check if image exists
-          check_image() {
-            local img=$1
-            local name=$2
-            echo "Checking $name: $img"
-            if docker manifest inspect "$img" >/dev/null 2>&1; then
-              echo "✅ $name image found"
-              return 0
-            else
-              echo "❌ $name image not found: $img"
-              return 1
-            fi
-          }
-          
-          # Check all images
-          MISSING_IMAGES=0
-          check_image "$BRIDGE_IMG" "Bridge" || MISSING_IMAGES=$((MISSING_IMAGES + 1))
-          check_image "$NPM_IMG" "NPM" || MISSING_IMAGES=$((MISSING_IMAGES + 1))
-          check_image "$PYPI_IMG" "PyPI" || MISSING_IMAGES=$((MISSING_IMAGES + 1))
-          check_image "$MAVEN_IMG" "Maven" || MISSING_IMAGES=$((MISSING_IMAGES + 1))
-          check_image "$NUGET_IMG" "NuGet" || MISSING_IMAGES=$((MISSING_IMAGES + 1))
-          check_image "$OCI_IMG" "OCI" || MISSING_IMAGES=$((MISSING_IMAGES + 1))
-          
-          if [ $MISSING_IMAGES -gt 0 ]; then
-            echo ""
-            echo "❌ $MISSING_IMAGES container images are missing!"
-            echo "🔧 To fix this, trigger the build workflows manually:"
-            echo "   gh workflow run 'Build Bridge xRegistry'"
-            echo "   gh workflow run 'Build NPM xRegistry'"
-            echo "   gh workflow run 'Build PyPI xRegistry'"
-            echo "   gh workflow run 'Build Maven xRegistry'"
-            echo "   gh workflow run 'Build NuGet xRegistry'"
-            echo "   gh workflow run 'Build OCI xRegistry'"
-            echo ""
-            echo "Or make changes to the respective service directories to trigger automatic builds."
-            exit 1
-          fi
-          
-          echo "✅ All required container images are available for deployment"
-
       - name: Deploy xRegistry Container App (All Services)
         run: |
           # Image URIs
