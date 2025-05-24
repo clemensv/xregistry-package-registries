@@ -65,7 +65,7 @@ jobs:
       id-token: write
 
     outputs:
-      digest: ${{ steps.build.outputs.digest }}
+      digest: ${{ steps.build-pypi.outputs.digest }}
 
     steps:
       - uses: actions/checkout@v4
@@ -105,7 +105,7 @@ jobs:
         env:
           COSIGN_YES: "true"
         run: |
-          REF="${{ env.REGISTRY }}/${{ env.PYPI_IMAGE_NAME }}@${{ steps.build.outputs.digest }}"
+          REF="${{ env.REGISTRY }}/${{ env.PYPI_IMAGE_NAME }}@${{ steps.build-pypi.outputs.digest }}"
           cosign sign "${REF}"
 # ──────────────────────────────────────────────────────── verify ─────
   verify-pypi:
@@ -140,7 +140,7 @@ jobs:
       id-token: write
 
     outputs:
-      digest: ${{ steps.build.outputs.digest }}
+      digest: ${{ steps.build-npm.outputs.digest }}
 
     steps:
       - uses: actions/checkout@v4
@@ -182,7 +182,7 @@ jobs:
         env:
           COSIGN_YES: "true"
         run: |
-          REF="${{ env.REGISTRY }}/${{ env.NPM_IMAGE_NAME }}@${{ steps.build.outputs.digest }}"
+          REF="${{ env.REGISTRY }}/${{ env.NPM_IMAGE_NAME }}@${{ steps.build-npm.outputs.digest }}"
           cosign sign "${REF}"
 # ──────────────────────────────────────────────────────── verify ─────
   verify-npm:
@@ -217,7 +217,7 @@ jobs:
       id-token: write
 
     outputs:
-      digest: ${{ steps.build.outputs.digest }}
+      digest: ${{ steps.build-oci.outputs.digest }}
 
     steps:
       - uses: actions/checkout@v4
@@ -259,7 +259,7 @@ jobs:
         env:
           COSIGN_YES: "true"
         run: |
-          REF="${{ env.REGISTRY }}/${{ env.OCI_IMAGE_NAME }}@${{ steps.build.outputs.digest }}"
+          REF="${{ env.REGISTRY }}/${{ env.OCI_IMAGE_NAME }}@${{ steps.build-oci.outputs.digest }}"
           cosign sign "${REF}"
 # ──────────────────────────────────────────────────────── verify ─────
   verify-oci:
@@ -294,7 +294,7 @@ jobs:
       id-token: write
 
     outputs:
-      digest: ${{ steps.build.outputs.digest }}
+      digest: ${{ steps.build-nuget.outputs.digest }}
 
     steps:
       - uses: actions/checkout@v4
@@ -336,7 +336,7 @@ jobs:
         env:
           COSIGN_YES: "true"
         run: |
-          REF="${{ env.REGISTRY }}/${{ env.NUGET_IMAGE_NAME }}@${{ steps.build.outputs.digest }}"
+          REF="${{ env.REGISTRY }}/${{ env.NUGET_IMAGE_NAME }}@${{ steps.build-nuget.outputs.digest }}"
           cosign sign "${REF}"
 # ──────────────────────────────────────────────────────── verify ─────
   verify-nuget:
@@ -372,7 +372,7 @@ jobs:
       id-token: write
 
     outputs:
-      digest: ${{ steps.build.outputs.digest }}
+      digest: ${{ steps.build-maven.outputs.digest }}
 
     steps:
       - uses: actions/checkout@v4
@@ -414,7 +414,7 @@ jobs:
         env:
           COSIGN_YES: "true"
         run: |
-          REF="${{ env.REGISTRY }}/${{ env.MAVEN_IMAGE_NAME }}@${{ steps.build.outputs.digest }}"
+          REF="${{ env.REGISTRY }}/${{ env.MAVEN_IMAGE_NAME }}@${{ steps.build-maven.outputs.digest }}"
           cosign sign "${REF}"
 # ──────────────────────────────────────────────────────── verify ─────
   verify-maven:
@@ -449,7 +449,7 @@ jobs:
       id-token: write
 
     outputs:
-      digest: ${{ steps.build.outputs.digest }}
+      digest: ${{ steps.build-bridge.outputs.digest }}
 
     steps:
       - uses: actions/checkout@v4
@@ -491,7 +491,7 @@ jobs:
         env:
           COSIGN_YES: "true"
         run: |
-          REF="${{ env.REGISTRY }}/${{ env.BRIDGE_IMAGE_NAME }}@${{ steps.build.outputs.digest }}"
+          REF="${{ env.REGISTRY }}/${{ env.BRIDGE_IMAGE_NAME }}@${{ steps.build-bridge.outputs.digest }}"
           cosign sign "${REF}"
 # ──────────────────────────────────────────────────────── verify ─────
   verify-bridge:
