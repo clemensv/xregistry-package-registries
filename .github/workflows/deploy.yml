@@ -1,4 +1,4 @@
-name: Deploy xRegistry to Azure Container Apps
+name: Build & Deploy xRegistry to Azure Container Apps
 
 on:
   push:
@@ -47,10 +47,478 @@ on:
         type: string
 
 env:
-  REGISTRY: ghcr.io
+    REGISTRY: ghcr.io
+    PYPI_IMAGE_NAME: ${{ github.repository }}/xregistry-pypi-bridge
+    OCI_IMAGE_NAME: ${{ github.repository }}/xregistry-oci-bridge
+    NPM_IMAGE_NAME: ${{ github.repository }}/xregistry-npm-bridge
+    MAVEN_IMAGE_NAME: ${{ github.repository }}/xregistry-maven-bridge
+    NUGET_IMAGE_NAME: ${{ github.repository }}/xregistry-nuget-bridge
+    BRIDGE_IMAGE_NAME: ${{ github.repository }}/xregistry-bridge
 
 jobs:
+  
+  build-pypi:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    outputs:
+      digest: ${{ steps.build-pypi.outputs.digest }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: sigstore/cosign-installer@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.PYPI_IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ github.sha }}
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref,'refs/tags/v') }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref,'refs/tags/v') }}
+            type=ref,event=branch
+            type=ref,event=pr
+      - id: build-pypi
+        uses: docker/build-push-action@v5
+        with:
+          context: ./pypi
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          provenance: mode=max
+      - name: Sign image (OIDC)
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          COSIGN_YES: "true"
+        run: |
+          REF="${{ env.REGISTRY }}/${{ env.PYPI_IMAGE_NAME }}@${{ steps.build-pypi.outputs.digest }}"
+          cosign sign "${REF}"
+# ──────────────────────────────────────────────────────── verify ─────
+  verify-pypi:
+    needs: build-pypi
+    runs-on: ubuntu-latest
+    permissions:
+      packages: read
+      id-token: write
+
+    steps:
+      - uses: sigstore/cosign-installer@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify signature
+        run: |
+          REF="${{ env.REGISTRY }}/${{ env.PYPI_IMAGE_NAME }}@${{ needs.build-pypi.outputs.digest }}"
+          cosign verify \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "https://github.com/${{ github.workflow_ref }}" \
+            "${REF}" 
+
+  build-npm:
+    needs: build-pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    outputs:
+      digest: ${{ steps.build-npm.outputs.digest }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: sigstore/cosign-installer@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.NPM_IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ github.sha }}
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref,'refs/tags/v') }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref,'refs/tags/v') }}
+            type=ref,event=branch
+            type=ref,event=pr
+      - id: build-npm
+        uses: docker/build-push-action@v5
+        with:
+          context: ./npm
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+          provenance: mode=max
+
+      - name: Sign image (OIDC)
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          COSIGN_YES: "true"
+        run: |
+          REF="${{ env.REGISTRY }}/${{ env.NPM_IMAGE_NAME }}@${{ steps.build-npm.outputs.digest }}"
+          cosign sign "${REF}"
+# ──────────────────────────────────────────────────────── verify ─────
+  verify-npm:
+    needs: build-npm
+    runs-on: ubuntu-latest
+    permissions:
+      packages: read
+      id-token: write
+
+    steps:
+      - uses: sigstore/cosign-installer@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify signature
+        run: |
+          REF="${{ env.REGISTRY }}/${{ env.NPM_IMAGE_NAME }}@${{ needs.build-npm.outputs.digest }}"
+          cosign verify \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "https://github.com/${{ github.workflow_ref }}" \
+            "${REF}"     
+  
+  build-oci:
+    needs: build-npm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    outputs:
+      digest: ${{ steps.build-oci.outputs.digest }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: sigstore/cosign-installer@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.OCI_IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ github.sha }}
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref,'refs/tags/v') }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref,'refs/tags/v') }}
+            type=ref,event=branch
+            type=ref,event=pr
+      - id: build-oci
+        uses: docker/build-push-action@v5
+        with:
+          context: ./oci
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+          provenance: mode=max
+
+      - name: Sign image (OIDC)
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          COSIGN_YES: "true"
+        run: |
+          REF="${{ env.REGISTRY }}/${{ env.OCI_IMAGE_NAME }}@${{ steps.build-oci.outputs.digest }}"
+          cosign sign "${REF}"
+# ──────────────────────────────────────────────────────── verify ─────
+  verify-oci:
+    needs: build-oci
+    runs-on: ubuntu-latest
+    permissions:
+      packages: read
+      id-token: write
+
+    steps:
+      - uses: sigstore/cosign-installer@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify signature
+        run: |
+          REF="${{ env.REGISTRY }}/${{ env.OCI_IMAGE_NAME }}@${{ needs.build-oci.outputs.digest }}"
+          cosign verify \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "https://github.com/${{ github.workflow_ref }}" \
+            "${REF}" 
+  
+  build-nuget:
+    needs: build-oci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    outputs:
+      digest: ${{ steps.build-nuget.outputs.digest }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: sigstore/cosign-installer@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.NUGET_IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ github.sha }}
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref,'refs/tags/v') }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref,'refs/tags/v') }}
+            type=ref,event=branch
+            type=ref,event=pr
+      - id: build-nuget
+        uses: docker/build-push-action@v5
+        with:
+          context: ./nuget
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+          provenance: mode=max
+
+      - name: Sign image (OIDC)
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          COSIGN_YES: "true"
+        run: |
+          REF="${{ env.REGISTRY }}/${{ env.NUGET_IMAGE_NAME }}@${{ steps.build-nuget.outputs.digest }}"
+          cosign sign "${REF}"
+# ──────────────────────────────────────────────────────── verify ─────
+  verify-nuget:
+    needs: build-nuget
+    runs-on: ubuntu-latest
+    permissions:
+      packages: read
+      id-token: write
+
+    steps:
+      - uses: sigstore/cosign-installer@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify signature
+        run: |
+          REF="${{ env.REGISTRY }}/${{ env.NUGET_IMAGE_NAME }}@${{ needs.build-nuget.outputs.digest }}"
+          cosign verify \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "https://github.com/${{ github.workflow_ref }}" \
+            "${REF}"           
+
+
+  build-maven:
+    needs: build-nuget
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    outputs:
+      digest: ${{ steps.build-maven.outputs.digest }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: sigstore/cosign-installer@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.MAVEN_IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ github.sha }}
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref,'refs/tags/v') }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref,'refs/tags/v') }}
+            type=ref,event=branch
+            type=ref,event=pr
+      - id: build-maven
+        uses: docker/build-push-action@v5
+        with:
+          context: ./maven
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+          provenance: mode=max
+
+      - name: Sign image (OIDC)
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          COSIGN_YES: "true"
+        run: |
+          REF="${{ env.REGISTRY }}/${{ env.MAVEN_IMAGE_NAME }}@${{ steps.build-maven.outputs.digest }}"
+          cosign sign "${REF}"
+# ──────────────────────────────────────────────────────── verify ─────
+  verify-maven:
+    needs: build-maven
+    runs-on: ubuntu-latest
+    permissions:
+      packages: read
+      id-token: write
+
+    steps:
+      - uses: sigstore/cosign-installer@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify signature
+        run: |
+          REF="${{ env.REGISTRY }}/${{ env.MAVEN_IMAGE_NAME }}@${{ needs.build-maven.outputs.digest }}"
+          cosign verify \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "https://github.com/${{ github.workflow_ref }}" \
+            "${REF}"            
+  
+  build-bridge:
+    needs: build-maven
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    outputs:
+      digest: ${{ steps.build-bridge.outputs.digest }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: sigstore/cosign-installer@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.BRIDGE_IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ github.sha }}
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref,'refs/tags/v') }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref,'refs/tags/v') }}
+            type=ref,event=branch
+            type=ref,event=pr
+      - id: build-bridge
+        uses: docker/build-push-action@v5
+        with:
+          context: ./bridge
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+          provenance: mode=max
+
+      - name: Sign image (OIDC)
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          COSIGN_YES: "true"
+        run: |
+          REF="${{ env.REGISTRY }}/${{ env.BRIDGE_IMAGE_NAME }}@${{ steps.build-bridge.outputs.digest }}"
+          cosign sign "${REF}"
+# ──────────────────────────────────────────────────────── verify ─────
+  verify-bridge:
+    needs: build-bridge
+    runs-on: ubuntu-latest
+    permissions:
+      packages: read
+      id-token: write
+
+    steps:
+      - uses: sigstore/cosign-installer@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify signature
+        run: |
+          REF="${{ env.REGISTRY }}/${{ env.BRIDGE_IMAGE_NAME }}@${{ needs.build-bridge.outputs.digest }}"
+          cosign verify \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "https://github.com/${{ github.workflow_ref }}" \
+            "${REF}" 
+
   deploy:
+    needs: [verify-pypi, verify-npm, verify-oci, verify-nuget, verify-maven, verify-bridge]
     if: ${{ github.event.inputs.deploy == 'true' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') }}
     runs-on: ubuntu-latest
     permissions:
@@ -63,6 +531,8 @@ jobs:
       LOCATION:       ${{ github.event.inputs.location       || 'westeurope' }}
       ENV_NAME:       ${{ github.event.inputs.env_name       || 'xregistry-package-registries' }}
       APP_NAME:       ${{ github.event.inputs.app_name       || 'xregistry-package-registries' }}
+      
+
 
     steps:
       - uses: actions/checkout@v4
@@ -146,12 +616,12 @@ jobs:
       - name: Deploy xRegistry Container App (All Services)
         run: |
           # Image URIs
-          BRIDGE_IMG="${{ env.REGISTRY }}/${{ github.repository }}/xregistry-bridge:${{ env.IMAGE_TAG }}"
-          NPM_IMG="${{ env.REGISTRY }}/${{ github.repository }}/xregistry-npm-bridge:${{ env.IMAGE_TAG }}"
-          PYPI_IMG="${{ env.REGISTRY }}/${{ github.repository }}/xregistry-pypi-bridge:${{ env.IMAGE_TAG }}"
-          MAVEN_IMG="${{ env.REGISTRY }}/${{ github.repository }}/xregistry-maven-bridge:${{ env.IMAGE_TAG }}"
-          NUGET_IMG="${{ env.REGISTRY }}/${{ github.repository }}/xregistry-nuget-bridge:${{ env.IMAGE_TAG }}"
-          OCI_IMG="${{ env.REGISTRY }}/${{ github.repository }}/xregistry-oci-bridge:${{ env.IMAGE_TAG }}"
+          BRIDGE_IMG=${{ env.REGISTRY }}/${{ github.repository }}/xregistry-bridge:$IMAGE_TAG
+          NPM_IMG=${{ env.REGISTRY }}/${{ github.repository }}/xregistry-npm-bridge:$IMAGE_TAG
+          PYPI_IMG=${{ env.REGISTRY }}/${{ github.repository }}/xregistry-pypi-bridge:$IMAGE_TAG
+          MAVEN_IMG=${{ env.REGISTRY }}/${{ github.repository }}/xregistry-maven-bridge:$IMAGE_TAG
+          NUGET_IMG=${{ env.REGISTRY }}/${{ github.repository }}/xregistry-nuget-bridge:$IMAGE_TAG
+          OCI_IMG=${{ env.REGISTRY }}/${{ github.repository }}/xregistry-oci-bridge:$IMAGE_TAG
           
           # Create downstreams configuration for bridge
           DOWNSTREAMS_JSON=$(cat << 'EOF'
@@ -199,6 +669,8 @@ jobs:
           # Create Container App YAML configuration (single source of truth)
           create_containerapp_yaml() {
             local fqdn=$1
+            
+            # Create a temporary file with the YAML content
             cat > containerapp.yaml << EOF
           properties:
             environmentId: /subscriptions/${{ steps.get-env-id.outputs.subscription-id }}/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.App/managedEnvironments/$ENV_NAME
@@ -244,11 +716,20 @@ jobs:
                     - name: DOWNSTREAMS_JSON
                       value: '$DOWNSTREAMS_JSON'
                     - name: STARTUP_WAIT_TIME
-                      value: "15000"
-                    - name: RETRY_INTERVAL
                       value: "60000"
+                    - name: RETRY_INTERVAL
+                      value: "15000"
                     - name: SERVER_HEALTH_TIMEOUT
                       value: "10000"
+                  probes:
+                    - type: startup
+                      httpGet:
+                        path: /health
+                        port: 8080
+                      initialDelaySeconds: 90
+                      periodSeconds: 10
+                      timeoutSeconds: 5
+                      failureThreshold: 18
                 - name: npm
                   image: $NPM_IMG
                   resources:
@@ -273,39 +754,39 @@ jobs:
                     - name: XREGISTRY_NPM_API_KEY
                       secretRef: npm-api-key
                   probes:
-                    - type: liveness
-                      httpGet:
-                        path: /model
-                        port: 3100
-                        httpHeaders:
-                          - name: Authorization
-                            value: Bearer $NPM_API_KEY
-                      initialDelaySeconds: 30
-                      periodSeconds: 10
-                      timeoutSeconds: 5
-                      failureThreshold: 3
-                    - type: readiness
-                      httpGet:
-                        path: /model
-                        port: 3100
-                        httpHeaders:
-                          - name: Authorization
-                            value: Bearer $NPM_API_KEY
-                      initialDelaySeconds: 5
-                      periodSeconds: 5
-                      timeoutSeconds: 5
-                      failureThreshold: 3
                     - type: startup
                       httpGet:
                         path: /model
                         port: 3100
                         httpHeaders:
                           - name: Authorization
-                            value: Bearer $NPM_API_KEY
-                      initialDelaySeconds: 10
+                            value: "Bearer $NPM_API_KEY"
+                      initialDelaySeconds: 30
                       periodSeconds: 5
                       timeoutSeconds: 5
-                      failureThreshold: 30
+                      failureThreshold: 24
+                    - type: readiness
+                      httpGet:
+                        path: /model
+                        port: 3100
+                        httpHeaders:
+                          - name: Authorization
+                            value: "Bearer $NPM_API_KEY"
+                      initialDelaySeconds: 5
+                      periodSeconds: 5
+                      timeoutSeconds: 5
+                      failureThreshold: 3
+                    - type: liveness
+                      httpGet:
+                        path: /model
+                        port: 3100
+                        httpHeaders:
+                          - name: Authorization
+                            value: "Bearer $NPM_API_KEY"
+                      initialDelaySeconds: 60
+                      periodSeconds: 10
+                      timeoutSeconds: 5
+                      failureThreshold: 3
                 - name: pypi
                   image: $PYPI_IMG
                   resources:
@@ -330,39 +811,39 @@ jobs:
                     - name: XREGISTRY_PYPI_API_KEY
                       secretRef: pypi-api-key
                   probes:
-                    - type: liveness
-                      httpGet:
-                        path: /model
-                        port: 3000
-                        httpHeaders:
-                          - name: Authorization
-                            value: Bearer $PYPI_API_KEY
-                      initialDelaySeconds: 30
-                      periodSeconds: 10
-                      timeoutSeconds: 5
-                      failureThreshold: 3
-                    - type: readiness
-                      httpGet:
-                        path: /model
-                        port: 3000
-                        httpHeaders:
-                          - name: Authorization
-                            value: Bearer $PYPI_API_KEY
-                      initialDelaySeconds: 5
-                      periodSeconds: 5
-                      timeoutSeconds: 5
-                      failureThreshold: 3
                     - type: startup
                       httpGet:
                         path: /model
                         port: 3000
                         httpHeaders:
                           - name: Authorization
-                            value: Bearer $PYPI_API_KEY
-                      initialDelaySeconds: 10
+                            value: "Bearer $PYPI_API_KEY"
+                      initialDelaySeconds: 30
                       periodSeconds: 5
                       timeoutSeconds: 5
-                      failureThreshold: 30
+                      failureThreshold: 24
+                    - type: readiness
+                      httpGet:
+                        path: /model
+                        port: 3000
+                        httpHeaders:
+                          - name: Authorization
+                            value: "Bearer $PYPI_API_KEY"
+                      initialDelaySeconds: 5
+                      periodSeconds: 5
+                      timeoutSeconds: 5
+                      failureThreshold: 3
+                    - type: liveness
+                      httpGet:
+                        path: /model
+                        port: 3000
+                        httpHeaders:
+                          - name: Authorization
+                            value: "Bearer $PYPI_API_KEY"
+                      initialDelaySeconds: 60
+                      periodSeconds: 10
+                      timeoutSeconds: 5
+                      failureThreshold: 3
                 - name: maven
                   image: $MAVEN_IMG
                   resources:
@@ -387,39 +868,39 @@ jobs:
                     - name: XREGISTRY_MAVEN_API_KEY
                       secretRef: maven-api-key
                   probes:
-                    - type: liveness
-                      httpGet:
-                        path: /model
-                        port: 3300
-                        httpHeaders:
-                          - name: Authorization
-                            value: Bearer $MAVEN_API_KEY
-                      initialDelaySeconds: 30
-                      periodSeconds: 10
-                      timeoutSeconds: 5
-                      failureThreshold: 3
-                    - type: readiness
-                      httpGet:
-                        path: /model
-                        port: 3300
-                        httpHeaders:
-                          - name: Authorization
-                            value: Bearer $MAVEN_API_KEY
-                      initialDelaySeconds: 5
-                      periodSeconds: 5
-                      timeoutSeconds: 5
-                      failureThreshold: 3
                     - type: startup
                       httpGet:
                         path: /model
                         port: 3300
                         httpHeaders:
                           - name: Authorization
-                            value: Bearer $MAVEN_API_KEY
-                      initialDelaySeconds: 10
+                            value: "Bearer $MAVEN_API_KEY"
+                      initialDelaySeconds: 30
                       periodSeconds: 5
                       timeoutSeconds: 5
-                      failureThreshold: 30
+                      failureThreshold: 24
+                    - type: readiness
+                      httpGet:
+                        path: /model
+                        port: 3300
+                        httpHeaders:
+                          - name: Authorization
+                            value: "Bearer $MAVEN_API_KEY"
+                      initialDelaySeconds: 5
+                      periodSeconds: 5
+                      timeoutSeconds: 5
+                      failureThreshold: 3
+                    - type: liveness
+                      httpGet:
+                        path: /model
+                        port: 3300
+                        httpHeaders:
+                          - name: Authorization
+                            value: "Bearer $MAVEN_API_KEY"
+                      initialDelaySeconds: 60
+                      periodSeconds: 10
+                      timeoutSeconds: 5
+                      failureThreshold: 3
                 - name: nuget
                   image: $NUGET_IMG
                   resources:
@@ -444,39 +925,39 @@ jobs:
                     - name: XREGISTRY_NUGET_API_KEY
                       secretRef: nuget-api-key
                   probes:
-                    - type: liveness
-                      httpGet:
-                        path: /model
-                        port: 3200
-                        httpHeaders:
-                          - name: Authorization
-                            value: Bearer $NUGET_API_KEY
-                      initialDelaySeconds: 30
-                      periodSeconds: 10
-                      timeoutSeconds: 5
-                      failureThreshold: 3
-                    - type: readiness
-                      httpGet:
-                        path: /model
-                        port: 3200
-                        httpHeaders:
-                          - name: Authorization
-                            value: Bearer $NUGET_API_KEY
-                      initialDelaySeconds: 5
-                      periodSeconds: 5
-                      timeoutSeconds: 5
-                      failureThreshold: 3
                     - type: startup
                       httpGet:
                         path: /model
                         port: 3200
                         httpHeaders:
                           - name: Authorization
-                            value: Bearer $NUGET_API_KEY
-                      initialDelaySeconds: 10
+                            value: "Bearer $NUGET_API_KEY"
+                      initialDelaySeconds: 30
                       periodSeconds: 5
                       timeoutSeconds: 5
-                      failureThreshold: 30
+                      failureThreshold: 24
+                    - type: readiness
+                      httpGet:
+                        path: /model
+                        port: 3200
+                        httpHeaders:
+                          - name: Authorization
+                            value: "Bearer $NUGET_API_KEY"
+                      initialDelaySeconds: 5
+                      periodSeconds: 5
+                      timeoutSeconds: 5
+                      failureThreshold: 3
+                    - type: liveness
+                      httpGet:
+                        path: /model
+                        port: 3200
+                        httpHeaders:
+                          - name: Authorization
+                            value: "Bearer $NUGET_API_KEY"
+                      initialDelaySeconds: 60
+                      periodSeconds: 10
+                      timeoutSeconds: 5
+                      failureThreshold: 3
                 - name: oci
                   image: $OCI_IMG
                   resources:
@@ -501,43 +982,50 @@ jobs:
                     - name: XREGISTRY_OCI_API_KEY
                       secretRef: oci-api-key
                   probes:
-                    - type: liveness
-                      httpGet:
-                        path: /model
-                        port: 3400
-                        httpHeaders:
-                          - name: Authorization
-                            value: Bearer $OCI_API_KEY
-                      initialDelaySeconds: 30
-                      periodSeconds: 10
-                      timeoutSeconds: 5
-                      failureThreshold: 3
-                    - type: readiness
-                      httpGet:
-                        path: /model
-                        port: 3400
-                        httpHeaders:
-                          - name: Authorization
-                            value: Bearer $OCI_API_KEY
-                      initialDelaySeconds: 5
-                      periodSeconds: 5
-                      timeoutSeconds: 5
-                      failureThreshold: 3
                     - type: startup
                       httpGet:
                         path: /model
                         port: 3400
                         httpHeaders:
                           - name: Authorization
-                            value: Bearer $OCI_API_KEY
-                      initialDelaySeconds: 10
+                            value: "Bearer $OCI_API_KEY"
+                      initialDelaySeconds: 30
                       periodSeconds: 5
                       timeoutSeconds: 5
-                      failureThreshold: 30
+                      failureThreshold: 24
+                    - type: readiness
+                      httpGet:
+                        path: /model
+                        port: 3400
+                        httpHeaders:
+                          - name: Authorization
+                            value: "Bearer $OCI_API_KEY"
+                      initialDelaySeconds: 5
+                      periodSeconds: 5
+                      timeoutSeconds: 5
+                      failureThreshold: 3
+                    - type: liveness
+                      httpGet:
+                        path: /model
+                        port: 3400
+                        httpHeaders:
+                          - name: Authorization
+                            value: "Bearer $OCI_API_KEY"
+                      initialDelaySeconds: 60
+                      periodSeconds: 10
+                      timeoutSeconds: 5
+                      failureThreshold: 3
               scale:
                 minReplicas: 1
                 maxReplicas: 3
           EOF
+            
+            # Now substitute the actual API key values in the probe headers
+            sed -i "s|Bearer \$NPM_API_KEY|Bearer $NPM_API_KEY|g" containerapp.yaml
+            sed -i "s|Bearer \$PYPI_API_KEY|Bearer $PYPI_API_KEY|g" containerapp.yaml
+            sed -i "s|Bearer \$MAVEN_API_KEY|Bearer $MAVEN_API_KEY|g" containerapp.yaml
+            sed -i "s|Bearer \$NUGET_API_KEY|Bearer $NUGET_API_KEY|g" containerapp.yaml
+            sed -i "s|Bearer \$OCI_API_KEY|Bearer $OCI_API_KEY|g" containerapp.yaml
           }
           
           # Generate the initial YAML file
@@ -556,6 +1044,11 @@ jobs:
               if [ "$PROVISIONING_STATE" = "Succeeded" ] || [ "$PROVISIONING_STATE" = "NotFound" ]; then
                 echo "✅ Container App is ready for operations (State: $PROVISIONING_STATE)"
                 return 0
+              elif [ "$PROVISIONING_STATE" = "Failed" ]; then
+                echo "❌ Container App is in Failed state. Attempting to delete and recreate..."
+                az containerapp delete --name $APP_NAME --resource-group $RESOURCE_GROUP --yes || true
+                sleep 10
+                return 0  # Proceed with creation
               elif [ "$PROVISIONING_STATE" = "InProgress" ] || [ "$PROVISIONING_STATE" = "Running" ]; then
                 echo "⏳ Container App operation in progress (State: $PROVISIONING_STATE). Waiting... (attempt $attempt/$max_attempts)"
                 sleep 30
@@ -643,6 +1136,17 @@ jobs:
             deploy_containerapp
           fi
 
+      - name: Debug Container Status
+        run: |
+          echo "🔍 Checking container app status..."
+          az containerapp show --name $APP_NAME --resource-group $RESOURCE_GROUP --query 'properties.template.containers[].{name:name,image:image}' -o table
+          
+          echo "🔍 Checking container app logs..."
+          az containerapp logs show --name $APP_NAME --resource-group $RESOURCE_GROUP --follow false --tail 50 || echo "Logs not available yet"
+          
+          echo "🔍 Checking container app revision status..."
+          az containerapp revision list --name $APP_NAME --resource-group $RESOURCE_GROUP --query '[].{name:name,active:properties.active,trafficWeight:properties.trafficWeight,provisioningState:properties.provisioningState}' -o table
+
       - name: Health Checks and URLs
         run: |
           echo "🎉 Deployment completed successfully!"
@@ -679,6 +1183,11 @@ jobs:
               if [ "$PROVISIONING_STATE" = "Succeeded" ] || [ "$PROVISIONING_STATE" = "NotFound" ]; then
                 echo "✅ Container App is ready for operations (State: $PROVISIONING_STATE)"
                 return 0
+              elif [ "$PROVISIONING_STATE" = "Failed" ]; then
+                echo "❌ Container App is in Failed state. Attempting to delete and recreate..."
+                az containerapp delete --name $APP_NAME --resource-group $RESOURCE_GROUP --yes || true
+                sleep 10
+                return 0  # Proceed with creation
               elif [ "$PROVISIONING_STATE" = "InProgress" ] || [ "$PROVISIONING_STATE" = "Running" ]; then
                 echo "⏳ Container App operation in progress (State: $PROVISIONING_STATE). Waiting... (attempt $attempt/$max_attempts)"
                 sleep 30
