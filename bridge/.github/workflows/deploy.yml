@@ -1,0 +1,86 @@
+name: Deploy xRegistry Proxy to Azure Container Apps
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'bridge/**'
+  workflow_dispatch:
+
+env:
+  RESOURCE_GROUP: xregistry-rg
+  LOCATION: westeurope
+  ENV_NAME: xregistry-env
+  ACR_NAME: xregistryacr
+  PROXY_APP_NAME: xregistry-proxy
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 🔐 Log in to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: 🐳 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🔐 Log in to ACR
+        uses: azure/docker-login@v1
+        with:
+          login-server: ${{ env.ACR_NAME }}.azurecr.io
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: 🏗️ Build and Push Proxy Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./bridge
+          push: true
+          tags: ${{ env.ACR_NAME }}.azurecr.io/xregistry-proxy:${{ github.sha }},${{ env.ACR_NAME }}.azurecr.io/xregistry-proxy:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: 🚀 Deploy Proxy to ACA
+        uses: azure/container-apps-deploy-action@v2
+        with:
+          acrName: ${{ env.ACR_NAME }}
+          containerAppName: ${{ env.PROXY_APP_NAME }}
+          resourceGroup: ${{ env.RESOURCE_GROUP }}
+          imageToDeploy: ${{ env.ACR_NAME }}.azurecr.io/xregistry-proxy:${{ github.sha }}
+          containerAppEnvironment: ${{ env.ENV_NAME }}
+          ingress: external
+          targetPort: 8080
+          environmentVariables: |
+            BASE_URL=https://${{ env.PROXY_APP_NAME }}.${{ env.LOCATION }}.azurecontainerapps.io
+            BASE_URL_HEADER=x-base-url
+            PROXY_API_KEY=${{ secrets.PROXY_API_KEY }}
+            REQUIRED_GROUPS=${{ secrets.REQUIRED_GROUPS }}
+
+      - name: 📊 Get Deployment Status
+        run: |
+          PROXY_URL=$(az containerapp show --name ${{ env.PROXY_APP_NAME }} --resource-group ${{ env.RESOURCE_GROUP }} --query "properties.configuration.ingress.fqdn" -o tsv)
+          echo "🎉 Deployment completed!"
+          echo "📍 Proxy URL: https://$PROXY_URL"
+          echo "🏥 Health Check: https://$PROXY_URL/health"
+          echo "proxy-url=https://$PROXY_URL" >> $GITHUB_OUTPUT
+
+      - name: 🧪 Test Health Endpoint
+        run: |
+          PROXY_URL=$(az containerapp show --name ${{ env.PROXY_APP_NAME }} --resource-group ${{ env.RESOURCE_GROUP }} --query "properties.configuration.ingress.fqdn" -o tsv)
+          echo "Testing health endpoint..."
+          for i in {1..10}; do
+            if curl -f "https://$PROXY_URL/health"; then
+              echo "✅ Health check passed!"
+              break
+            else
+              echo "⏳ Waiting for service to be ready... (attempt $i/10)"
+              sleep 30
+            fi
+          done 

@@ -1,0 +1,24 @@
+{
+  "servers": [
+    {
+      "url": "http://localhost:4873",
+      "apiKey": "npm-api-key"
+    },
+    {
+      "url": "http://localhost:8081",
+      "apiKey": "pypi-api-key"
+    },
+    {
+      "url": "http://localhost:8082",
+      "apiKey": "maven-api-key"
+    },
+    {
+      "url": "http://localhost:8083",
+      "apiKey": "nuget-api-key"
+    },
+    {
+      "url": "http://localhost:8084",
+      "apiKey": "oci-api-key"
+    }
+  ]
+} 
