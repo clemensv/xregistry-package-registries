@@ -125,7 +125,7 @@ jobs:
 
       - name: Verify signature
         run: |
-          REF="${{ env.REGISTRY }}/${{ env.PYPI_IMAGE_NAME }}@${{ needs.build.outputs.digest }}"
+          REF="${{ env.REGISTRY }}/${{ env.PYPI_IMAGE_NAME }}@${{ needs.build-pypi.outputs.digest }}"
           cosign verify \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             --certificate-identity "https://github.com/${{ github.workflow_ref }}" \
@@ -202,7 +202,7 @@ jobs:
 
       - name: Verify signature
         run: |
-          REF="${{ env.REGISTRY }}/${{ env.NPM_IMAGE_NAME }}@${{ needs.build.outputs.digest }}"
+          REF="${{ env.REGISTRY }}/${{ env.NPM_IMAGE_NAME }}@${{ needs.build-npm.outputs.digest }}"
           cosign verify \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             --certificate-identity "https://github.com/${{ github.workflow_ref }}" \
@@ -279,7 +279,7 @@ jobs:
 
       - name: Verify signature
         run: |
-          REF="${{ env.REGISTRY }}/${{ env.OCI_IMAGE_NAME }}@${{ needs.build.outputs.digest }}"
+          REF="${{ env.REGISTRY }}/${{ env.OCI_IMAGE_NAME }}@${{ needs.build-oci.outputs.digest }}"
           cosign verify \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             --certificate-identity "https://github.com/${{ github.workflow_ref }}" \
@@ -356,7 +356,7 @@ jobs:
 
       - name: Verify signature
         run: |
-          REF="${{ env.REGISTRY }}/${{ env.NUGET_IMAGE_NAME }}@${{ needs.build.outputs.digest }}"
+          REF="${{ env.REGISTRY }}/${{ env.NUGET_IMAGE_NAME }}@${{ needs.build-nuget.outputs.digest }}"
           cosign verify \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             --certificate-identity "https://github.com/${{ github.workflow_ref }}" \
@@ -434,7 +434,7 @@ jobs:
 
       - name: Verify signature
         run: |
-          REF="${{ env.REGISTRY }}/${{ env.MAVEN_IMAGE_NAME }}@${{ needs.build.outputs.digest }}"
+          REF="${{ env.REGISTRY }}/${{ env.MAVEN_IMAGE_NAME }}@${{ needs.build-maven.outputs.digest }}"
           cosign verify \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             --certificate-identity "https://github.com/${{ github.workflow_ref }}" \
@@ -511,7 +511,7 @@ jobs:
 
       - name: Verify signature
         run: |
-          REF="${{ env.REGISTRY }}/${{ env.BRIDGE_IMAGE_NAME }}@${{ needs.build.outputs.digest }}"
+          REF="${{ env.REGISTRY }}/${{ env.BRIDGE_IMAGE_NAME }}@${{ needs.build-bridge.outputs.digest }}"
           cosign verify \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             --certificate-identity "https://github.com/${{ github.workflow_ref }}" \
