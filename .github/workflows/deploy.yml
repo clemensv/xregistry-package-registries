@@ -1,4 +1,4 @@
-name: Deploy xRegistry to Azure Container Apps
+name: Build & Deploy xRegistry to Azure Container Apps
 
 on:
   push:
@@ -47,10 +47,478 @@ on:
         type: string
 
 env:
-  REGISTRY: ghcr.io
+    REGISTRY: ghcr.io
+    PYPI_IMAGE_NAME: ${{ github.repository }}/xregistry-pypi-bridge
+    OCI_IMAGE_NAME: ${{ github.repository }}/xregistry-oci-bridge
+    NPM_IMAGE_NAME: ${{ github.repository }}/xregistry-npm-bridge
+    MAVEN_IMAGE_NAME: ${{ github.repository }}/xregistry-maven-bridge
+    NUGET_IMAGE_NAME: ${{ github.repository }}/xregistry-nuget-bridge
+    BRIDGE_IMAGE_NAME: ${{ github.repository }}/xregistry-bridge
 
 jobs:
+  
+  build-pypi:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: sigstore/cosign-installer@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.PYPI_IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ github.sha }}
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref,'refs/tags/v') }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref,'refs/tags/v') }}
+            type=ref,event=branch
+            type=ref,event=pr
+      - id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: ./pypi
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          provenance: mode=max
+      - name: Sign image (OIDC)
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          COSIGN_YES: "true"
+        run: |
+          REF="${{ env.REGISTRY }}/${{ env.PYPI_IMAGE_NAME }}@${{ steps.build.outputs.digest }}"
+          cosign sign "${REF}"
+# ──────────────────────────────────────────────────────── verify ─────
+  verify-pypi:
+    needs: build-pypi
+    runs-on: ubuntu-latest
+    permissions:
+      packages: read
+      id-token: write
+
+    steps:
+      - uses: sigstore/cosign-installer@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify signature
+        run: |
+          REF="${{ env.REGISTRY }}/${{ env.PYPI_IMAGE_NAME }}@${{ needs.build.outputs.digest }}"
+          cosign verify \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "https://github.com/${{ github.workflow_ref }}" \
+            "${REF}" 
+
+  build-npm:
+    needs: build-pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: sigstore/cosign-installer@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.NPM_IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ github.sha }}
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref,'refs/tags/v') }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref,'refs/tags/v') }}
+            type=ref,event=branch
+            type=ref,event=pr
+      - id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: ./npm
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+          provenance: mode=max
+
+      - name: Sign image (OIDC)
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          COSIGN_YES: "true"
+        run: |
+          REF="${{ env.REGISTRY }}/${{ env.NPM_IMAGE_NAME }}@${{ steps.build.outputs.digest }}"
+          cosign sign "${REF}"
+# ──────────────────────────────────────────────────────── verify ─────
+  verify-npm:
+    needs: build-npm
+    runs-on: ubuntu-latest
+    permissions:
+      packages: read
+      id-token: write
+
+    steps:
+      - uses: sigstore/cosign-installer@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify signature
+        run: |
+          REF="${{ env.REGISTRY }}/${{ env.NPM_IMAGE_NAME }}@${{ needs.build.outputs.digest }}"
+          cosign verify \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "https://github.com/${{ github.workflow_ref }}" \
+            "${REF}"     
+  
+  build-oci:
+    needs: build-npm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: sigstore/cosign-installer@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.OCI_IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ github.sha }}
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref,'refs/tags/v') }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref,'refs/tags/v') }}
+            type=ref,event=branch
+            type=ref,event=pr
+      - id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: ./oci
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+          provenance: mode=max
+
+      - name: Sign image (OIDC)
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          COSIGN_YES: "true"
+        run: |
+          REF="${{ env.REGISTRY }}/${{ env.OCI_IMAGE_NAME }}@${{ steps.build.outputs.digest }}"
+          cosign sign "${REF}"
+# ──────────────────────────────────────────────────────── verify ─────
+  verify-oci:
+    needs: build-oci
+    runs-on: ubuntu-latest
+    permissions:
+      packages: read
+      id-token: write
+
+    steps:
+      - uses: sigstore/cosign-installer@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify signature
+        run: |
+          REF="${{ env.REGISTRY }}/${{ env.OCI_IMAGE_NAME }}@${{ needs.build.outputs.digest }}"
+          cosign verify \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "https://github.com/${{ github.workflow_ref }}" \
+            "${REF}" 
+  
+  build-nuget:
+    needs: build-oci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: sigstore/cosign-installer@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.NUGET_IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ github.sha }}
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref,'refs/tags/v') }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref,'refs/tags/v') }}
+            type=ref,event=branch
+            type=ref,event=pr
+      - id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: ./nuget
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+          provenance: mode=max
+
+      - name: Sign image (OIDC)
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          COSIGN_YES: "true"
+        run: |
+          REF="${{ env.REGISTRY }}/${{ env.NUGET_IMAGE_NAME }}@${{ steps.build.outputs.digest }}"
+          cosign sign "${REF}"
+# ──────────────────────────────────────────────────────── verify ─────
+  verify-nuget:
+    needs: build-nuget
+    runs-on: ubuntu-latest
+    permissions:
+      packages: read
+      id-token: write
+
+    steps:
+      - uses: sigstore/cosign-installer@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify signature
+        run: |
+          REF="${{ env.REGISTRY }}/${{ env.NUGET_IMAGE_NAME }}@${{ needs.build.outputs.digest }}"
+          cosign verify \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "https://github.com/${{ github.workflow_ref }}" \
+            "${REF}"           
+
+
+  build-maven:
+    needs: build-nuget
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: sigstore/cosign-installer@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.MAVEN_IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ github.sha }}
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref,'refs/tags/v') }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref,'refs/tags/v') }}
+            type=ref,event=branch
+            type=ref,event=pr
+      - id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: ./maven
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+          provenance: mode=max
+
+      - name: Sign image (OIDC)
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          COSIGN_YES: "true"
+        run: |
+          REF="${{ env.REGISTRY }}/${{ env.MAVEN_IMAGE_NAME }}@${{ steps.build.outputs.digest }}"
+          cosign sign "${REF}"
+# ──────────────────────────────────────────────────────── verify ─────
+  verify-maven:
+    needs: build-maven
+    runs-on: ubuntu-latest
+    permissions:
+      packages: read
+      id-token: write
+
+    steps:
+      - uses: sigstore/cosign-installer@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify signature
+        run: |
+          REF="${{ env.REGISTRY }}/${{ env.MAVEN_IMAGE_NAME }}@${{ needs.build.outputs.digest }}"
+          cosign verify \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "https://github.com/${{ github.workflow_ref }}" \
+            "${REF}"            
+  
+  build-bridge:
+    needs: build-maven
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: sigstore/cosign-installer@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.BRIDGE_IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ github.sha }}
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref,'refs/tags/v') }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref,'refs/tags/v') }}
+            type=ref,event=branch
+            type=ref,event=pr
+      - id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: ./bridge
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+          provenance: mode=max
+
+      - name: Sign image (OIDC)
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          COSIGN_YES: "true"
+        run: |
+          REF="${{ env.REGISTRY }}/${{ env.BRIDGE_IMAGE_NAME }}@${{ steps.build.outputs.digest }}"
+          cosign sign "${REF}"
+# ──────────────────────────────────────────────────────── verify ─────
+  verify-bridge:
+    needs: build-bridge
+    runs-on: ubuntu-latest
+    permissions:
+      packages: read
+      id-token: write
+
+    steps:
+      - uses: sigstore/cosign-installer@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify signature
+        run: |
+          REF="${{ env.REGISTRY }}/${{ env.BRIDGE_IMAGE_NAME }}@${{ needs.build.outputs.digest }}"
+          cosign verify \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "https://github.com/${{ github.workflow_ref }}" \
+            "${REF}" 
+
   deploy:
+    needs: [verify-pypi, verify-npm, verify-oci, verify-nuget, verify-maven, verify-bridge]
     if: ${{ github.event.inputs.deploy == 'true' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') }}
     runs-on: ubuntu-latest
     permissions:
@@ -63,6 +531,8 @@ jobs:
       LOCATION:       ${{ github.event.inputs.location       || 'westeurope' }}
       ENV_NAME:       ${{ github.event.inputs.env_name       || 'xregistry-package-registries' }}
       APP_NAME:       ${{ github.event.inputs.app_name       || 'xregistry-package-registries' }}
+      
+
 
     steps:
       - uses: actions/checkout@v4
