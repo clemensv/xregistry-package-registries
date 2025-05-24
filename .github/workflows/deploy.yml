@@ -50,10 +50,10 @@ jobs:
       id-token: write
 
     env:
-      RESOURCE_GROUP: ${{ github.event.inputs.resource_group || 'xregistry-resources' }}
+      RESOURCE_GROUP: ${{ github.event.inputs.resource_group || 'xregistry-package-registries' }}
       LOCATION:       ${{ github.event.inputs.location       || 'westeurope' }}
-      ENV_NAME:       ${{ github.event.inputs.env_name       || 'xregistry-env' }}
-      APP_NAME:       ${{ github.event.inputs.app_name       || 'xregistry-app' }}
+      ENV_NAME:       ${{ github.event.inputs.env_name       || 'xregistry-package-registries' }}
+      APP_NAME:       ${{ github.event.inputs.app_name       || 'xregistry-package-registries' }}
 
     steps:
       - uses: actions/checkout@v4
