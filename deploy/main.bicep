@@ -283,7 +283,7 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
               initialDelaySeconds: 60
               periodSeconds: 10
               timeoutSeconds: 5
-              failureThreshold: 18
+              failureThreshold: 3
             }
             {
               type: 'liveness'
@@ -365,6 +365,12 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
               httpGet: {
                 path: '/model'
                 port: 3100
+                httpHeaders: [
+                  {
+                    name: 'Authorization'
+                    value: 'Bearer ${npmApiKey}'
+                  }
+                ]
               }
               initialDelaySeconds: 30
               periodSeconds: 5
@@ -376,6 +382,12 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
               httpGet: {
                 path: '/model'
                 port: 3100
+                httpHeaders: [
+                  {
+                    name: 'Authorization'
+                    value: 'Bearer ${npmApiKey}'
+                  }
+                ]
               }
               initialDelaySeconds: 60
               periodSeconds: 10
@@ -387,6 +399,12 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
               httpGet: {
                 path: '/model'
                 port: 3100
+                httpHeaders: [
+                  {
+                    name: 'Authorization'
+                    value: 'Bearer ${npmApiKey}'
+                  }
+                ]
               }
               initialDelaySeconds: 5
               periodSeconds: 5
@@ -451,6 +469,12 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
               httpGet: {
                 path: '/model'
                 port: 3000
+                httpHeaders: [
+                  {
+                    name: 'Authorization'
+                    value: 'Bearer ${pypiApiKey}'
+                  }
+                ]
               }
               initialDelaySeconds: 30
               periodSeconds: 5
@@ -462,6 +486,12 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
               httpGet: {
                 path: '/model'
                 port: 3000
+                httpHeaders: [
+                  {
+                    name: 'Authorization'
+                    value: 'Bearer ${pypiApiKey}'
+                  }
+                ]
               }
               initialDelaySeconds: 60
               periodSeconds: 10
@@ -473,6 +503,12 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
               httpGet: {
                 path: '/model'
                 port: 3000
+                httpHeaders: [
+                  {
+                    name: 'Authorization'
+                    value: 'Bearer ${pypiApiKey}'
+                  }
+                ]
               }
               initialDelaySeconds: 5
               periodSeconds: 5
@@ -537,6 +573,12 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
               httpGet: {
                 path: '/model'
                 port: 3300
+                httpHeaders: [
+                  {
+                    name: 'Authorization'
+                    value: 'Bearer ${mavenApiKey}'
+                  }
+                ]
               }
               initialDelaySeconds: 30
               periodSeconds: 5
@@ -548,6 +590,12 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
               httpGet: {
                 path: '/model'
                 port: 3300
+                httpHeaders: [
+                  {
+                    name: 'Authorization'
+                    value: 'Bearer ${mavenApiKey}'
+                  }
+                ]
               }
               initialDelaySeconds: 60
               periodSeconds: 10
@@ -559,6 +607,12 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
               httpGet: {
                 path: '/model'
                 port: 3300
+                httpHeaders: [
+                  {
+                    name: 'Authorization'
+                    value: 'Bearer ${mavenApiKey}'
+                  }
+                ]
               }
               initialDelaySeconds: 5
               periodSeconds: 5
@@ -623,6 +677,12 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
               httpGet: {
                 path: '/model'
                 port: 3200
+                httpHeaders: [
+                  {
+                    name: 'Authorization'
+                    value: 'Bearer ${nugetApiKey}'
+                  }
+                ]
               }
               initialDelaySeconds: 30
               periodSeconds: 5
@@ -634,6 +694,12 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
               httpGet: {
                 path: '/model'
                 port: 3200
+                httpHeaders: [
+                  {
+                    name: 'Authorization'
+                    value: 'Bearer ${nugetApiKey}'
+                  }
+                ]
               }
               initialDelaySeconds: 60
               periodSeconds: 10
@@ -645,6 +711,12 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
               httpGet: {
                 path: '/model'
                 port: 3200
+                httpHeaders: [
+                  {
+                    name: 'Authorization'
+                    value: 'Bearer ${nugetApiKey}'
+                  }
+                ]
               }
               initialDelaySeconds: 5
               periodSeconds: 5
@@ -709,6 +781,12 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
               httpGet: {
                 path: '/model'
                 port: 3400
+                httpHeaders: [
+                  {
+                    name: 'Authorization'
+                    value: 'Bearer ${ociApiKey}'
+                  }
+                ]
               }
               initialDelaySeconds: 30
               periodSeconds: 5
@@ -720,6 +798,12 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
               httpGet: {
                 path: '/model'
                 port: 3400
+                httpHeaders: [
+                  {
+                    name: 'Authorization'
+                    value: 'Bearer ${ociApiKey}'
+                  }
+                ]
               }
               initialDelaySeconds: 60
               periodSeconds: 10
@@ -731,6 +815,12 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
               httpGet: {
                 path: '/model'
                 port: 3400
+                httpHeaders: [
+                  {
+                    name: 'Authorization'
+                    value: 'Bearer ${ociApiKey}'
+                  }
+                ]
               }
               initialDelaySeconds: 5
               periodSeconds: 5
