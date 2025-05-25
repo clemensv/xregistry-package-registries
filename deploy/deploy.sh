@@ -242,6 +242,27 @@ install_containerapp_extension() {
     fi
 }
 
+# Register required resource providers
+register_resource_providers() {
+    log_info "Registering required Azure resource providers..."
+    
+    if [[ "$DRY_RUN" == "false" ]]; then
+        # Register Microsoft.Insights (Application Insights, monitoring)
+        log_verbose "Registering Microsoft.Insights..."
+        az provider register --namespace Microsoft.Insights --wait
+        
+        # Register Microsoft.App (Container Apps)
+        log_verbose "Registering Microsoft.App..."
+        az provider register --namespace Microsoft.App --wait
+        
+        # Register Microsoft.OperationalInsights (Log Analytics)
+        log_verbose "Registering Microsoft.OperationalInsights..."
+        az provider register --namespace Microsoft.OperationalInsights --wait
+        
+        log_success "Resource providers registered successfully"
+    fi
+}
+
 # Create parameters file with substituted values
 create_parameters_file() {
     local temp_params="$SCRIPT_DIR/parameters.tmp.json"
@@ -403,6 +424,7 @@ main() {
     check_azure_cli
     ensure_resource_group
     install_containerapp_extension
+    register_resource_providers
     
     # Create temporary files with substituted values
     local temp_params
