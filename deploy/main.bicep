@@ -227,12 +227,6 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             cpu: json(bridgeCpu)
             memory: bridgeMemory
           }
-          ports: [
-            {
-              containerPort: 8080
-              protocol: 'TCP'
-            }
-          ]
           env: [
             {
               name: 'NODE_ENV'
@@ -323,12 +317,6 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             cpu: json(serviceCpu)
             memory: serviceMemory
           }
-          ports: [
-            {
-              containerPort: 3100
-              protocol: 'TCP'
-            }
-          ]
           env: [
             {
               name: 'NODE_ENV'
@@ -415,12 +403,6 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             cpu: json(serviceCpu)
             memory: serviceMemory
           }
-          ports: [
-            {
-              containerPort: 3000
-              protocol: 'TCP'
-            }
-          ]
           env: [
             {
               name: 'NODE_ENV'
@@ -507,12 +489,6 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             cpu: json(serviceCpu)
             memory: serviceMemory
           }
-          ports: [
-            {
-              containerPort: 3300
-              protocol: 'TCP'
-            }
-          ]
           env: [
             {
               name: 'NODE_ENV'
@@ -599,12 +575,6 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             cpu: json(serviceCpu)
             memory: serviceMemory
           }
-          ports: [
-            {
-              containerPort: 3200
-              protocol: 'TCP'
-            }
-          ]
           env: [
             {
               name: 'NODE_ENV'
@@ -691,12 +661,6 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             cpu: json(bridgeCpu)
             memory: bridgeMemory
           }
-          ports: [
-            {
-              containerPort: 3400
-              protocol: 'TCP'
-            }
-          ]
           env: [
             {
               name: 'NODE_ENV'
