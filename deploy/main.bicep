@@ -64,7 +64,8 @@ var baseUrl = 'https://${containerAppName}.${containerAppEnvironment.properties.
 
 // Container image URIs
 // Determine image path format based on registry type
-var imagePrefix = empty(repositoryName) ? '' : '${repositoryName}/'
+// When using ACR, repositoryName will be 'ACR_NO_PREFIX' to indicate no prefix needed
+var imagePrefix = (empty(repositoryName) || repositoryName == 'ACR_NO_PREFIX') ? '' : '${repositoryName}/'
 var bridgeImage = '${containerRegistryServer}/${imagePrefix}xregistry-bridge:${imageTag}'
 var npmImage = '${containerRegistryServer}/${imagePrefix}xregistry-npm-bridge:${imageTag}'
 var pypiImage = '${containerRegistryServer}/${imagePrefix}xregistry-pypi-bridge:${imageTag}'

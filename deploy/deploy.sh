@@ -519,7 +519,7 @@ create_parameters_file() {
             exit 1
         fi
         
-        image_repository=""  # ACR uses short image names
+        image_repository="ACR_NO_PREFIX"  # Special marker for ACR - no repository prefix needed
         log_info "Using ACR: $registry_server (username: $registry_username)"
     else
         registry_server="ghcr.io"
