@@ -280,7 +280,7 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
                 path: '/health'
                 port: 8080
               }
-              initialDelaySeconds: 90
+              initialDelaySeconds: 60
               periodSeconds: 10
               timeoutSeconds: 5
               failureThreshold: 18
@@ -291,7 +291,7 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
                 path: '/health'
                 port: 8080
               }
-              initialDelaySeconds: 120
+              initialDelaySeconds: 60
               periodSeconds: 30
               timeoutSeconds: 10
               failureThreshold: 3
