@@ -63,12 +63,14 @@ var ociApiKey = 'oci-${uniqueString(resourceGroup().id, 'oci')}'
 var baseUrl = 'https://${containerAppName}.${containerAppEnvironment.properties.defaultDomain}'
 
 // Container image URIs
-var bridgeImage = '${containerRegistryServer}/${repositoryName}/xregistry-bridge:${imageTag}'
-var npmImage = '${containerRegistryServer}/${repositoryName}/xregistry-npm-bridge:${imageTag}'
-var pypiImage = '${containerRegistryServer}/${repositoryName}/xregistry-pypi-bridge:${imageTag}'
-var mavenImage = '${containerRegistryServer}/${repositoryName}/xregistry-maven-bridge:${imageTag}'
-var nugetImage = '${containerRegistryServer}/${repositoryName}/xregistry-nuget-bridge:${imageTag}'
-var ociImage = '${containerRegistryServer}/${repositoryName}/xregistry-oci-bridge:${imageTag}'
+// Determine image path format based on registry type
+var imagePrefix = empty(repositoryName) ? '' : '${repositoryName}/'
+var bridgeImage = '${containerRegistryServer}/${imagePrefix}xregistry-bridge:${imageTag}'
+var npmImage = '${containerRegistryServer}/${imagePrefix}xregistry-npm-bridge:${imageTag}'
+var pypiImage = '${containerRegistryServer}/${imagePrefix}xregistry-pypi-bridge:${imageTag}'
+var mavenImage = '${containerRegistryServer}/${imagePrefix}xregistry-maven-bridge:${imageTag}'
+var nugetImage = '${containerRegistryServer}/${imagePrefix}xregistry-nuget-bridge:${imageTag}'
+var ociImage = '${containerRegistryServer}/${imagePrefix}xregistry-oci-bridge:${imageTag}'
 
 // Downstream services configuration for bridge
 var downstreamsConfig = {
