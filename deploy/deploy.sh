@@ -267,7 +267,7 @@ create_bicep_file() {
     
     log_info "Preparing Bicep template..."
     
-    # Copy the original file for now (FQDN substitution will be handled post-deployment)
+    # No longer need FQDN placeholders - just copy the file
     cp "$BICEP_FILE" "$temp_bicep"
     
     echo "$temp_bicep"
@@ -322,9 +322,6 @@ deploy_infrastructure() {
         log_success "Container App FQDN: https://$fqdn"
         log_success "Application Insights Key: $app_insights_key"
         
-        # Now update the container app with correct FQDN values
-        update_container_app_fqdn "$app_name" "$fqdn"
-        
         # Test the deployment
         test_deployment "$fqdn"
         
@@ -334,40 +331,7 @@ deploy_infrastructure() {
     fi
 }
 
-# Update container app with correct FQDN after initial deployment
-update_container_app_fqdn() {
-    local app_name="$1"
-    local fqdn="$2"
-    
-    log_info "Updating container app with correct FQDN: $fqdn"
-    
-    # Create updated parameters with real FQDN
-    local updated_params="$SCRIPT_DIR/parameters.updated.json"
-    local temp_params="$SCRIPT_DIR/parameters.tmp.json"
-    
-    cat "$temp_params" | \
-        sed "s|{{CONTAINER_APP_FQDN}}|$fqdn|g" \
-        > "$updated_params"
-    
-    # Update Bicep template with real FQDN
-    local updated_bicep="$SCRIPT_DIR/main.updated.bicep"
-    cat "$BICEP_FILE" | \
-        sed "s|{{CONTAINER_APP_FQDN}}|$fqdn|g" \
-        > "$updated_bicep"
-    
-    log_info "Applying FQDN update to container app..."
-    az deployment group create \
-        --resource-group "$RESOURCE_GROUP" \
-        --name "xregistry-fqdn-update-$(date +%Y%m%d-%H%M%S)" \
-        --template-file "$updated_bicep" \
-        --parameters "@$updated_params" \
-        --output table
-    
-    # Cleanup temp files
-    rm -f "$updated_params" "$updated_bicep"
-    
-    log_success "FQDN update completed"
-}
+
 
 # Test the deployment
 test_deployment() {

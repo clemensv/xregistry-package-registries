@@ -59,6 +59,9 @@ var mavenApiKey = 'maven-${uniqueString(resourceGroup().id, 'maven')}'
 var nugetApiKey = 'nuget-${uniqueString(resourceGroup().id, 'nuget')}'
 var ociApiKey = 'oci-${uniqueString(resourceGroup().id, 'oci')}'
 
+// Use a computed base URL that will be valid
+var baseUrl = 'https://${containerAppName}.${containerAppEnvironment.properties.defaultDomain}'
+
 // Container image URIs
 var bridgeImage = '${containerRegistryServer}/${repositoryName}/xregistry-bridge:${imageTag}'
 var npmImage = '${containerRegistryServer}/${repositoryName}/xregistry-npm-bridge:${imageTag}'
@@ -238,7 +241,7 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             }
             {
               name: 'BASE_URL'
-              value: 'https://{{CONTAINER_APP_FQDN}}'
+              value: baseUrl
             }
             {
               name: 'DOWNSTREAMS_JSON'
@@ -332,11 +335,11 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             }
             {
               name: 'XREGISTRY_NPM_BASEURL'
-              value: 'https://{{CONTAINER_APP_FQDN}}'
+              value: baseUrl
             }
             {
               name: 'BASE_URL'
-              value: 'https://{{CONTAINER_APP_FQDN}}'
+              value: baseUrl
             }
             {
               name: 'XREGISTRY_NPM_QUIET'
@@ -436,11 +439,11 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             }
             {
               name: 'XREGISTRY_PYPI_BASEURL'
-              value: 'https://{{CONTAINER_APP_FQDN}}'
+              value: baseUrl
             }
             {
               name: 'BASE_URL'
-              value: 'https://{{CONTAINER_APP_FQDN}}'
+              value: baseUrl
             }
             {
               name: 'XREGISTRY_PYPI_QUIET'
@@ -540,11 +543,11 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             }
             {
               name: 'XREGISTRY_MAVEN_BASEURL'
-              value: 'https://{{CONTAINER_APP_FQDN}}'
+              value: baseUrl
             }
             {
               name: 'BASE_URL'
-              value: 'https://{{CONTAINER_APP_FQDN}}'
+              value: baseUrl
             }
             {
               name: 'XREGISTRY_MAVEN_QUIET'
@@ -644,11 +647,11 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             }
             {
               name: 'XREGISTRY_NUGET_BASEURL'
-              value: 'https://{{CONTAINER_APP_FQDN}}'
+              value: baseUrl
             }
             {
               name: 'BASE_URL'
-              value: 'https://{{CONTAINER_APP_FQDN}}'
+              value: baseUrl
             }
             {
               name: 'XREGISTRY_NUGET_QUIET'
@@ -748,11 +751,11 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             }
             {
               name: 'XREGISTRY_OCI_BASEURL'
-              value: 'https://{{CONTAINER_APP_FQDN}}'
+              value: baseUrl
             }
             {
               name: 'BASE_URL'
-              value: 'https://{{CONTAINER_APP_FQDN}}'
+              value: baseUrl
             }
             {
               name: 'XREGISTRY_OCI_QUIET'
