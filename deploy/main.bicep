@@ -733,8 +733,8 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
           name: 'oci'
           image: ociImage
           resources: {
-            cpu: json(bridgeCpu)
-            memory: bridgeMemory
+            cpu: json(serviceCpu)
+            memory: serviceMemory
           }
           env: [
             {
