@@ -1,44 +1,12 @@
 /**
- * OpenTelemetry-Conformant xRegistry Logging Library
+ * Simple xRegistry Logging Library
  * 
- * Provides OpenTelemetry-compliant structured logging with:
- * - W3C Trace Context propagation
- * - OpenTelemetry semantic conventions
- * - Proper span context correlation
- * - OTLP exporters for Azure Application Insights
- * - Resource detection and attributes
+ * Provides basic structured logging for xRegistry services without OpenTelemetry dependencies
  */
 
-const { NodeSDK } = require('@opentelemetry/sdk-node');
-const { Resource } = require('@opentelemetry/resources');
-const { ResourceAttributes, ResourceDetector } = require('@opentelemetry/resources');
-const { logs, SeverityNumber } = require('@opentelemetry/api-logs');
-const { trace, context, propagation, SpanStatusCode } = require('@opentelemetry/api');
-const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
-const { AzureMonitorLogExporter } = require('@azure/monitor-opentelemetry-exporter');
-const { AzureMonitorTraceExporter } = require('@azure/monitor-opentelemetry-exporter');
-const { AzureMonitorMetricExporter } = require('@azure/monitor-opentelemetry-exporter');
-const { BatchLogRecordProcessor } = require('@opentelemetry/sdk-logs');
-const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
-const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
-const { W3CTraceContextPropagator } = require('@opentelemetry/core');
-
-// OpenTelemetry semantic conventions
-const {
-  SEMATTRS_SERVICE_NAME,
-  SEMATTRS_SERVICE_VERSION,
-  SEMATTRS_DEPLOYMENT_ENVIRONMENT,
-  SEMATTRS_HTTP_METHOD,
-  SEMATTRS_HTTP_URL,
-  SEMATTRS_HTTP_STATUS_CODE,
-  SEMATTRS_HTTP_USER_AGENT,
-  SEMATTRS_HTTP_REQUEST_CONTENT_LENGTH,
-  SEMATTRS_HTTP_RESPONSE_CONTENT_LENGTH,
-  SEMATTRS_NET_PEER_IP,
-  SEMATTRS_ERROR_TYPE,
-  SEMATTRS_EXCEPTION_MESSAGE,
-  SEMATTRS_EXCEPTION_STACKTRACE
-} = require('@opentelemetry/semantic-conventions');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
 
 class XRegistryLogger {
   constructor(options = {}) {
@@ -49,116 +17,29 @@ class XRegistryLogger {
     this.enableFile = options.enableFile || false;
     this.logFile = options.logFile;
     
-    // OpenTelemetry providers
-    this.loggerProvider = null;
-    this.logger = null;
-    this.tracer = null;
-    this.meter = null;
+    // Context for child loggers
+    this.context = options.context || {};
     
-    // Metrics
-    this.requestCounter = null;
-    this.requestDuration = null;
-    this.errorCounter = null;
-    
-    // File stream for legacy file logging support
+    // File stream for file logging
     this.fileStream = null;
     
-    this.initializeOpenTelemetry();
-    
-    // Initialize file logging if requested (for backward compatibility)
+    // Initialize file logging if requested
     if (this.enableFile && this.logFile) {
       this.initializeFileLogging();
     }
-  }
 
-  /**
-   * Initialize OpenTelemetry SDK with Azure exporters
-   */
-  initializeOpenTelemetry() {
-    const connectionString = process.env.APPLICATIONINSIGHTS_CONNECTION_STRING;
-    
-    // Create resource with semantic attributes
-    const resource = new Resource({
-      [SEMATTRS_SERVICE_NAME]: this.serviceName,
-      [SEMATTRS_SERVICE_VERSION]: this.serviceVersion,
-      [SEMATTRS_DEPLOYMENT_ENVIRONMENT]: this.environment,
-      'service.instance.id': process.env.HOSTNAME || require('os').hostname(),
-      'cloud.provider': 'azure',
-      'cloud.platform': 'azure_container_apps'
-    });
-
-    // Configure SDK
-    const sdk = new NodeSDK({
-      resource,
-      instrumentations: [getNodeAutoInstrumentations({
-        '@opentelemetry/instrumentation-console': {
-          enabled: false // We handle logging ourselves
-        }
-      })],
-      textMapPropagator: new W3CTraceContextPropagator()
-    });
-
-    // Add Azure exporters if connection string is available
-    if (connectionString) {
-      // Trace exporter
-      const traceExporter = new AzureMonitorTraceExporter({
-        connectionString
-      });
-      sdk.addSpanProcessor(new BatchSpanProcessor(traceExporter));
-
-      // Log exporter
-      const logExporter = new AzureMonitorLogExporter({
-        connectionString
-      });
-      sdk.addLogRecordProcessor(new BatchLogRecordProcessor(logExporter));
-
-      // Metric exporter
-      const metricExporter = new AzureMonitorMetricExporter({
-        connectionString
-      });
-      sdk.addMetricReader(new PeriodicExportingMetricReader({
-        exporter: metricExporter,
-        exportIntervalMillis: 30000
-      }));
-    }
-
-    // Start SDK
-    sdk.start();
-
-    // Get providers
-    this.logger = logs.getLogger(this.serviceName, this.serviceVersion);
-    this.tracer = trace.getTracer(this.serviceName, this.serviceVersion);
-    this.meter = require('@opentelemetry/api').metrics.getMeter(this.serviceName, this.serviceVersion);
-
-    // Create metrics
-    this.requestCounter = this.meter.createCounter('http_requests_total', {
-      description: 'Total number of HTTP requests'
-    });
-
-    this.requestDuration = this.meter.createHistogram('http_request_duration_ms', {
-      description: 'HTTP request duration in milliseconds'
-    });
-
-    this.errorCounter = this.meter.createCounter('errors_total', {
-      description: 'Total number of errors'
-    });
-
-    this.info('OpenTelemetry initialized', {
-      [SEMATTRS_SERVICE_NAME]: this.serviceName,
-      [SEMATTRS_SERVICE_VERSION]: this.serviceVersion,
-      [SEMATTRS_DEPLOYMENT_ENVIRONMENT]: this.environment,
-      'otel.sdk.enabled': true,
-      'azure.connection_string.configured': !!connectionString
+    this.info('Logger initialized', {
+      serviceName: this.serviceName,
+      serviceVersion: this.serviceVersion,
+      environment: this.environment
     });
   }
 
   /**
-   * Initialize file logging for backward compatibility
+   * Initialize file logging
    */
   initializeFileLogging() {
     try {
-      const fs = require('fs');
-      const path = require('path');
       const logDir = path.dirname(this.logFile);
       if (!fs.existsSync(logDir)) {
         fs.mkdirSync(logDir, { recursive: true });
@@ -175,101 +56,35 @@ class XRegistryLogger {
   }
 
   /**
-   * Express middleware for OpenTelemetry request tracing and logging
+   * Express middleware for request logging
    */
   middleware() {
     return (req, res, next) => {
       const startTime = Date.now();
       
-      // Create span for this request
-      const span = this.tracer.startSpan(`${req.method} ${req.route?.path || req.url}`, {
-        kind: 1, // SERVER
-        attributes: {
-          [SEMATTRS_HTTP_METHOD]: req.method,
-          [SEMATTRS_HTTP_URL]: req.url,
-          [SEMATTRS_HTTP_USER_AGENT]: req.get('User-Agent') || '',
-          [SEMATTRS_NET_PEER_IP]: req.ip || req.connection.remoteAddress,
-          'http.request.header.content-length': req.get('content-length') || 0
-        }
-      });
-
-      // Set span in context
-      const spanContext = trace.setSpan(context.active(), span);
-      
-      // Store context in request for backward compatibility
-      req.otelContext = spanContext;
-      req.span = span;
-      req.logContext = {
-        correlationId: span.spanContext().traceId,
-        method: req.method,
-        url: req.url,
-        userAgent: req.get('User-Agent'),
-        ip: req.ip || req.connection.remoteAddress,
-        startTime,
-        requestId: span.spanContext().spanId
-      };
+      // Store request ID for correlation
+      req.requestId = this.generateRequestId();
+      req.logger = this.child({ requestId: req.requestId });
 
       // Log request start
-      context.with(spanContext, () => {
-        this.info('HTTP request received', {
-          [SEMATTRS_HTTP_METHOD]: req.method,
-          [SEMATTRS_HTTP_URL]: req.url,
-          [SEMATTRS_HTTP_USER_AGENT]: req.get('User-Agent') || '',
-          [SEMATTRS_NET_PEER_IP]: req.ip || req.connection.remoteAddress,
-          'http.request.headers': this.sanitizeHeaders(req.headers)
-        });
+      req.logger.info('Request started', {
+        method: req.method,
+        url: req.url,
+        userAgent: req.get('User-Agent') || '',
+        ip: req.ip || req.connection.remoteAddress
       });
 
-      // Hook into response
+      // Override res.end to log completion
       const originalEnd = res.end;
-      res.end = (chunk, encoding) => {
+      res.end = function(...args) {
         const duration = Date.now() - startTime;
-        const statusCode = res.statusCode;
-
-        // Update span
-        span.setAttributes({
-          [SEMATTRS_HTTP_STATUS_CODE]: statusCode,
-          [SEMATTRS_HTTP_RESPONSE_CONTENT_LENGTH]: res.get('content-length') || chunk?.length || 0
+        req.logger.info('Request completed', {
+          method: req.method,
+          url: req.url,
+          statusCode: res.statusCode,
+          duration: duration
         });
-
-        // Set span status
-        if (statusCode >= 400) {
-          span.setStatus({
-            code: SpanStatusCode.ERROR,
-            message: `HTTP ${statusCode}`
-          });
-        } else {
-          span.setStatus({ code: SpanStatusCode.OK });
-        }
-
-        // Record metrics
-        this.requestCounter.add(1, {
-          [SEMATTRS_HTTP_METHOD]: req.method,
-          [SEMATTRS_HTTP_STATUS_CODE]: statusCode.toString(),
-          [SEMATTRS_SERVICE_NAME]: this.serviceName
-        });
-
-        this.requestDuration.record(duration, {
-          [SEMATTRS_HTTP_METHOD]: req.method,
-          [SEMATTRS_HTTP_STATUS_CODE]: statusCode.toString(),
-          [SEMATTRS_SERVICE_NAME]: this.serviceName
-        });
-
-        // Log request completion
-        context.with(spanContext, () => {
-          this.info('HTTP request completed', {
-            [SEMATTRS_HTTP_METHOD]: req.method,
-            [SEMATTRS_HTTP_URL]: req.url,
-            [SEMATTRS_HTTP_STATUS_CODE]: statusCode,
-            'http.request.duration_ms': duration,
-            'http.response.success': statusCode < 400
-          });
-        });
-
-        // End span
-        span.end();
-
-        return originalEnd.call(res, chunk, encoding);
+        originalEnd.apply(res, args);
       };
 
       next();
@@ -277,190 +92,107 @@ class XRegistryLogger {
   }
 
   /**
-   * Set request context for correlation (backward compatibility)
+   * Backward compatibility method
    */
   setRequestContext(req, res, next) {
     return this.middleware()(req, res, next);
   }
 
   /**
-   * Log with OpenTelemetry semantic conventions
+   * Core logging method
    */
   log(severity, message, attributes = {}, error = null) {
-    const timestamp = Date.now();
-    const activeSpan = trace.getActiveSpan();
-    
-    // Handle legacy API where attributes might be the req object
-    if (attributes && attributes.method && attributes.url) {
-      // This looks like a legacy req object, extract useful attributes
-      const legacyReq = attributes;
-      attributes = {
-        [SEMATTRS_HTTP_METHOD]: legacyReq.method,
-        [SEMATTRS_HTTP_URL]: legacyReq.url,
-        correlationId: legacyReq.logContext?.correlationId
-      };
-    }
-    
-    // Prepare log record attributes
-    const logAttributes = {
-      [SEMATTRS_SERVICE_NAME]: this.serviceName,
-      [SEMATTRS_SERVICE_VERSION]: this.serviceVersion,
-      [SEMATTRS_DEPLOYMENT_ENVIRONMENT]: this.environment,
-      ...this.childContext,
+    const logEntry = {
+      timestamp: new Date().toISOString(),
+      level: severity.toUpperCase(),
+      message,
+      service: this.serviceName,
+      version: this.serviceVersion,
+      environment: this.environment,
+      hostname: os.hostname(),
+      pid: process.pid,
+      ...this.context,
       ...attributes
     };
 
-    // Add error attributes if present
     if (error) {
-      logAttributes[SEMATTRS_ERROR_TYPE] = error.constructor.name;
-      logAttributes[SEMATTRS_EXCEPTION_MESSAGE] = error.message;
-      if (error.stack) {
-        logAttributes[SEMATTRS_EXCEPTION_STACKTRACE] = error.stack;
-      }
+      logEntry.error = {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      };
     }
 
-    // Add trace context if available
-    if (activeSpan) {
-      const spanContext = activeSpan.spanContext();
-      logAttributes['trace_id'] = spanContext.traceId;
-      logAttributes['span_id'] = spanContext.spanId;
-      logAttributes['trace_flags'] = spanContext.traceFlags;
-    }
-
-    // Convert severity to OpenTelemetry severity number
-    const severityNumber = this.getSeverityNumber(severity);
-    const severityText = severity.toUpperCase();
-
-    // Emit log record
-    this.logger.emit({
-      timestamp,
-      severityNumber,
-      severityText,
-      body: message,
-      attributes: logAttributes
-    });
-
-    // Console output for development
+    // Console output
     if (this.enableConsole) {
-      const logEntry = {
-        timestamp: new Date(timestamp).toISOString(),
-        level: severityText,
-        service: this.serviceName,
-        message,
-        ...logAttributes
-      };
-
-      if (process.env.NODE_ENV === 'development') {
-        this.prettyPrint(severity, message, logEntry);
-      } else {
-        console.log(JSON.stringify(logEntry));
-      }
+      const coloredOutput = this.prettyPrint(severity, message, logEntry);
+      console.log(coloredOutput);
     }
 
-    // File output for backward compatibility
+    // File output
     if (this.fileStream) {
-      const logEntry = {
-        timestamp: new Date(timestamp).toISOString(),
-        level: severityText,
-        service: this.serviceName,
-        message,
-        ...logAttributes
-      };
       this.fileStream.write(JSON.stringify(logEntry) + '\n');
     }
 
-    // Record error metrics
-    if (severity === 'error' || severity === 'fatal') {
-      this.errorCounter.add(1, {
-        [SEMATTRS_SERVICE_NAME]: this.serviceName,
-        'error.type': error?.constructor.name || 'unknown',
-        'log.severity': severityText
-      });
-
-      // Add exception to span if available
-      if (activeSpan && error) {
-        activeSpan.recordException(error);
-        activeSpan.setStatus({
-          code: SpanStatusCode.ERROR,
-          message: error.message
-        });
-      }
-    }
+    return logEntry;
   }
 
-  /**
-   * Convert log level to OpenTelemetry severity number
-   */
-  getSeverityNumber(level) {
-    const severityMap = {
-      debug: SeverityNumber.DEBUG,
-      info: SeverityNumber.INFO,
-      warn: SeverityNumber.WARN,
-      error: SeverityNumber.ERROR,
-      fatal: SeverityNumber.FATAL
-    };
-    return severityMap[level] || SeverityNumber.INFO;
-  }
-
-  // Log level methods
   debug(message, data = {}, req = null) {
-    this.log('debug', message, data, req);
+    return this.log('debug', message, this.enrichWithRequestData(data, req));
   }
 
   info(message, data = {}, req = null) {
-    this.log('info', message, data, req);
+    return this.log('info', message, this.enrichWithRequestData(data, req));
   }
 
   warn(message, data = {}, req = null) {
-    this.log('warn', message, data, req);
+    return this.log('warn', message, this.enrichWithRequestData(data, req));
   }
 
   error(message, data = {}, req = null) {
-    this.log('error', message, data, req);
+    const error = data instanceof Error ? data : data.error;
+    const attributes = data instanceof Error ? {} : data;
+    return this.log('error', message, this.enrichWithRequestData(attributes, req), error);
   }
 
   fatal(message, data = {}, req = null) {
-    this.log('fatal', message, data, req);
+    const error = data instanceof Error ? data : data.error;
+    const attributes = data instanceof Error ? {} : data;
+    return this.log('fatal', message, this.enrichWithRequestData(attributes, req), error);
   }
 
   /**
-   * Log an HTTP request with timing (backward compatibility)
+   * Log request completion
    */
   logRequest(req, res, duration) {
-    const context = req.logContext || {};
-    this.info('HTTP Request', {
-      ...context,
+    return this.info('HTTP Request', {
+      method: req.method,
+      url: req.url,
       statusCode: res.statusCode,
       duration,
-      success: res.statusCode < 400
-    });
+      userAgent: req.get('User-Agent'),
+      contentLength: res.get('content-length')
+    }, req);
   }
 
   /**
-   * Log application startup with semantic conventions
+   * Log service startup
    */
   logStartup(port, additionalInfo = {}) {
-    this.info('Service starting', {
-      serviceName: this.serviceName, // Keep for backward compatibility
-      'service.startup.port': port,
-      'process.runtime.name': 'node',
-      'process.runtime.version': process.version,
-      'host.arch': process.arch,
-      'os.type': process.platform,
-      port, // Keep for backward compatibility
-      nodeVersion: process.version, // Keep for backward compatibility
-      platform: process.platform, // Keep for backward compatibility
-      environment: this.environment, // Keep for backward compatibility
+    return this.info('Service started', {
+      port,
+      nodeVersion: process.version,
+      platform: process.platform,
+      architecture: process.arch,
       ...additionalInfo
     });
   }
 
   /**
-   * Log application shutdown (backward compatibility)
+   * Log service shutdown
    */
   logShutdown(signal, additionalInfo = {}) {
-    this.info('Service shutting down', {
-      serviceName: this.serviceName,
+    return this.info('Service shutting down', {
       signal,
       uptime: process.uptime(),
       ...additionalInfo
@@ -468,140 +200,116 @@ class XRegistryLogger {
   }
 
   /**
-   * Log health check status (backward compatibility)
+   * Log health check results
    */
   logHealthCheck(status, checks = {}) {
     const level = status === 'healthy' ? 'info' : 'warn';
-    this[level]('Health check', {
-      serviceName: this.serviceName,
+    return this.log(level, 'Health check', {
       status,
-      checks,
-      timestamp: new Date().toISOString()
+      checks
     });
   }
 
   /**
-   * Log external dependency call with semantic conventions
+   * Log dependency calls
    */
   logDependency(name, url, duration, success, error = null) {
+    const level = success ? 'info' : 'error';
     const attributes = {
-      dependencyName: name, // Keep for backward compatibility
-      'dependency.name': name,
-      'dependency.url': url,
-      'dependency.duration_ms': duration,
-      'dependency.success': success,
-      'dependency.type': 'http',
-      url, // Keep for backward compatibility
-      duration, // Keep for backward compatibility
-      success, // Keep for backward compatibility
-      serviceName: this.serviceName // Keep for backward compatibility
+      dependency: name,
+      url,
+      duration,
+      success
     };
 
-    if (error) {
-      attributes[SEMATTRS_ERROR_TYPE] = error.constructor.name;
-      attributes[SEMATTRS_EXCEPTION_MESSAGE] = error.message;
-      attributes.error = error.message || error; // Keep for backward compatibility
-    }
-
-    this.info('External dependency call', attributes, error);
+    return this.log(level, 'Dependency call', attributes, error);
   }
 
   /**
-   * Create child logger with additional context
+   * Create a child logger with additional context
    */
   child(additionalContext = {}) {
-    const childLogger = Object.create(this);
-    childLogger.childContext = { ...this.childContext, ...additionalContext };
-    return childLogger;
+    return new XRegistryLogger({
+      serviceName: this.serviceName,
+      serviceVersion: this.serviceVersion,
+      environment: this.environment,
+      enableConsole: this.enableConsole,
+      enableFile: this.enableFile,
+      logFile: this.logFile,
+      context: { ...this.context, ...additionalContext }
+    });
   }
 
   /**
-   * Pretty print for development
+   * Pretty print for console output
    */
   prettyPrint(level, message, logEntry) {
     const colors = {
-      debug: '\x1b[36m',
-      info: '\x1b[32m', 
-      warn: '\x1b[33m',
-      error: '\x1b[31m',
-      fatal: '\x1b[35m'
+      debug: '\x1b[36m',   // cyan
+      info: '\x1b[32m',    // green
+      warn: '\x1b[33m',    // yellow
+      error: '\x1b[31m',   // red
+      fatal: '\x1b[35m'    // magenta
     };
     const reset = '\x1b[0m';
-    const color = colors[level] || '';
+    const color = colors[level.toLowerCase()] || '';
     
-    const traceInfo = logEntry.trace_id ? ` [${logEntry.trace_id.slice(0, 8)}]` : '';
-    console.log(`${color}[${logEntry.timestamp}] ${logEntry.level} ${logEntry.service}${traceInfo}:${reset} ${message}`);
+    const timestamp = logEntry.timestamp;
+    const service = logEntry.service;
+    const contextStr = logEntry.requestId ? ` [${logEntry.requestId}]` : '';
     
-    // Show relevant attributes
-    const relevantAttrs = { ...logEntry };
-    delete relevantAttrs.timestamp;
-    delete relevantAttrs.level;
-    delete relevantAttrs.message;
-    delete relevantAttrs.service;
-    delete relevantAttrs[SEMATTRS_SERVICE_NAME];
-    delete relevantAttrs[SEMATTRS_SERVICE_VERSION];
-    delete relevantAttrs[SEMATTRS_DEPLOYMENT_ENVIRONMENT];
-    
-    if (Object.keys(relevantAttrs).length > 0) {
-      console.log(color + JSON.stringify(relevantAttrs, null, 2) + reset);
-    }
+    return `${color}[${timestamp}] ${level.toUpperCase()} ${service}${contextStr}: ${message}${reset}`;
   }
 
   /**
-   * Sanitize sensitive headers
+   * Enrich log data with request information
    */
-  sanitizeHeaders(headers) {
-    const sensitiveHeaders = ['authorization', 'cookie', 'x-api-key'];
-    const sanitized = { ...headers };
+  enrichWithRequestData(data, req) {
+    if (!req) return data;
     
-    sensitiveHeaders.forEach(header => {
-      if (sanitized[header]) {
-        sanitized[header] = '[REDACTED]';
-      }
-    });
-    
-    return sanitized;
+    return {
+      ...data,
+      requestId: req.requestId,
+      method: req.method,
+      url: req.url
+    };
   }
 
   /**
-   * Graceful shutdown
+   * Generate unique request ID
+   */
+  generateRequestId() {
+    return Math.random().toString(36).substr(2, 9);
+  }
+
+  /**
+   * Close file streams
    */
   async close() {
     if (this.fileStream) {
-      this.fileStream.end();
+      return new Promise((resolve) => {
+        this.fileStream.end(() => resolve());
+      });
     }
-    
-    // Flush all providers
-    await require('@opentelemetry/sdk-node').getNodeSDK()?.shutdown();
   }
 }
 
 /**
- * Create OpenTelemetry-conformant logger
+ * Create a logger instance
  */
 function createLogger(options = {}) {
   return new XRegistryLogger(options);
 }
 
 /**
- * Create Express middleware for request correlation and timing
+ * Create Express middleware
  */
 function createRequestMiddleware(logger) {
   return logger.middleware();
 }
 
-// Log levels constant for backward compatibility
-const LOG_LEVELS = {
-  debug: 0,
-  info: 1,
-  warn: 2,
-  error: 3,
-  fatal: 4
-};
-
 module.exports = {
   XRegistryLogger,
   createLogger,
-  createRequestMiddleware,
-  LOG_LEVELS
+  createRequestMiddleware
 }; 
