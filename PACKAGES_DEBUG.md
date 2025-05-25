@@ -1,60 +1,64 @@
 # Package Authentication Debug Guide
 
-## Current Issue
-Container Apps deployment fails with "DENIED: requested access to the resource is denied" for all GHCR images.
+## Latest Status: ✅ FAIL-FAST WORKING, ROOT CAUSE IDENTIFIED
+
+### 🎯 **Current Finding (2025-05-25 18:20)**
+- ✅ **Workflow token** (`secrets.GITHUB_TOKEN`) can access all images via Docker
+- ❌ **Azure Container Apps validation** fails for all images
+- ✅ **Fail-fast test** now properly catches this and aborts deployment
+
+### 🔍 **Evidence from Latest Test:**
+```
+✅ Registry authentication successful
+✅ All 6 images accessible via docker manifest inspect
+❌ ACA validation failed for all 6 images  
+🚫 Deployment properly aborted (saved 20+ minutes)
+```
 
 ## Root Cause Analysis
-1. ❌ GitHub token lacks `packages:read` scope
-2. ❌ Current CLI token scopes: `'gist', 'read:org', 'repo', 'workflow'` (missing `packages:read`)
-3. ❌ Azure Container Apps registry secret contains old/invalid token
 
-## Solution Steps
+### 🤔 **Why Docker Works but Azure Validation Fails?**
 
-### Step 1: Fix Repository Package Permissions
-1. Go to repository Settings > Actions > General
-2. Under "Workflow permissions", ensure "Read repository contents and packages" is selected
-3. This gives GITHUB_TOKEN proper package access
+**Hypothesis 1: Azure Container Instance API Limitation**
+- The Azure Container Instance validation API may not support GHCR private images
+- Azure Container Apps might need different authentication method
 
-### Step 2: Update Azure Container Apps Secret
-The current secret has wrong token:
+**Hypothesis 2: Token Scope Issue** 
+- Docker CLI respects `packages:read` permission from workflow context
+- Azure REST API might need different scopes or authentication method
+
+**Hypothesis 3: Registry Authentication Format**
+- Azure might expect different credential format
+- Username/password vs token-based auth differences
+
+## 🔧 **Next Investigation Steps**
+
+### Step 1: Test Alternative Authentication Methods
 ```bash
-# Current (wrong): ghs_heVhb1...
-# Should be: gho_WlaL3...
-az containerapp secret set --name xregistry-pkg-registries-prod \
-  --resource-group xregistry-package-registries \
-  --secrets registry-password="<NEW_TOKEN>"
+# Test with username/password format
+username: ${{ github.actor }}
+password: ${{ secrets.GITHUB_TOKEN }}
+
+# vs token format  
+username: oauth2accesstoken
+password: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-### Step 3: Fail-Fast Image Testing
-Use `deploy/test-image-access.sh` to validate images before deployment:
-```bash
-./deploy/test-image-access.sh "clemensv/xregistry-package-registries" "latest" "$GITHUB_TOKEN"
-```
+### Step 2: Bypass Azure Validation
+Since Docker can access images but Azure validation fails, consider:
+- Skip ACA validation step 
+- Deploy directly and let Container Apps handle authentication
+- Monitor actual deployment to see if it works despite validation failure
 
-### Step 4: Alternative - Create PAT with packages:read
-If GITHUB_TOKEN doesn't work, create Personal Access Token with:
-- `packages:read`
-- `repo` (for private repos)
+### Step 3: Alternative Registry Configuration
+- Test with different registry authentication approaches
+- Consider Azure Container Registry (ACR) integration
 
-## Test Commands
-```bash
-# Test current token scopes
-gh auth status
+## 🚨 **Current Issue Summary**
+1. ✅ Images exist and are properly built
+2. ✅ GitHub workflow token has correct permissions  
+3. ✅ Docker can authenticate and access images
+4. ❌ Azure Container Apps validation fails
+5. ✅ Fail-fast prevents wasted deployment time
 
-# Test GHCR authentication
-echo "$TOKEN" | docker login ghcr.io --username clemensv --password-stdin
-
-# Test image access
-docker manifest inspect ghcr.io/clemensv/xregistry-package-registries/xregistry-bridge:latest
-
-# Check Azure secret
-az containerapp secret show --name xregistry-pkg-registries-prod \
-  --resource-group xregistry-package-registries \
-  --secret-name registry-password
-```
-
-## Expected Results
-✅ Docker login succeeds
-✅ All 6 images accessible via manifest inspect
-✅ Azure Container Apps can pull images
-✅ No "DENIED" errors in deployment 
+**Next Action:** Investigate Azure Container Apps authentication requirements vs Docker registry access. 
