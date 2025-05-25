@@ -10,6 +10,13 @@ param environment string = 'prod'
 @description('Container registry server')
 param containerRegistryServer string = 'ghcr.io'
 
+@description('Container registry username')
+param containerRegistryUsername string
+
+@secure()
+@description('Container registry password/token')
+param containerRegistryPassword string
+
 @description('Container image tag')
 param imageTag string = 'latest'
 
@@ -171,7 +178,18 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
           }
         ]
       }
+      registries: [
+        {
+          server: containerRegistryServer
+          username: containerRegistryUsername
+          passwordSecretRef: 'registry-password'
+        }
+      ]
       secrets: [
+        {
+          name: 'registry-password'
+          value: containerRegistryPassword
+        }
         {
           name: 'npm-api-key'
           value: npmApiKey
