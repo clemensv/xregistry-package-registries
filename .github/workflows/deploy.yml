@@ -96,7 +96,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./pypi/Dockerfile
+          file: ./pypi.Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -172,7 +172,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./npm/Dockerfile
+          file: ./npm.Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -250,7 +250,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./oci/Dockerfile
+          file: ./oci.Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -328,7 +328,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./nuget/Dockerfile
+          file: ./nuget.Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -407,7 +407,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./maven/Dockerfile
+          file: ./maven.Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

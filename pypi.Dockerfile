@@ -9,8 +9,8 @@ COPY pypi/package.json ./
 # Install app dependencies
 RUN npm install --production
 
-# Copy shared logging module
-COPY shared/ ./shared/
+# Copy shared logging module to parent directory so ../shared/logging/logger works
+COPY shared/ ../shared/
 
 # Bundle app source
 COPY pypi/ .

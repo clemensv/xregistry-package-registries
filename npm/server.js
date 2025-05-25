@@ -5,7 +5,7 @@ const path = require("path");
 const yargs = require("yargs");
 const { exec } = require("child_process");
 const util = require("util");
-const { createLogger } = require("./shared/logging/logger");
+const { createLogger } = require("../shared/logging/logger");
 
 const app = express();
 

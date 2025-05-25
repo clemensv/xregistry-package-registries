@@ -14,7 +14,7 @@ const { exec } = require('child_process');
 const util = require('util');
 const { mkdirp } = require('mkdirp');
 const sanitize = require('sanitize-filename');
-const { createLogger } = require("./shared/logging/logger");
+const { createLogger } = require("../shared/logging/logger");
 
 const app = express();
 

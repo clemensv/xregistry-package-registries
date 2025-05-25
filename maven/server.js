@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const yargs = require("yargs");
 const xml2js = require("xml2js");
-const { createLogger } = require("./shared/logging/logger");
+const { createLogger } = require("../shared/logging/logger");
 const app = express();
 
 // Parse command line arguments with fallback to environment variables

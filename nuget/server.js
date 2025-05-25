@@ -3,7 +3,7 @@ const axios = require("axios");
 const fs = require("fs");
 const path = require("path");
 const yargs = require("yargs");
-const { createLogger } = require("./shared/logging/logger");
+const { createLogger } = require("../shared/logging/logger");
 const app = express();
 
 // CORS Middleware

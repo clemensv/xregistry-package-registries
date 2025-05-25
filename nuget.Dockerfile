@@ -4,16 +4,16 @@ FROM node:23-alpine
 WORKDIR /app
 
 # Copy package.json and package-lock.json
-COPY maven/package.json ./
+COPY nuget/package.json ./
 
 # Install app dependencies
 RUN npm install --production
 
-# Copy shared logging module
-COPY shared/ ./shared/
+# Copy shared logging module to parent directory so ../shared/logging/logger works
+COPY shared/ ../shared/
 
 # Bundle app source
-COPY maven/ .
+COPY nuget/ .
 
 # Create cache and logs directories
 RUN mkdir -p cache
@@ -21,17 +21,17 @@ RUN mkdir -p /logs
 
 # Set environment variables
 ENV NODE_ENV=production
-ENV XREGISTRY_MAVEN_PORT=3300
-ENV PORT=3300
+ENV XREGISTRY_NUGET_PORT=3200
+ENV PORT=3200
 
 # Document the available configuration options
-ENV XREGISTRY_MAVEN_LOG=
-ENV XREGISTRY_MAVEN_QUIET=false
-ENV XREGISTRY_MAVEN_BASEURL=
-ENV XREGISTRY_MAVEN_API_KEY=
+ENV XREGISTRY_NUGET_LOG=
+ENV XREGISTRY_NUGET_QUIET=false
+ENV XREGISTRY_NUGET_BASEURL=
+ENV XREGISTRY_NUGET_API_KEY=
 
 # Expose the port the app runs on
-EXPOSE ${XREGISTRY_MAVEN_PORT}
+EXPOSE ${XREGISTRY_NUGET_PORT}
 
 # Define volume for logs
 VOLUME ["/logs"]
