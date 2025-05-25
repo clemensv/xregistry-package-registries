@@ -252,10 +252,10 @@ create_parameters_file() {
     
     # Read template and substitute values
     cat "$PARAMS_FILE" | \
-        sed "s/{{GITHUB_ACTOR}}/$GITHUB_ACTOR/g" | \
-        sed "s/{{GITHUB_TOKEN}}/$GITHUB_TOKEN/g" | \
-        sed "s/{{IMAGE_TAG}}/$IMAGE_TAG/g" | \
-        sed "s/{{REPOSITORY_NAME}}/$REPOSITORY_NAME/g" \
+        sed "s|{{GITHUB_ACTOR}}|$GITHUB_ACTOR|g" | \
+        sed "s|{{GITHUB_TOKEN}}|$GITHUB_TOKEN|g" | \
+        sed "s|{{IMAGE_TAG}}|$IMAGE_TAG|g" | \
+        sed "s|{{REPOSITORY_NAME}}|$REPOSITORY_NAME|g" \
         > "$temp_params"
     
     echo "$temp_params"
@@ -346,13 +346,13 @@ update_container_app_fqdn() {
     local temp_params="$SCRIPT_DIR/parameters.tmp.json"
     
     cat "$temp_params" | \
-        sed "s/{{CONTAINER_APP_FQDN}}/$fqdn/g" \
+        sed "s|{{CONTAINER_APP_FQDN}}|$fqdn|g" \
         > "$updated_params"
     
     # Update Bicep template with real FQDN
     local updated_bicep="$SCRIPT_DIR/main.updated.bicep"
     cat "$BICEP_FILE" | \
-        sed "s/{{CONTAINER_APP_FQDN}}/$fqdn/g" \
+        sed "s|{{CONTAINER_APP_FQDN}}|$fqdn|g" \
         > "$updated_bicep"
     
     log_info "Applying FQDN update to container app..."
