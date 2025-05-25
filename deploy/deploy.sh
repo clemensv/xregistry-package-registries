@@ -264,6 +264,31 @@ check_resource_providers() {
     fi
 }
 
+# Show container app status and logs
+show_container_status() {
+    log_info "Checking container app status..."
+    
+    local app_name="${RESOURCE_GROUP//-package-registries/}-pkg-registries-${ENVIRONMENT}"  # Actual naming from Bicep template
+    
+    # Get app status
+    local app_status=$(az containerapp show --name "$app_name" --resource-group "$RESOURCE_GROUP" --query "properties.provisioningState" -o tsv 2>/dev/null || echo "NotFound")
+    log_info "Container App Status: $app_status"
+    
+    # Get replica status if app exists
+    if [[ "$app_status" != "NotFound" ]]; then
+        log_info "Replica Status:"
+        az containerapp replica list --name "$app_name" --resource-group "$RESOURCE_GROUP" --query "[].{Name:name,Status:properties.runningState,Created:properties.createdTime}" -o table 2>/dev/null || log_warning "Could not get replica status"
+        
+        # Get recent logs from each container
+        log_info "Recent container logs:"
+        local containers=("bridge" "npm" "pypi" "maven" "nuget" "oci")
+        for container in "${containers[@]}"; do
+            log_info "--- $container container logs ---"
+            az containerapp logs show --name "$app_name" --resource-group "$RESOURCE_GROUP" --container "$container" --tail 10 2>/dev/null || log_warning "No logs available for $container"
+        done
+    fi
+}
+
 # Create parameters file with substituted values
 create_parameters_file() {
     local temp_params="$SCRIPT_DIR/parameters.tmp.json"
@@ -364,15 +389,31 @@ test_deployment() {
     
     # Wait for services to be ready
     log_info "Waiting for services to start (up to 5 minutes)..."
+    log_info "Target URL: $base_url/health"
     local max_attempts=30
     local attempt=1
+    local start_time=$(date +%s)
     
     while [[ $attempt -le $max_attempts ]]; do
-        if curl -f -s "$base_url/health" > /dev/null 2>&1; then
-            log_success "Services are responding!"
+        local current_time=$(date +%s)
+        local elapsed=$((current_time - start_time))
+        
+        log_info "Attempt $attempt/$max_attempts (${elapsed}s elapsed) - Testing $base_url/health..."
+        
+        local http_status
+        http_status=$(curl -s -o /dev/null -w "%{http_code}" "$base_url/health" || echo "000")
+        
+        if [[ "$http_status" == "200" ]]; then
+            log_success "Services are responding! (HTTP $http_status after ${elapsed}s)"
             break
         else
-            log_verbose "Attempt $attempt/$max_attempts - waiting for services..."
+            log_warning "HTTP $http_status - waiting for services to start..."
+            
+            # Show container app status every 5 attempts
+            if [[ $((attempt % 5)) -eq 0 ]]; then
+                show_container_status
+            fi
+            
             sleep 10
             ((attempt++))
         fi

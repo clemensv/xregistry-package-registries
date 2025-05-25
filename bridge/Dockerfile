@@ -35,6 +35,9 @@ RUN npm ci --only=production && npm cache clean --force
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
 
+# Copy shared logging module (needed at runtime)
+COPY --from=builder /shared ../shared
+
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S xregistry -u 1001
