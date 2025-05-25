@@ -300,8 +300,29 @@ is_repo_private() {
 # Create ACR instance if needed
 ensure_acr() {
     # ACR names must be lowercase alphanumeric only, 5-50 characters
-    local base_name="${RESOURCE_GROUP//-/}"  # Remove dashes
-    local acr_name="${base_name,,}acr"       # Convert to lowercase and add 'acr'
+    local base_name="${RESOURCE_GROUP//-/}"    # Remove dashes
+    base_name="${base_name//[^a-zA-Z0-9]/}"    # Remove all non-alphanumeric characters
+    base_name="${base_name,,}"                 # Convert to lowercase
+    
+    # Ensure name is between 5-50 characters
+    if [[ ${#base_name} -gt 47 ]]; then
+        base_name="${base_name:0:47}"          # Truncate to 47 to leave room for 'acr'
+    elif [[ ${#base_name} -lt 2 ]]; then
+        base_name="xregistry"                  # Fallback if too short
+    fi
+    
+    local acr_name="${base_name}acr"
+    
+    # Validate ACR name meets requirements
+    if [[ ${#acr_name} -lt 5 ]] || [[ ${#acr_name} -gt 50 ]]; then
+        log_error "Generated ACR name '$acr_name' is invalid (length: ${#acr_name}, must be 5-50 characters)"
+        exit 1
+    fi
+    
+    if [[ ! "$acr_name" =~ ^[a-z0-9]+$ ]]; then
+        log_error "Generated ACR name '$acr_name' contains invalid characters (must be lowercase alphanumeric only)"
+        exit 1
+    fi
     
     log_info "Ensuring ACR instance exists: $acr_name"
     
@@ -346,11 +367,25 @@ copy_images_to_acr() {
     fi
     
     # Get ACR credentials
-    local acr_username=$(az acr credential show --name "$acr_name" --query "username" -o tsv)
-    local acr_password=$(az acr credential show --name "$acr_name" --query "passwords[0].value" -o tsv)
+    log_info "Retrieving ACR credentials..."
+    local acr_username=$(az acr credential show --name "$acr_name" --query "username" -o tsv 2>/dev/null)
+    local acr_password=$(az acr credential show --name "$acr_name" --query "passwords[0].value" -o tsv 2>/dev/null)
+    
+    if [[ -z "$acr_username" ]] || [[ -z "$acr_password" ]]; then
+        log_error "Failed to retrieve ACR credentials for $acr_name"
+        exit 1
+    fi
+    
+    log_verbose "ACR Username: $acr_username"
     
     # Login to ACR
-    echo "$acr_password" | docker login "$acr_server" --username "$acr_username" --password-stdin
+    log_info "Logging into ACR: $acr_server"
+    if ! echo "$acr_password" | docker login "$acr_server" --username "$acr_username" --password-stdin; then
+        log_error "Failed to login to ACR: $acr_server"
+        exit 1
+    fi
+    
+    log_success "Successfully logged into ACR"
     
     # List of images to copy
     local images=("xregistry-bridge" "xregistry-npm-bridge" "xregistry-pypi-bridge" 
@@ -421,8 +456,14 @@ create_parameters_file() {
     
     if [[ "$use_acr" == "true" ]]; then
         registry_server="${acr_name}.azurecr.io"
-        registry_username=$(az acr credential show --name "$acr_name" --query "username" -o tsv)
-        registry_password=$(az acr credential show --name "$acr_name" --query "passwords[0].value" -o tsv)
+        registry_username=$(az acr credential show --name "$acr_name" --query "username" -o tsv 2>/dev/null)
+        registry_password=$(az acr credential show --name "$acr_name" --query "passwords[0].value" -o tsv 2>/dev/null)
+        
+        if [[ -z "$registry_username" ]] || [[ -z "$registry_password" ]]; then
+            log_error "Failed to retrieve ACR credentials for parameters file"
+            exit 1
+        fi
+        
         image_repository=""  # ACR uses short image names
         log_info "Using ACR: $registry_server"
     else
