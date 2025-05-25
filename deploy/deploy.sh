@@ -329,17 +329,36 @@ ensure_acr() {
     if az acr show --name "$acr_name" --resource-group "$RESOURCE_GROUP" &>/dev/null; then
         log_verbose "ACR already exists"
     else
-        log_info "Creating ACR instance: $acr_name"
+        log_info "Creating ACR instance: $acr_name (length: ${#acr_name})"
         
         if [[ "$DRY_RUN" == "false" ]]; then
-            az acr create \
+            # Create ACR with explicit output handling
+            log_info "Executing: az acr create --name '$acr_name' --resource-group '$RESOURCE_GROUP' --location '$LOCATION' --sku Basic --admin-enabled true"
+            
+            if az acr create \
                 --name "$acr_name" \
                 --resource-group "$RESOURCE_GROUP" \
                 --location "$LOCATION" \
                 --sku Basic \
-                --admin-enabled true
-            
-            log_success "ACR created successfully"
+                --admin-enabled true \
+                --output table; then
+                log_success "ACR created successfully"
+                
+                # Wait for ACR to be fully provisioned
+                log_info "Waiting for ACR admin user to be ready..."
+                sleep 30
+                
+                # Verify ACR is accessible
+                if az acr show --name "$acr_name" --resource-group "$RESOURCE_GROUP" --query "name" -o tsv &>/dev/null; then
+                    log_success "ACR is accessible"
+                else
+                    log_error "ACR was created but is not accessible"
+                    exit 1
+                fi
+            else
+                log_error "Failed to create ACR: $acr_name"
+                exit 1
+            fi
         else
             log_info "[DRY RUN] Would create ACR: $acr_name"
         fi
@@ -366,26 +385,59 @@ copy_images_to_acr() {
         exit 1
     fi
     
-    # Get ACR credentials
+    # Get ACR credentials with retry logic
     log_info "Retrieving ACR credentials..."
-    local acr_username=$(az acr credential show --name "$acr_name" --query "username" -o tsv 2>/dev/null)
-    local acr_password=$(az acr credential show --name "$acr_name" --query "passwords[0].value" -o tsv 2>/dev/null)
+    local acr_username=""
+    local acr_password=""
+    local max_retries=5
+    local retry=0
+    
+    while [[ $retry -lt $max_retries ]]; do
+        log_info "Credential retrieval attempt $((retry + 1))/$max_retries"
+        
+        acr_username=$(az acr credential show --name "$acr_name" --resource-group "$RESOURCE_GROUP" --query "username" -o tsv 2>/dev/null)
+        acr_password=$(az acr credential show --name "$acr_name" --resource-group "$RESOURCE_GROUP" --query "passwords[0].value" -o tsv 2>/dev/null)
+        
+        if [[ -n "$acr_username" ]] && [[ -n "$acr_password" ]]; then
+            log_success "Successfully retrieved ACR credentials"
+            break
+        else
+            log_warning "Credentials not ready yet, waiting 10 seconds..."
+            sleep 10
+            ((retry++))
+        fi
+    done
     
     if [[ -z "$acr_username" ]] || [[ -z "$acr_password" ]]; then
-        log_error "Failed to retrieve ACR credentials for $acr_name"
+        log_error "Failed to retrieve ACR credentials after $max_retries attempts"
+        log_error "ACR Username: '$acr_username'"
+        log_error "ACR Password length: ${#acr_password}"
         exit 1
     fi
     
     log_verbose "ACR Username: $acr_username"
+    log_verbose "ACR Password length: ${#acr_password}"
     
     # Login to ACR
     log_info "Logging into ACR: $acr_server"
-    if ! echo "$acr_password" | docker login "$acr_server" --username "$acr_username" --password-stdin; then
+    log_info "Using username: $acr_username"
+    
+    # Create a temporary file for Docker login (more reliable than stdin)
+    local temp_password_file=$(mktemp)
+    echo "$acr_password" > "$temp_password_file"
+    
+    if cat "$temp_password_file" | docker login "$acr_server" --username "$acr_username" --password-stdin; then
+        log_success "Successfully logged into ACR"
+    else
         log_error "Failed to login to ACR: $acr_server"
+        log_error "Username: '$acr_username'"
+        log_error "Server: '$acr_server'"
+        rm -f "$temp_password_file"
         exit 1
     fi
     
-    log_success "Successfully logged into ACR"
+    # Clean up temp file
+    rm -f "$temp_password_file"
     
     # List of images to copy
     local images=("xregistry-bridge" "xregistry-npm-bridge" "xregistry-pypi-bridge" 
@@ -456,16 +508,19 @@ create_parameters_file() {
     
     if [[ "$use_acr" == "true" ]]; then
         registry_server="${acr_name}.azurecr.io"
-        registry_username=$(az acr credential show --name "$acr_name" --query "username" -o tsv 2>/dev/null)
-        registry_password=$(az acr credential show --name "$acr_name" --query "passwords[0].value" -o tsv 2>/dev/null)
+        
+        # Use the same credentials we retrieved earlier (they should be cached by Azure CLI)
+        registry_username=$(az acr credential show --name "$acr_name" --resource-group "$RESOURCE_GROUP" --query "username" -o tsv 2>/dev/null)
+        registry_password=$(az acr credential show --name "$acr_name" --resource-group "$RESOURCE_GROUP" --query "passwords[0].value" -o tsv 2>/dev/null)
         
         if [[ -z "$registry_username" ]] || [[ -z "$registry_password" ]]; then
             log_error "Failed to retrieve ACR credentials for parameters file"
+            log_error "This should not happen if ACR was set up correctly"
             exit 1
         fi
         
         image_repository=""  # ACR uses short image names
-        log_info "Using ACR: $registry_server"
+        log_info "Using ACR: $registry_server (username: $registry_username)"
     else
         registry_server="ghcr.io"
         registry_username="$GITHUB_ACTOR"
