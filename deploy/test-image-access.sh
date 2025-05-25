@@ -108,13 +108,15 @@ echo -e "${YELLOW}🔄 Testing Azure Container Apps image access...${NC}"
 SUBSCRIPTION_ID=$(az account show --query id -o tsv)
 RESOURCE_GROUP="xregistry-package-registries"
 
+ACA_FAILED_IMAGES=()
+
 for IMAGE in "${IMAGES[@]}"; do
     FULL_IMAGE="$REGISTRY/$REPOSITORY/$IMAGE:$TAG"
     echo "Testing ACA access to: $FULL_IMAGE"
     
     # Use Azure CLI to test if the image can be resolved by Container Apps
     # This simulates what Container Apps will do during deployment
-    az rest --method POST \
+    VALIDATION_RESULT=$(az rest --method POST \
         --url "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.ContainerInstance/containerGroups/test-image-access/validate" \
         --body "{
             \"location\": \"westeurope\",
@@ -136,7 +138,28 @@ for IMAGE in "${IMAGES[@]}"; do
             }
         }" \
         --headers "Content-Type=application/json" \
-        2>/dev/null | jq -r '.error.code // "success"' || echo "validation-failed"
+        2>/dev/null | jq -r '.error.code // "success"' 2>/dev/null || echo "validation-failed")
+    
+    if [[ "$VALIDATION_RESULT" != "success" ]]; then
+        echo -e "${RED}❌ ACA validation failed for: $IMAGE${NC}"
+        ACA_FAILED_IMAGES+=("$IMAGE")
+    else
+        echo -e "${GREEN}✅ ACA validation passed for: $IMAGE${NC}"
+    fi
 done
 
-echo -e "${GREEN}🎯 Pre-deployment image accessibility test completed successfully${NC}" 
+if [ ${#ACA_FAILED_IMAGES[@]} -gt 0 ]; then
+    echo -e "${RED}🚨 AZURE CONTAINER APPS VALIDATION FAILED${NC}"
+    echo -e "${RED}   Failed images:${NC}"
+    for img in "${ACA_FAILED_IMAGES[@]}"; do
+        echo "     - $img"
+    done
+    echo -e "${RED}   This means Azure Container Apps cannot access these images!${NC}"
+    echo -e "${RED}   Deployment will fail with 'DENIED' errors.${NC}"
+    echo ""
+    echo -e "${YELLOW}🔧 SOLUTION: Azure uses different authentication than GitHub workflows${NC}"
+    echo -e "${YELLOW}   The workflow token works, but Azure needs proper registry credentials${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}🎯 Azure Container Apps validation successful - deployment can proceed${NC}" 
