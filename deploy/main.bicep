@@ -2,7 +2,7 @@
 param location string = resourceGroup().location
 
 @description('The base name for all resources')
-param baseName string = 'xregistry-package-registries'
+param baseName string = 'xregistry-pkg-registries'
 
 @description('The environment name (dev, test, prod)')
 param environment string = 'prod'

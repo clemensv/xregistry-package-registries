@@ -3,7 +3,7 @@
   "contentVersion": "1.0.0.0",
   "parameters": {
     "baseName": {
-      "value": "xregistry-package-registries"
+      "value": "xregistry-pkg-registries"
     },
     "environment": {
       "value": "prod"
