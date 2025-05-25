@@ -8,16 +8,16 @@ LABEL org.xregistry.description="xRegistry API wrapper for NPM"
 WORKDIR /app
 
 # Copy package.json and package-lock.json
-COPY package.json ./
+COPY npm/package.json ./
 
 # Install app dependencies
 RUN npm install --production
 
 # Copy shared logging module
-COPY shared/ ../shared/
+COPY shared/ ./shared/
 
 # Bundle app source
-COPY . .
+COPY npm/ .
 
 # Create cache and all-packages directories
 RUN mkdir -p cache

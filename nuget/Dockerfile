@@ -4,16 +4,16 @@ FROM node:23-alpine
 WORKDIR /app
 
 # Copy package.json and package-lock.json
-COPY package.json ./
+COPY nuget/package.json ./
 
 # Install app dependencies
 RUN npm install --production
 
 # Copy shared logging module
-COPY shared/ ../shared/
+COPY shared/ ./shared/
 
 # Bundle app source
-COPY . .
+COPY nuget/ .
 
 # Create cache and logs directories
 RUN mkdir -p cache
