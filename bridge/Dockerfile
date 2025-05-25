@@ -5,14 +5,17 @@ FROM node:18-alpine AS builder
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
-COPY tsconfig.json ./
+COPY bridge/package*.json ./
+COPY bridge/tsconfig.json ./
 
 # Install all dependencies (including dev dependencies for build)
 RUN npm ci && npm cache clean --force
 
 # Copy source code
-COPY src/ ./src/
+COPY bridge/src/ ./src/
+
+# Copy shared directory (needed for imports)
+COPY shared/ ../shared/
 
 # Build TypeScript
 RUN npm run build
@@ -24,7 +27,7 @@ FROM node:18-alpine AS production
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
+COPY bridge/package*.json ./
 
 # Install only production dependencies
 RUN npm ci --only=production && npm cache clean --force
