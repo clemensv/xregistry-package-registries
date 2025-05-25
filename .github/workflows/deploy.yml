@@ -620,10 +620,24 @@ jobs:
           echo "🔍 Verifying GitHub token permissions..."
           echo "GitHub Actor: ${{ github.actor }}"
           echo "Repository: ${{ github.repository }}"
-          # Test if token can access packages
-          curl -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-               -H "Accept: application/vnd.github.v3+json" \
-               "https://api.github.com/user/packages?package_type=container" | head -5
+          
+          # Test token with package registry
+          echo "Testing GHCR authentication..."
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io --username ${{ github.actor }} --password-stdin
+          
+          if [ $? -ne 0 ]; then
+            echo "❌ GHCR authentication failed"
+            echo "🔧 Token may lack packages:read scope"
+            echo "🔧 In repo settings, ensure Actions have 'Read repository contents and packages' permission"
+            exit 1
+          fi
+          echo "✅ GHCR authentication successful"
+
+      - name: Fail-Fast Image Accessibility Check
+        run: |
+          echo "🚨 Running fail-fast image accessibility test..."
+          chmod +x ./deploy/test-image-access.sh
+          ./deploy/test-image-access.sh "${{ github.repository }}" "latest" "${{ secrets.GITHUB_TOKEN }}"
 
       - name: Deploy xRegistry Container App (All Services)
         run: |
