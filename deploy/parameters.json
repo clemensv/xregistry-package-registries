@@ -11,12 +11,6 @@
     "containerRegistryServer": {
       "value": "ghcr.io"
     },
-    "containerRegistryUsername": {
-      "value": "{{GITHUB_ACTOR}}"
-    },
-    "containerRegistryPassword": {
-      "value": "{{GITHUB_TOKEN}}"
-    },
     "imageTag": {
       "value": "{{IMAGE_TAG}}"
     },
