@@ -11,6 +11,7 @@ on:
       - 'maven/**'
       - 'nuget/**'
       - 'oci/**'
+      - 'deploy/**'
       - 'docker-compose.yml'
       - 'Dockerfile'
       - '.github/workflows/deploy.yml'
