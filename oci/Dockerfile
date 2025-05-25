@@ -10,6 +10,9 @@ COPY package*.json ./
 # Install app dependencies
 RUN npm install --omit=dev
 
+# Copy shared logging module
+COPY shared/ ../shared/
+
 # Copy the rest of the application code to the working directory
 COPY . .
 

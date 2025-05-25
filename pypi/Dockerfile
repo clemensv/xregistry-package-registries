@@ -9,6 +9,9 @@ COPY package.json ./
 # Install app dependencies
 RUN npm install --production
 
+# Copy shared logging module
+COPY shared/ ../shared/
+
 # Bundle app source
 COPY . .
 
