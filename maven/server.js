@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const yargs = require("yargs");
 const xml2js = require("xml2js");
+const { createLogger } = require("../shared/logging/logger");
 const app = express();
 
 // Parse command line arguments with fallback to environment variables
@@ -47,6 +48,16 @@ const QUIET_MODE = argv.quiet;
 const BASE_URL = argv.baseurl;
 const API_KEY = argv.apiKey;
 
+// Initialize OpenTelemetry logger
+const logger = createLogger({
+  serviceName: process.env.SERVICE_NAME || 'xregistry-maven',
+  serviceVersion: process.env.SERVICE_VERSION || '1.0.0',
+  environment: process.env.NODE_ENV || 'production',
+  enableFile: !!LOG_FILE,
+  logFile: LOG_FILE,
+  enableConsole: !QUIET_MODE
+});
+
 const REGISTRY_ID = "maven-wrapper";
 const GROUP_TYPE = "javaregistries";
 const GROUP_TYPE_SINGULAR = "javaregistry";
@@ -82,7 +93,7 @@ try {
     registryModel = registryModel.model;
   }
 } catch (error) {
-  console.error("Maven: Error loading model.json:", error.message);
+  logger.error("Maven: Error loading model.json", { error: error.message });
   registryModel = {};
 }
 
@@ -95,52 +106,11 @@ if (!fs.existsSync(cacheDir)) {
 // Create Maven index directory
 if (!fs.existsSync(MAVEN_INDEX_DIR)) {
   fs.mkdirSync(MAVEN_INDEX_DIR, { recursive: true });
-  if (!QUIET_MODE) {
-    console.log(`Created Maven index directory: ${MAVEN_INDEX_DIR}`);
-  }
+  logger.info("Created Maven index directory", { indexDir: MAVEN_INDEX_DIR });
 }
 
 // Initialize logging
-let logStream = null;
-if (LOG_FILE) {
-  try {
-    logStream = fs.createWriteStream(LOG_FILE, { flags: 'a' });
-    // Write W3C Extended Log File Format header
-    logStream.write('#Version: 1.0\n');
-    logStream.write('#Fields: date time c-ip cs-method cs-uri-stem cs-uri-query sc-status sc-bytes time-taken cs(User-Agent) cs(Referer)\n');
-    console.log(`Logging to file: ${LOG_FILE}`);
-  } catch (error) {
-    console.error(`Error opening log file: ${error.message}`);
-    process.exit(1);
-  }
-}
-
-// Logging function
-function logRequest(req, res, responseTime) {
-  const date = new Date();
-  const dateStr = date.toISOString().split('T')[0];
-  const timeStr = date.toISOString().split('T')[1].split('.')[0];
-  const ip = req.ip || req.connection.remoteAddress;
-  const method = req.method;
-  const uri = req.path;
-  const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?') + 1) : '-';
-  const status = res.statusCode;
-  const bytes = res._contentLength || '-';
-  const userAgent = req.get('User-Agent') || '-';
-  const referer = req.get('Referer') || '-';
-  
-  const logEntry = `${dateStr} ${timeStr} ${ip} ${method} ${uri} ${query} ${status} ${bytes} ${responseTime} "${userAgent}" "${referer}"\n`;
-  
-  // Write to log file if specified
-  if (logStream) {
-    logStream.write(logEntry);
-  }
-  
-  // Log to stdout unless quiet mode is enabled
-  if (!QUIET_MODE) {
-    console.log(logEntry.trim());
-  }
-}
+// OpenTelemetry logger handles logging automatically
 
 // Configure Express to not decode URLs
 app.set('decode_param_values', false);
@@ -150,11 +120,12 @@ app.enable('strict routing');
 app.enable('case sensitive routing');
 app.disable('x-powered-by');
 
+// Add OpenTelemetry middleware for request tracing and logging
+app.use(logger.middleware());
+
 // Add middleware for API key authentication (if configured)
 if (API_KEY) {
-  if (!QUIET_MODE) {
-    console.log("API key authentication enabled");
-  }
+  logger.info("API key authentication enabled");
   
   app.use((req, res, next) => {
     // Check for Authorization header
@@ -165,10 +136,17 @@ if (API_KEY) {
       return next();
     }
     
+    // Skip authentication for health checks on /model endpoint from localhost
+    if (req.path === '/model' && (req.ip === '127.0.0.1' || req.ip === '::1' || req.connection.remoteAddress === '127.0.0.1')) {
+      logger.debug("Skipping authentication for localhost health check", { path: req.path, ip: req.ip });
+      return next();
+    }
+    
     if (!authHeader) {
-      if (!QUIET_MODE) {
-        console.log(`Unauthorized request: No Authorization header provided (${req.method} ${req.path})`);
-      }
+      logger.warn("Unauthorized request: No Authorization header provided", { 
+        method: req.method, 
+        path: req.path 
+      });
       return res.status(401).json(
         createErrorResponse(
           "unauthorized", 
@@ -186,9 +164,10 @@ if (API_KEY) {
     const credentials = parts[1];
     
     if (!/^Bearer$/i.test(scheme)) {
-      if (!QUIET_MODE) {
-        console.log(`Unauthorized request: Invalid Authorization format (${req.method} ${req.path})`);
-      }
+      logger.warn("Unauthorized request: Invalid Authorization format", { 
+        method: req.method, 
+        path: req.path 
+      });
       return res.status(401).json(
         createErrorResponse(
           "unauthorized", 
@@ -202,9 +181,10 @@ if (API_KEY) {
     
     // Verify the API key
     if (credentials !== API_KEY) {
-      if (!QUIET_MODE) {
-        console.log(`Unauthorized request: Invalid API key provided (${req.method} ${req.path})`);
-      }
+      logger.warn("Unauthorized request: Invalid API key provided", { 
+        method: req.method, 
+        path: req.path 
+      });
       return res.status(401).json(
         createErrorResponse(
           "unauthorized", 
@@ -228,9 +208,10 @@ app.use((req, res, next) => {
     const query = req.url.indexOf('?') !== -1 ? req.url.slice(req.url.indexOf('?')) : '';
     const pathWithoutSlash = req.path.slice(0, -1) + query;
     
-    if (!QUIET_MODE) {
-      console.log(`Normalized path with trailing slash: ${req.path} -> ${req.path.slice(0, -1)}`);
-    }
+    logger.debug("Normalized path with trailing slash", { 
+      originalPath: req.path, 
+      normalizedPath: req.path.slice(0, -1) 
+    });
     
     // Update the URL to remove trailing slash
     req.url = pathWithoutSlash;
@@ -238,41 +219,15 @@ app.use((req, res, next) => {
   next();
 });
 
-// Add middleware to log all requests
-app.use((req, res, next) => {
-  const startTime = Date.now();
-  
-  // Save original end function
-  const originalEnd = res.end;
-  
-  // Override end function
-  res.end = function(chunk, encoding) {
-    // Calculate response time
-    const responseTime = Date.now() - startTime;
-    
-    // Log the request
-    logRequest(req, res, responseTime);
-    
-    // Call the original end function
-    return originalEnd.call(this, chunk, encoding);
-  };
-  
-  next();
-});
-
 // Middleware to handle $details suffix
 app.use((req, res, next) => {
   if (req.path.endsWith('$details')) {
     // Log the original request
-    if (!QUIET_MODE) {
-      console.log(`$details detected in path: ${req.path}`);
-    }
+    logger.debug("$details detected in path", { originalPath: req.path });
     
     // Remove $details suffix
     const basePath = req.path.substring(0, req.path.length - 8); // 8 is length of '$details'
-    if (!QUIET_MODE) {
-      console.log(`Forwarding to base path: ${basePath}`);
-    }
+    logger.debug("Forwarding to base path", { basePath });
     
     // Update the URL to the base path
     req.url = basePath + (req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '');

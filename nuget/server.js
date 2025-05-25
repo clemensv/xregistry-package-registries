@@ -3,6 +3,7 @@ const axios = require("axios");
 const fs = require("fs");
 const path = require("path");
 const yargs = require("yargs");
+const { createLogger } = require("../shared/logging/logger");
 const app = express();
 
 // CORS Middleware
@@ -61,6 +62,16 @@ const QUIET_MODE = argv.quiet;
 const BASE_URL = argv.baseurl;
 const API_KEY = argv.apiKey;
 
+// Initialize OpenTelemetry logger
+const logger = createLogger({
+  serviceName: process.env.SERVICE_NAME || 'xregistry-nuget',
+  serviceVersion: process.env.SERVICE_VERSION || '1.0.0',
+  environment: process.env.NODE_ENV || 'production',
+  enableFile: !!LOG_FILE,
+  logFile: LOG_FILE,
+  enableConsole: !QUIET_MODE
+});
+
 const REGISTRY_ID = "nuget-wrapper";
 const GROUP_TYPE = "dotnetregistries";
 const GROUP_TYPE_SINGULAR = "dotnetregistry";
@@ -73,48 +84,6 @@ const SCHEMA_VERSION = "xRegistry-json/1.0-rc1";
 const NUGET_API_BASE_URL = "https://api.nuget.org/v3/search";
 const NUGET_SEARCH_QUERY_SERVICE_URL = "https://azuresearch-usnc.nuget.org/query";
 
-// Initialize logging
-let logStream = null;
-if (LOG_FILE) {
-  try {
-    logStream = fs.createWriteStream(LOG_FILE, { flags: 'a' });
-    // Write W3C Extended Log File Format header
-    logStream.write('#Version: 1.0\n');
-    logStream.write('#Fields: date time c-ip cs-method cs-uri-stem cs-uri-query sc-status sc-bytes time-taken cs(User-Agent) cs(Referer)\n');
-    console.log(`Logging to file: ${LOG_FILE}`);
-  } catch (error) {
-    console.error(`Error opening log file: ${error.message}`);
-    process.exit(1);
-  }
-}
-
-// Logging function
-function logRequest(req, res, responseTime) {
-  const date = new Date();
-  const dateStr = date.toISOString().split('T')[0];
-  const timeStr = date.toISOString().split('T')[1].split('.')[0];
-  const ip = req.ip || req.connection.remoteAddress;
-  const method = req.method;
-  const uri = req.path;
-  const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?') + 1) : '-';
-  const status = res.statusCode;
-  const bytes = res._contentLength || '-';
-  const userAgent = req.get('User-Agent') || '-';
-  const referer = req.get('Referer') || '-';
-  
-  const logEntry = `${dateStr} ${timeStr} ${ip} ${method} ${uri} ${query} ${status} ${bytes} ${responseTime} "${userAgent}" "${referer}"\n`;
-  
-  // Write to log file if specified
-  if (logStream) {
-    logStream.write(logEntry);
-  }
-  
-  // Log to stdout unless quiet mode is enabled
-  if (!QUIET_MODE) {
-    console.log(logEntry.trim());
-  }
-}
-
 // Configure Express to not decode URLs
 app.set('decode_param_values', false);
 
@@ -122,6 +91,9 @@ app.set('decode_param_values', false);
 app.enable('strict routing');
 app.enable('case sensitive routing');
 app.disable('x-powered-by');
+
+// Add OpenTelemetry middleware for request tracing and logging
+app.use(logger.middleware());
 
 // Cache directory for HTTP requests
 const cacheDir = path.join(__dirname, "cache");
@@ -131,9 +103,7 @@ if (!fs.existsSync(cacheDir)) {
 
 // Add middleware for API key authentication (if configured)
 if (API_KEY) {
-  if (!QUIET_MODE) {
-    console.log("API key authentication enabled");
-  }
+  logger.info("API key authentication enabled");
   
   app.use((req, res, next) => {
     // Check for Authorization header
@@ -144,10 +114,17 @@ if (API_KEY) {
       return next();
     }
     
+    // Skip authentication for health checks on /model endpoint from localhost
+    if (req.path === '/model' && (req.ip === '127.0.0.1' || req.ip === '::1' || req.connection.remoteAddress === '127.0.0.1')) {
+      logger.debug("Skipping authentication for localhost health check", { path: req.path, ip: req.ip });
+      return next();
+    }
+    
     if (!authHeader) {
-      if (!QUIET_MODE) {
-        console.log(`Unauthorized request: No Authorization header provided (${req.method} ${req.path})`);
-      }
+      logger.warn("Unauthorized request: No Authorization header provided", { 
+        method: req.method, 
+        path: req.path 
+      });
       return res.status(401).json(
         createErrorResponse(
           "unauthorized", 
@@ -165,9 +142,10 @@ if (API_KEY) {
     const credentials = parts[1];
     
     if (!/^Bearer$/i.test(scheme)) {
-      if (!QUIET_MODE) {
-        console.log(`Unauthorized request: Invalid Authorization format (${req.method} ${req.path})`);
-      }
+      logger.warn("Unauthorized request: Invalid Authorization format", { 
+        method: req.method, 
+        path: req.path 
+      });
       return res.status(401).json(
         createErrorResponse(
           "unauthorized", 
@@ -181,9 +159,10 @@ if (API_KEY) {
     
     // Verify the API key
     if (credentials !== API_KEY) {
-      if (!QUIET_MODE) {
-        console.log(`Unauthorized request: Invalid API key provided (${req.method} ${req.path})`);
-      }
+      logger.warn("Unauthorized request: Invalid API key provided", { 
+        method: req.method, 
+        path: req.path 
+      });
       return res.status(401).json(
         createErrorResponse(
           "unauthorized", 
@@ -204,12 +183,13 @@ if (API_KEY) {
 app.use((req, res, next) => {
   if (req.path.length > 1 && req.path.endsWith('/')) {
     // Remove trailing slash (except for root path) and maintain query string
-    const query = req.url.indexOf('?') !== -1 ? req.url.slice(req.url.indexOf('?')) : '';
+    const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?') + 1) : '';
     const pathWithoutSlash = req.path.slice(0, -1) + query;
     
-    if (!QUIET_MODE) {
-      console.log(`Normalized path with trailing slash: ${req.path} -> ${req.path.slice(0, -1)}`);
-    }
+    logger.debug("Normalized path with trailing slash", { 
+      originalPath: req.path, 
+      normalizedPath: req.path.slice(0, -1) 
+    });
     
     // Update the URL to remove trailing slash
     req.url = pathWithoutSlash;
@@ -217,41 +197,15 @@ app.use((req, res, next) => {
   next();
 });
 
-// Add middleware to log all requests
-app.use((req, res, next) => {
-  const startTime = Date.now();
-  
-  // Save original end function
-  const originalEnd = res.end;
-  
-  // Override end function
-  res.end = function(chunk, encoding) {
-    // Calculate response time
-    const responseTime = Date.now() - startTime;
-    
-    // Log the request
-    logRequest(req, res, responseTime);
-    
-    // Call the original end function
-    return originalEnd.call(this, chunk, encoding);
-  };
-  
-  next();
-});
-
 // Middleware to handle $details suffix
 app.use((req, res, next) => {
   if (req.path.endsWith('$details')) {
     // Log the original request
-    if (!QUIET_MODE) {
-      console.log(`$details detected in path: ${req.path}`);
-    }
+    logger.info(`$details detected in path: ${req.path}`);
     
     // Remove $details suffix
     const basePath = req.path.substring(0, req.path.length - 8); // 8 is length of '$details'
-    if (!QUIET_MODE) {
-      console.log(`Forwarding to base path: ${basePath}`);
-    }
+    logger.info(`Forwarding to base path: ${basePath}`);
     
     // Update the URL to the base path
     req.url = basePath + (req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '');
@@ -1447,375 +1401,5 @@ app.get(
   }
 );
 
-// Package metadata (Resource-Level: represents the default/latest version)
-app.get(
-  `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageId`,
-  async (req, res) => {
-    const { packageId } = req.params;
-    const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
-    
-    try {
-      // Fetch data using the new registration endpoint function
-      const registrationData = await fetchNuGetPackageRegistration(packageId);
-      const latestVersionStr = registrationData.latestVersionStr;
-
-      // Find the catalog entry for the latest (default) version
-      const latestVersionCatalogEntry = registrationData.allVersionCatalogEntries.find(entry => entry.version === latestVersionStr);
-
-      if (!latestVersionCatalogEntry) {
-        // This should ideally not happen if fetchNuGetPackageRegistration succeeded and found a latestVersionStr
-        throw new Error(`Could not find catalog entry for latest version ${latestVersionStr} of package ${packageId}`);
-      }
-
-      // Use registrationData for overall package-level info derived from the latest entry, 
-      // and latestVersionCatalogEntry for its specific details.
-      const mainPackageInfo = { // This object mirrors the top-level info derived in fetchNuGetPackageRegistration
-        id: registrationData.packageId,
-        title: registrationData.packageId, // Fallback, as title isn't explicitly returned by fetchNuGetPackageRegistration's top level
-        description: registrationData.description,
-        authors: registrationData.authors,
-        tags: registrationData.tags, // This is an array
-        projectUrl: registrationData.projectUrl,
-        licenseUrl: registrationData.licenseUrl,
-        iconUrl: registrationData.iconUrl,
-        summary: registrationData.summary,
-      };
-
-      // Prepare 'labels' from tags of the latest version (which are effectively the main package tags from registrationData)
-      const currentVersionTags = Array.isArray(latestVersionCatalogEntry.tags) ? latestVersionCatalogEntry.tags : 
-                                 (Array.isArray(mainPackageInfo.tags) ? mainPackageInfo.tags : []);
-      const labels = {};
-      if (currentVersionTags.length > 0) {
-        labels.tags = currentVersionTags.join(', ');
-      }
-
-      // Prepare 'docsUrl': Prioritize specific entry's projectUrl, then the one from mainPackageInfo (derived from latest)
-      const effectiveDocsUrl = latestVersionCatalogEntry.projectUrl || mainPackageInfo.projectUrl || null;
-      
-      // Timestamps for metaObject. Package creation is hard to get from registration.
-      // Using latest version's publish date for "modifiedat" of the resource.
-      const nowForCreatedAt = new Date().toISOString(); // Placeholder for actual package creation if not available
-      const resourceModifiedAt = latestVersionCatalogEntry.published ? new Date(latestVersionCatalogEntry.published).toISOString() : nowForCreatedAt;
-
-      // Create meta subobject 
-      const metaUrl = `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageId}/meta`;
-      const versionsUrl = `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageId}/versions`;
-      const defaultVersionUrl = `${versionsUrl}/${latestVersionStr}`;
-      
-      const metaObject = {
-        [`${RESOURCE_TYPE_SINGULAR}id`]: packageId,
-        self: metaUrl,
-        xid: `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageId}/meta`,
-        epoch: 1, 
-        createdat: nowForCreatedAt, // Ideally, this would be the true package first published date.
-        modifiedat: resourceModifiedAt,
-        readonly: true, 
-        compatibility: "none",
-        defaultversionid: latestVersionStr,
-        defaultversionurl: defaultVersionUrl,
-        defaultversionsticky: true, 
-      };
-      
-      // Construct the packageResponse, mirroring version-specific structure
-      let packageResponse = {
-        ...xregistryCommonAttrs({
-          id: packageId, // Resource ID is the packageId itself for this route
-          name: latestVersionCatalogEntry.id || mainPackageInfo.title || packageId, // Name from catalog entry or fallback
-          description: latestVersionCatalogEntry.description || mainPackageInfo.description || "",
-          parentUrl: `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`, // Parent is the collection of packages
-          type: RESOURCE_TYPE_SINGULAR, // Type of this entity
-          labels: labels, 
-          docsUrl: effectiveDocsUrl, 
-        }),
-        [`${RESOURCE_TYPE_SINGULAR}id`]: packageId, // packageId field
-        versionid: latestVersionStr, // Default version ID for this resource view
-        self: `${baseUrl}${req.path}`, // Self URL of this resource
-        
-        // Fields mirroring the version-specific response for consistency
-        authors: latestVersionCatalogEntry.authors || mainPackageInfo.authors || '',
-        version: latestVersionStr, // The actual version string (latest/default)
-        summary: latestVersionCatalogEntry.summary || mainPackageInfo.summary || "",
-        iconUrl: latestVersionCatalogEntry.iconUrl || mainPackageInfo.iconUrl || null,
-        licenseUrl: latestVersionCatalogEntry.licenseUrl || latestVersionCatalogEntry.licenseExpression || mainPackageInfo.licenseUrl || null, 
-        projectUrl: latestVersionCatalogEntry.projectUrl || mainPackageInfo.projectUrl || null, 
-        tags: currentVersionTags, 
-
-        // Stats: Use per-version downloads for the latest version. Package-wide total is harder from registration.
-        totalDownloads: (typeof latestVersionCatalogEntry.downloads !== 'undefined' && latestVersionCatalogEntry.downloads >= 0) ? latestVersionCatalogEntry.downloads : null, 
-        verified: null, // 'verified' status is not readily available from registration catalogEntry
-
-        // Version-specific fields that now become part of the resource-level (default version) view
-        version_created: latestVersionCatalogEntry.published ? new Date(latestVersionCatalogEntry.published).toISOString() : null,
-        dependencies: await processNuGetDependencies(latestVersionCatalogEntry.dependencyGroups, packageId),
-
-        // Navigation attributes
-        metaurl: metaUrl,
-        versionsurl: versionsUrl,
-        versionscount: registrationData.allVersionCatalogEntries.length,
-      };
-      
-      // Make the docs URL absolute if it's not already
-      convertDocsToAbsoluteUrl(req, packageResponse);
-      
-      // Apply flag handlers
-      packageResponse = handleCollectionsFlag(req, packageResponse);
-      packageResponse = handleDocFlag(req, packageResponse);
-      packageResponse = handleInlineFlag(req, packageResponse, "versions", metaObject); // "versions" for inlining versions, "meta" for meta
-      packageResponse = handleEpochFlag(req, packageResponse);
-      packageResponse = handleSpecVersionFlag(req, packageResponse);
-      packageResponse = handleNoReadonlyFlag(req, packageResponse);
-      packageResponse = handleSchemaFlag(req, packageResponse, 'resource');
-      
-      // Apply response headers
-      setXRegistryHeaders(res, packageResponse);
-      
-      res.json(packageResponse);
-    } catch (error) {
-      // Log the full error if not in quiet mode
-      if (!QUIET_MODE) {
-        console.error(`[Package Route - /:packageId] Error processing ${packageId}: ${error.message}`);
-        console.error(error.stack); 
-      }
-      res.status(404).json( // Or 500 if it's a server-side processing error vs. truly not found
-        createErrorResponse("not_found", "Package not found or error processing package data", 404, req.originalUrl, `Error for package '${packageId}': ${error.message}`, { packageId_failed: packageId })
-      );
-    }
-  }
-);
-
-// Resource meta endpoint
-app.get(
-  `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageId/meta`,
-  async (req, res) => {
-    const { packageId } = req.params;
-    const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
-    
-    try {
-      const packageData = await fetchNuGetPackageData(packageId);
-      
-      // Get the latest version
-      const latestVersion = packageData.version;
-      
-      // Build resource URL paths
-      const resourceBasePath = `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageId}`;
-      const metaUrl = `${resourceBasePath}/meta`;
-      const versionsUrl = `${resourceBasePath}/versions`;
-      const defaultVersionUrl = `${resourceBasePath}/versions/${latestVersion}`;
-      
-      // Get creation and modification timestamps
-      const createdAt = packageData.created ? new Date(packageData.created).toISOString() : new Date().toISOString();
-      const modifiedAt = packageData.lastUpdated ? new Date(packageData.lastUpdated).toISOString() : new Date().toISOString();
-      
-      // Create meta subobject according to spec
-      const metaObject = {
-        [`${RESOURCE_TYPE_SINGULAR}id`]: packageId,
-        self: metaUrl,
-        xid: `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageId}/meta`,
-        epoch: 1,
-        createdat: createdAt,
-        modifiedat: modifiedAt,
-        readonly: true, // NuGet wrapper is read-only
-        compatibility: "none",
-        // Include version related information in meta
-        defaultversionid: latestVersion,
-        defaultversionurl: defaultVersionUrl,
-        defaultversionsticky: true, // Make default version sticky by default
-      };
-      
-      // Apply flag handlers
-      let processedResponse = handleEpochFlag(req, metaObject);
-      processedResponse = handleNoReadonlyFlag(req, processedResponse);
-      processedResponse = handleSchemaFlag(req, processedResponse, 'meta');
-      
-      // Apply response headers
-      setXRegistryHeaders(res, processedResponse);
-      
-      res.json(processedResponse);
-    } catch (error) {
-      res.status(404).json(
-        createErrorResponse("not_found", "Package not found", 404, req.originalUrl, `The package '${packageId}' could not be found`, packageId)
-      );
-    }
-  }
-);
-
-// All versions
-app.get(
-  `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageId/versions`,
-  async (req, res) => {
-    const { packageId } = req.params;
-    const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
-    
-    try {
-      const packageData = await fetchNuGetPackageData(packageId);
-      
-      // Get all versions
-      const versions = packageData.versions || [packageData.version];
-      
-      // Pagination parameters
-      const totalCount = versions.length;
-      const limit = req.query.limit ? parseInt(req.query.limit, 10) : DEFAULT_PAGE_LIMIT;
-      const offset = req.query.offset ? parseInt(req.query.offset, 10) : 0;
-      
-      if (limit <= 0) {
-        return res.status(400).json(
-          createErrorResponse("invalid_data", "Limit must be greater than 0", 400, req.originalUrl, "The limit parameter must be a positive integer", limit)
-        );
-      }
-      
-      // Apply pagination to the versions
-      const paginatedVersions = versions.slice(offset, offset + limit);
-      
-      const versionMap = {};
-      paginatedVersions.forEach((versionInfo) => {
-        // For NuGet, version info might be an object or a string
-        const version = typeof versionInfo === 'object' ? versionInfo.version : versionInfo;
-        
-        versionMap[version] = {
-          ...xregistryCommonAttrs({
-            id: version,
-            name: version,
-            parentUrl: `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageId}/versions`,
-            type: "version",
-          }),
-          versionid: version,
-          self: `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageId}/versions/${version}`,
-        };
-      });
-      
-      // Apply flag handlers for each version
-      for (const v in versionMap) {
-        versionMap[v] = handleDocFlag(req, versionMap[v]);
-        versionMap[v] = handleEpochFlag(req, versionMap[v]);
-        versionMap[v] = handleNoReadonlyFlag(req, versionMap[v]);
-        versionMap[v] = handleSchemaFlag(req, versionMap[v], 'version');
-      }
-      
-      // Add pagination links
-      const links = generatePaginationLinks(req, totalCount, offset, limit);
-      res.set('Link', links);
-      
-      // Apply schema headers
-      setXRegistryHeaders(res, { epoch: 1 });
-      
-      res.json(versionMap);
-    } catch (error) {
-      res.status(404).json(
-        createErrorResponse("not_found", "Package not found", 404, req.originalUrl, `The package '${packageId}' could not be found`, packageId)
-      );
-    }
-  }
-);
-
-// Specific version
-app.get(
-  `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageId/versions/:version`,
-  async (req, res) => {
-    const { packageId, version } = req.params;
-    const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
-    
-    try {
-      // Fetch data using the new registration endpoint function
-      const registrationData = await fetchNuGetPackageRegistration(packageId);
-      
-      // Find the catalog entry for the specifically requested version
-      const versionCatalogEntry = registrationData.allVersionCatalogEntries.find(entry => entry.version === version);
-
-      if (!versionCatalogEntry) {
-        throw new Error(`Version ${version} not found in catalog entries for package ${packageId}`);
-      }
-
-      // Use registrationData for package-level info and versionCatalogEntry for version-specific details
-      const mainPackageInfo = {
-        id: registrationData.packageId,
-        title: registrationData.packageId, // Use id as title if not otherwise available from registration top level
-        description: registrationData.description,
-        authors: registrationData.authors, // Already a string from catalogEntry
-        tags: registrationData.tags, // Already an array from catalogEntry
-        projectUrl: registrationData.projectUrl,
-        licenseUrl: registrationData.licenseUrl,
-        iconUrl: registrationData.iconUrl,
-        summary: registrationData.summary,
-        // totalDownloads and verified are not easily available from registrationData consistently at package level
-        // We will omit them or mark as unavailable from this source for now.
-      };
-
-      // Prepare 'labels' from tags of the specific version, fallback to main package tags
-      const versionTags = Array.isArray(versionCatalogEntry.tags) ? versionCatalogEntry.tags : (Array.isArray(mainPackageInfo.tags) ? mainPackageInfo.tags : []);
-      const labels = {};
-      if (versionTags.length > 0) {
-        labels.tags = versionTags.join(', ');
-      }
-
-      // Prepare 'docsUrl': Prioritize version-specific, then main packageData.projectUrl.
-      const effectiveDocsUrl = versionCatalogEntry.projectUrl || mainPackageInfo.projectUrl || null;
-
-      let versionResponse = {
-        ...xregistryCommonAttrs({
-          id: version, 
-          name: mainPackageInfo.title || packageId, 
-          description: versionCatalogEntry.description || mainPackageInfo.description || "",
-          parentUrl: `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageId}/versions`,
-          type: "version",
-          labels: labels, 
-          docsUrl: effectiveDocsUrl, 
-        }),
-        
-        [`${RESOURCE_TYPE_SINGULAR}id`]: packageId,
-        versionid: version, 
-        self: `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageId}/versions/${version}`,
-        resourceurl: `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageId}`,
-
-        name: mainPackageInfo.title || packageId,
-        description: versionCatalogEntry.description || mainPackageInfo.description || "", 
-        authors: versionCatalogEntry.authors || mainPackageInfo.authors || '',
-        summary: versionCatalogEntry.summary || mainPackageInfo.summary || "",
-        iconUrl: versionCatalogEntry.iconUrl || mainPackageInfo.iconUrl || null,
-        licenseUrl: versionCatalogEntry.licenseUrl || versionCatalogEntry.licenseExpression || mainPackageInfo.licenseUrl || null, 
-        projectUrl: versionCatalogEntry.projectUrl || mainPackageInfo.projectUrl || null, 
-        tags: versionTags, 
-
-        // totalDownloads & verified are hard to get accurately for the *package* from registration blobs.
-        // We can report version-specific downloads if available in versionCatalogEntry.downloads
-        totalDownloads: (typeof versionCatalogEntry.downloads !== 'undefined' && versionCatalogEntry.downloads >= 0) ? versionCatalogEntry.downloads : null, // Per-version downloads
-        verified: null, // Cannot determine 'verified' status from registration catalogEntry easily
-        
-        version_created: versionCatalogEntry.published ? new Date(versionCatalogEntry.published).toISOString() : null,
-        
-        package_version_count: registrationData.allVersionCatalogEntries.length,
-        package_latest_version: registrationData.latestVersionStr, 
-        is_latest: version === registrationData.latestVersionStr,
-
-        // Process dependencies using the new helper
-        dependencies: await processNuGetDependencies(versionCatalogEntry.dependencyGroups, packageId)
-      };
-      
-      // Make the docs URL absolute if it's not already
-      convertDocsToAbsoluteUrl(req, versionResponse);
-      
-      // Apply flag handlers
-      versionResponse = handleDocFlag(req, versionResponse);
-      versionResponse = handleEpochFlag(req, versionResponse);
-      versionResponse = handleSpecVersionFlag(req, versionResponse);
-      versionResponse = handleNoReadonlyFlag(req, versionResponse);
-      versionResponse = handleSchemaFlag(req, versionResponse, 'version');
-      
-      // Apply response headers
-      setXRegistryHeaders(res, versionResponse);
-      
-      res.json(versionResponse);
-    } catch (error) {
-      res.status(404).json(
-        createErrorResponse("not_found", "Version not found", 404, req.originalUrl, `The version '${version}' of package '${packageId}' could not be found`, { packageId, version })
-      );
-    }
-  }
-);
-
-// Start the server
-app.listen(PORT, () => {
-  console.log(`NuGet xRegistry wrapper listening on port ${PORT}`);
-  if (BASE_URL) {
-    console.log(`Using base URL: ${BASE_URL}`);
-  }
-}); 
+// Initialize logging
+// OpenTelemetry logger handles logging automatically

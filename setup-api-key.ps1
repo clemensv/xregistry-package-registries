@@ -10,10 +10,10 @@
     to pick up the new key.
 
 .PARAMETER ResourceGroup
-    Azure Resource Group name (default: xregistry-resources)
+    Azure Resource Group name (default: xregistry-package-registries)
 
 .PARAMETER AppName
-    Container App name (all services) (default: xregistry-app)
+    Container App name (all services) (default: xregistry-package-registries)
 
 .EXAMPLE
     .\setup-api-key.ps1
@@ -24,10 +24,10 @@
 
 param(
     [Parameter(Mandatory = $false)]
-    [string]$ResourceGroup = "xregistry-resources",
+    [string]$ResourceGroup = "xregistry-package-registries",
     
     [Parameter(Mandatory = $false)]
-    [string]$AppName = "xregistry-app"
+    [string]$AppName = "xregistry-package-registries"
 )
 
 # Set error action preference

@@ -3,17 +3,24 @@ import axios from 'axios';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import fs from 'fs';
 import path from 'path';
-import morgan from 'morgan';
 import dotenv from 'dotenv';
 import { Buffer } from 'buffer';
+import { createLogger } from '../../shared/logging/logger';
 
 dotenv.config();
+
+// Initialize OpenTelemetry logger
+const logger = createLogger({
+  serviceName: process.env.SERVICE_NAME || 'xregistry-bridge',
+  serviceVersion: process.env.SERVICE_VERSION || '1.0.0',
+  environment: process.env.NODE_ENV || 'production'
+});
 
 const app = express();
 const PORT = process.env['PORT'] || '8080';
 const BASE_URL = process.env['BASE_URL'] || `http://localhost:${PORT}`;
 const BASE_URL_HEADER = process.env['BASE_URL_HEADER'] || 'x-base-url';
-const PROXY_API_KEY = process.env['PROXY_API_KEY'] || '';
+const BRIDGE_API_KEY = process.env['BRIDGE_API_KEY'] || '';
 const REQUIRED_GROUPS = process.env['REQUIRED_GROUPS']?.split(',') || [];
 
 // New resilient startup configuration
@@ -40,23 +47,25 @@ function loadDownstreamConfig(): DownstreamConfig[] {
   // First try to read from environment variable (useful for container deployments)
   const downstreamsEnv = process.env['DOWNSTREAMS_JSON'];
   if (downstreamsEnv) {
-    console.log('Loading downstream configuration from DOWNSTREAMS_JSON environment variable');
+    logger.info('Loading downstream configuration from DOWNSTREAMS_JSON environment variable');
     try {
       const config = JSON.parse(downstreamsEnv);
       return config.servers || [];
-    } catch (error) {
-      console.error('Failed to parse DOWNSTREAMS_JSON environment variable:', error);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error('Failed to parse DOWNSTREAMS_JSON environment variable', { error: errorMessage });
       throw new Error('Invalid DOWNSTREAMS_JSON format');
     }
   }
   
   // Fallback to file-based configuration
   const configFile = process.env['BRIDGE_CONFIG_FILE'] || 'downstreams.json';
-  console.log(`Loading downstream configuration from file: ${configFile}`);
+  logger.info('Loading downstream configuration from file', { configFile });
   try {
     return JSON.parse(fs.readFileSync(configFile, 'utf-8')).servers;
-  } catch (error) {
-    console.error(`Failed to read configuration file ${configFile}:`, error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error('Failed to read configuration file', { configFile, error: errorMessage });
     throw new Error(`Configuration file ${configFile} not found or invalid`);
   }
 }
@@ -68,11 +77,8 @@ let serverStates: Map<string, ServerState> = new Map();
 let httpServer: any = null;
 let isServerRunning = false;
 
-// Logging
-const logDirectory = path.join(__dirname, 'logs');
-fs.existsSync(logDirectory) || fs.mkdirSync(logDirectory);
-const accessLogStream = fs.createWriteStream(path.join(logDirectory, 'access.log'), { flags: 'a' });
-app.use(morgan('combined', { stream: accessLogStream }));
+// Replace morgan with OpenTelemetry middleware
+app.use(logger.middleware());
 
 // User extraction from ACA headers
 function extractUser(req: any) {
@@ -84,17 +90,30 @@ function extractUser(req: any) {
 
 // Security middleware (API key OR ACA Entra group claim)
 app.use((req: any, res: any, next: any) => {
-  if (!PROXY_API_KEY && REQUIRED_GROUPS.length === 0) return next();
+  if (!BRIDGE_API_KEY && REQUIRED_GROUPS.length === 0) return next();
   
-  const apiKeyOk = PROXY_API_KEY && req.headers.authorization?.includes(PROXY_API_KEY);
+  const apiKeyOk = BRIDGE_API_KEY && req.headers.authorization?.includes(BRIDGE_API_KEY);
   const user = extractUser(req);
   const groupOk = REQUIRED_GROUPS.length === 0 || (user && 
     user.claims?.some((c: any) => c.typ === 'groups' && REQUIRED_GROUPS.includes(c.val)));
   
   if (apiKeyOk || groupOk) {
     req.user = user;
+    logger.debug('Request authorized', { 
+      method: req.method, 
+      url: req.url,
+      authMethod: apiKeyOk ? 'api-key' : 'group-claim',
+      userId: user?.userId
+    });
     return next();
   }
+  
+  logger.warn('Unauthorized request', { 
+    method: req.method, 
+    url: req.url,
+    hasApiKey: !!req.headers.authorization,
+    userGroups: user?.claims?.filter((c: any) => c.typ === 'groups').map((c: any) => c.val) || []
+  });
   return res.status(401).send('Unauthorized');
 });
 
@@ -114,11 +133,12 @@ function sleep(ms: number): Promise<void> {
 
 // Test server connectivity and fetch model
 async function testServer(server: DownstreamConfig): Promise<{ model: any, capabilities: any } | null> {
+  const startTime = Date.now();
   try {
     const headers: Record<string, string> = {};
     if (server.apiKey) headers['Authorization'] = `Bearer ${server.apiKey}`;
 
-    console.log(`Testing server ${server.url}...`);
+    logger.debug('Testing server connectivity', { serverUrl: server.url });
     
     // Test /model endpoint specifically
     const modelResponse = await axios.get(`${server.url}/model`, { 
@@ -132,13 +152,24 @@ async function testServer(server: DownstreamConfig): Promise<{ model: any, capab
       timeout: SERVER_HEALTH_TIMEOUT 
     });
 
-    console.log(`✓ Server ${server.url} is responding with model data`);
+    const duration = Date.now() - startTime;
+    logger.info('Server connectivity test successful', { 
+      serverUrl: server.url,
+      duration,
+      modelGroups: Object.keys(modelResponse.data.groups || {}).length
+    });
+    
     return {
       model: modelResponse.data,
       capabilities: capabilitiesResponse.data
     };
   } catch (error) {
-    console.log(`✗ Server ${server.url} failed: ${error instanceof Error ? error.message : String(error)}`);
+    const duration = Date.now() - startTime;
+    logger.error('Server connectivity test failed', { 
+      serverUrl: server.url,
+      duration,
+      error: error instanceof Error ? error.message : String(error)
+    });
     return null;
   }
 }
@@ -178,7 +209,11 @@ function rebuildConsolidatedModel(): boolean {
       if (model.groups) {
         for (const groupType of Object.keys(model.groups)) {
           if (groupTypeToBackend[groupType]) {
-            console.warn(`Warning: groupType "${groupType}" defined by multiple servers. Using server ${url}`);
+            logger.warn('Group type collision detected', { 
+              groupType, 
+              existingServer: groupTypeToBackend[groupType].url,
+              newServer: url 
+            });
           }
           groupTypeToBackend[groupType] = state.server;
         }
@@ -191,7 +226,13 @@ function rebuildConsolidatedModel(): boolean {
                     !previousGroups.every(group => currentGroups.includes(group));
   
   if (hasChanges) {
-    console.log(`Model updated. Available groups: [${currentGroups.join(', ')}]`);
+    logger.info('Consolidated model updated', { 
+      availableGroups: currentGroups,
+      epoch: bridgeEpoch,
+      activeServers: Array.from(serverStates.values())
+        .filter(s => s.isActive)
+        .map(s => s.server.url)
+    });
     
     // Increment epoch on model changes
     bridgeEpoch++;
@@ -209,7 +250,7 @@ function rebuildConsolidatedModel(): boolean {
 async function restartHttpServer(): Promise<void> {
   return new Promise((resolve) => {
     if (httpServer && isServerRunning) {
-      console.log('Restarting HTTP server due to model changes...');
+      logger.info('Restarting HTTP server due to model changes...');
       httpServer.close(() => {
         startHttpServer();
         resolve();
@@ -227,8 +268,8 @@ function startHttpServer(): void {
   
   httpServer = app.listen(PORT, () => {
     isServerRunning = true;
-    console.log(`xRegistry Proxy running at ${BASE_URL}`);
-    console.log(`Available registry groups: [${Object.keys(groupTypeToBackend).join(', ')}]`);
+    logger.info('xRegistry Proxy running at', { baseUrl: BASE_URL });
+    logger.info('Available registry groups:', { groups: Object.keys(groupTypeToBackend) });
     
     // Set up dynamic routes after server starts
     setupDynamicRoutes();
@@ -243,7 +284,10 @@ async function retryInactiveServers(): Promise<void> {
     return;
   }
   
-  console.log(`Retrying ${inactiveServers.length} inactive servers...`);
+  logger.info('Retrying', { 
+    inactiveServers: inactiveServers.length,
+    serverUrls: inactiveServers.map(s => s.server.url)
+  });
   
   let hasNewServers = false;
   
@@ -252,7 +296,7 @@ async function retryInactiveServers(): Promise<void> {
     state.lastAttempt = Date.now();
     
     if (result) {
-      console.log(`✓ Server ${state.server.url} is now available`);
+      logger.info('✓ Server', { serverUrl: state.server.url });
       state.isActive = true;
       state.model = result.model;
       state.capabilities = result.capabilities;
@@ -273,8 +317,11 @@ async function retryInactiveServers(): Promise<void> {
 
 // Initial server discovery and startup
 async function initializeWithResilience(): Promise<void> {
-  console.log(`Starting resilient bridge initialization...`);
-  console.log(`Waiting ${STARTUP_WAIT_TIME/1000} seconds before testing servers...`);
+  logger.info('Starting resilient bridge initialization...');
+  logger.info('Waiting', { 
+    startupWaitTime: STARTUP_WAIT_TIME / 1000,
+    seconds: STARTUP_WAIT_TIME / 1000
+  });
   
   // Wait initial period
   await sleep(STARTUP_WAIT_TIME);
@@ -289,7 +336,7 @@ async function initializeWithResilience(): Promise<void> {
   }
   
   // Test all servers
-  console.log('Testing all configured servers...');
+  logger.info('Testing all configured servers...');
   let activeCount = 0;
   
   for (const [url, state] of serverStates) {
@@ -306,7 +353,10 @@ async function initializeWithResilience(): Promise<void> {
     }
   }
   
-  console.log(`Server discovery complete: ${activeCount}/${downstreams.length} servers active`);
+  logger.info('Server discovery complete', { 
+    activeServers: activeCount,
+    totalServers: downstreams.length
+  });
   
   // Build initial consolidated model
   rebuildConsolidatedModel();
@@ -315,12 +365,15 @@ async function initializeWithResilience(): Promise<void> {
   startHttpServer();
   
   if (activeCount === 0) {
-    console.warn('No servers are currently active. The bridge will continue retrying...');
+    logger.warn('No servers are currently active. The bridge will continue retrying...');
   }
   
   // Start periodic retry timer
   setInterval(retryInactiveServers, RETRY_INTERVAL);
-  console.log(`Started periodic retry every ${RETRY_INTERVAL/1000} seconds for inactive servers`);
+  logger.info('Started periodic retry every', { 
+    retryInterval: RETRY_INTERVAL / 1000,
+    seconds: RETRY_INTERVAL / 1000
+  });
 }
 
 // Health check for downstream servers
@@ -341,14 +394,14 @@ async function checkServerHealth(server: DownstreamConfig): Promise<boolean> {
 
 // Dynamic route setup based on active backends
 function setupDynamicRoutes() {
-  console.log(`Setting up dynamic routes for groups: [${Object.keys(groupTypeToBackend).join(', ')}]`);
+  logger.info('Setting up dynamic routes for groups:', { groups: Object.keys(groupTypeToBackend) });
   
   // Add new dynamic routes
   for (const [groupType, backend] of Object.entries(groupTypeToBackend)) {
     const targetUrl = backend.url;
     const basePath = `/${groupType}`;
     
-    console.log(`Setting up route ${basePath} -> ${targetUrl}`);
+    logger.info('Setting up route', { basePath, targetUrl });
     
     // Use app.use with specific path pattern
     app.use(basePath, (req: any, res: any, next: any) => {
@@ -365,7 +418,11 @@ function setupDynamicRoutes() {
         }
       },
       onError: (err: any, req: any, res: any) => {
-        console.error(`Proxy error for ${groupType} -> ${targetUrl}:`, err.message);
+        logger.error('Proxy error', { 
+          groupType,
+          targetUrl,
+          error: err instanceof Error ? err.message : String(err)
+        });
         res.status(502).json({ 
           error: 'Bad Gateway', 
           message: `Upstream server ${targetUrl} is not available`,
@@ -511,7 +568,7 @@ app.get('/status', (_, res) => {
 
 // Start the resilient initialization
 initializeWithResilience().catch(error => {
-  console.error('Failed to initialize bridge:', error);
+  logger.error('Failed to initialize bridge', { error: error instanceof Error ? error.message : String(error) });
   process.exit(1);
 });
 

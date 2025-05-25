@@ -14,6 +14,7 @@ const { exec } = require('child_process');
 const util = require('util');
 const { mkdirp } = require('mkdirp');
 const sanitize = require('sanitize-filename');
+const { createLogger } = require("../shared/logging/logger");
 
 const app = express();
 
@@ -96,6 +97,16 @@ const API_KEY = argv.apiKey;
 const CACHE_DIR = path.resolve(argv.cacheDir);
 const CONFIG_FILE_PATH = path.resolve(argv.configFile);
 
+// Initialize OpenTelemetry logger
+const logger = createLogger({
+  serviceName: process.env.SERVICE_NAME || 'xregistry-oci',
+  serviceVersion: process.env.SERVICE_VERSION || '1.0.0',
+  environment: process.env.NODE_ENV || 'production',
+  enableFile: !!LOG_FILE,
+  logFile: LOG_FILE,
+  enableConsole: !QUIET_MODE
+});
+
 const REGISTRY_ID = "xregistry-oci-proxy";
 const GROUP_TYPE = "containerregistries";
 const GROUP_TYPE_SINGULAR = "containerregistry";
@@ -129,6 +140,17 @@ if (LOG_FILE) {
 // Middleware for authentication
 app.use((req, res, next) => {
   if (API_KEY) {
+    // Skip authentication for OPTIONS requests (pre-flight CORS)
+    if (req.method === 'OPTIONS') {
+      return next();
+    }
+    
+    // Skip authentication for health checks on /model endpoint from localhost
+    if (req.path === '/model' && (req.ip === '127.0.0.1' || req.ip === '::1' || req.connection.remoteAddress === '127.0.0.1')) {
+      console.log("Skipping authentication for localhost health check", { path: req.path, ip: req.ip });
+      return next();
+    }
+    
     const authHeader = req.get('Authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ') || authHeader.substring(7) !== API_KEY) {
       return res.status(401).json(

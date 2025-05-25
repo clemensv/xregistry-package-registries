@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "baseName": {
+      "value": "xregistry-package-registries"
+    },
+    "environment": {
+      "value": "prod"
+    },
+    "containerRegistryServer": {
+      "value": "ghcr.io"
+    },
+    "containerRegistryUsername": {
+      "value": "{{GITHUB_ACTOR}}"
+    },
+    "containerRegistryPassword": {
+      "value": "{{GITHUB_TOKEN}}"
+    },
+    "imageTag": {
+      "value": "{{IMAGE_TAG}}"
+    },
+    "repositoryName": {
+      "value": "{{REPOSITORY_NAME}}"
+    },
+    "alertEmailAddress": {
+      "value": "clemensv@microsoft.com"
+    }
+  }
+} 
