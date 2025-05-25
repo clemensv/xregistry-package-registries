@@ -154,13 +154,13 @@ if [ ${#ACA_FAILED_IMAGES[@]} -gt 0 ]; then
     for img in "${ACA_FAILED_IMAGES[@]}"; do
         echo "     - $img"
     done
-    echo -e "${YELLOW}   Azure validation API may not support GHCR private images${NC}"
-    echo -e "${YELLOW}   Since Docker can access images, proceeding with deployment...${NC}"
+    echo -e "${YELLOW}   Azure validation API cannot access GHCR private images${NC}"
+    echo -e "${YELLOW}   Deployment will use ACR (Azure Container Registry) for private repos${NC}"
     echo ""
-    echo -e "${YELLOW}🔍 HYPOTHESIS: Azure Container Instance validation API limitation${NC}"
-    echo -e "${YELLOW}   Real Container Apps might work despite validation failure${NC}"
-    echo -e "${YELLOW}   Proceeding to test actual deployment...${NC}"
-    # Don't exit - let deployment proceed and test actual Container Apps behavior
+    echo -e "${YELLOW}🔧 SOLUTION: Private repo detected - images will be copied to ACR${NC}"
+    echo -e "${YELLOW}   Azure Container Apps will pull from ACR instead of GHCR${NC}"
+    echo -e "${YELLOW}   Proceeding with ACR-based deployment...${NC}"
+    # Don't exit - let deployment proceed with ACR solution
 fi
 
 echo -e "${GREEN}🎯 Azure Container Apps validation successful - deployment can proceed${NC}" 

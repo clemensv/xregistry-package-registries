@@ -260,8 +260,121 @@ check_resource_providers() {
             log_warning "Microsoft.App not registered. This may cause deployment issues."
         fi
         
+        # Check Microsoft.ContainerRegistry for ACR
+        log_verbose "Checking Microsoft.ContainerRegistry registration..."
+        local acr_status=$(az provider show --namespace Microsoft.ContainerRegistry --query "registrationState" -o tsv)
+        if [[ "$acr_status" != "Registered" ]]; then
+            log_warning "Microsoft.ContainerRegistry not registered. This may cause deployment issues."
+        fi
+        
         log_success "Resource provider check completed"
     fi
+}
+
+# Check if repository is private
+is_repo_private() {
+    log_info "Checking repository visibility..."
+    
+    # Use GitHub API to check repo visibility
+    local repo_info
+    repo_info=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
+                     -H "Accept: application/vnd.github.v3+json" \
+                     "https://api.github.com/repos/$REPOSITORY_NAME" 2>/dev/null)
+    
+    if [[ $? -ne 0 ]] || [[ -z "$repo_info" ]]; then
+        log_warning "Could not determine repository visibility, assuming private for safety"
+        return 0
+    fi
+    
+    local is_private=$(echo "$repo_info" | jq -r '.private // true')
+    
+    if [[ "$is_private" == "true" ]]; then
+        log_info "Repository is private - will use ACR for image storage"
+        return 0
+    else
+        log_info "Repository is public - will use GHCR directly"
+        return 1
+    fi
+}
+
+# Create ACR instance if needed
+ensure_acr() {
+    # ACR names must be lowercase alphanumeric only, 5-50 characters
+    local base_name="${RESOURCE_GROUP//-/}"  # Remove dashes
+    local acr_name="${base_name,,}acr"       # Convert to lowercase and add 'acr'
+    
+    log_info "Ensuring ACR instance exists: $acr_name"
+    
+    if az acr show --name "$acr_name" --resource-group "$RESOURCE_GROUP" &>/dev/null; then
+        log_verbose "ACR already exists"
+    else
+        log_info "Creating ACR instance: $acr_name"
+        
+        if [[ "$DRY_RUN" == "false" ]]; then
+            az acr create \
+                --name "$acr_name" \
+                --resource-group "$RESOURCE_GROUP" \
+                --location "$LOCATION" \
+                --sku Basic \
+                --admin-enabled true
+            
+            log_success "ACR created successfully"
+        else
+            log_info "[DRY RUN] Would create ACR: $acr_name"
+        fi
+    fi
+    
+    echo "$acr_name"
+}
+
+# Copy images from GHCR to ACR
+copy_images_to_acr() {
+    local acr_name="$1"
+    local acr_server="${acr_name}.azurecr.io"
+    
+    log_info "Copying images from GHCR to ACR: $acr_server"
+    
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log_info "[DRY RUN] Would copy images to ACR"
+        return 0
+    fi
+    
+    # Check if Docker is available
+    if ! command -v docker &> /dev/null; then
+        log_error "Docker is required to copy images to ACR but is not installed"
+        exit 1
+    fi
+    
+    # Get ACR credentials
+    local acr_username=$(az acr credential show --name "$acr_name" --query "username" -o tsv)
+    local acr_password=$(az acr credential show --name "$acr_name" --query "passwords[0].value" -o tsv)
+    
+    # Login to ACR
+    echo "$acr_password" | docker login "$acr_server" --username "$acr_username" --password-stdin
+    
+    # List of images to copy
+    local images=("xregistry-bridge" "xregistry-npm-bridge" "xregistry-pypi-bridge" 
+                  "xregistry-maven-bridge" "xregistry-nuget-bridge" "xregistry-oci-bridge")
+    
+    for image in "${images[@]}"; do
+        local source_image="ghcr.io/$REPOSITORY_NAME/$image:$IMAGE_TAG"
+        local dest_image="$acr_server/$image:$IMAGE_TAG"
+        
+        log_info "Copying $source_image -> $dest_image"
+        
+        # Pull from GHCR
+        docker pull "$source_image"
+        
+        # Tag for ACR
+        docker tag "$source_image" "$dest_image"
+        
+        # Push to ACR
+        docker push "$dest_image"
+        
+        log_success "✓ Copied $image"
+    done
+    
+    log_success "All images copied to ACR successfully"
 }
 
 # Show container app status and logs
@@ -291,18 +404,42 @@ show_container_status() {
 
 # Create parameters file with substituted values
 create_parameters_file() {
+    local use_acr="$1"
+    local acr_name="$2"
     local temp_params="$SCRIPT_DIR/parameters.tmp.json"
     
     log_info "Creating parameters file with current values..."
     log_verbose "Template: $PARAMS_FILE"
     log_verbose "Output: $temp_params"
+    log_verbose "Use ACR: $use_acr"
+    
+    # Determine registry configuration
+    local registry_server
+    local registry_username
+    local registry_password
+    local image_repository
+    
+    if [[ "$use_acr" == "true" ]]; then
+        registry_server="${acr_name}.azurecr.io"
+        registry_username=$(az acr credential show --name "$acr_name" --query "username" -o tsv)
+        registry_password=$(az acr credential show --name "$acr_name" --query "passwords[0].value" -o tsv)
+        image_repository=""  # ACR uses short image names
+        log_info "Using ACR: $registry_server"
+    else
+        registry_server="ghcr.io"
+        registry_username="$GITHUB_ACTOR"
+        registry_password="$GITHUB_TOKEN"
+        image_repository="$REPOSITORY_NAME/"
+        log_info "Using GHCR: $registry_server"
+    fi
     
     # Read template and substitute values
     cat "$PARAMS_FILE" | \
-        sed "s|{{GITHUB_ACTOR}}|$GITHUB_ACTOR|g" | \
-        sed "s|{{GITHUB_TOKEN}}|$GITHUB_TOKEN|g" | \
+        sed "s|{{GITHUB_ACTOR}}|$registry_username|g" | \
+        sed "s|{{GITHUB_TOKEN}}|$registry_password|g" | \
         sed "s|{{IMAGE_TAG}}|$IMAGE_TAG|g" | \
-        sed "s|{{REPOSITORY_NAME}}|$REPOSITORY_NAME|g" \
+        sed "s|{{REPOSITORY_NAME}}|$image_repository|g" | \
+        sed "s|ghcr.io|$registry_server|g" \
         > "$temp_params"
     
     echo "$temp_params"
@@ -388,9 +525,9 @@ test_deployment() {
     log_info "Testing deployment endpoints..."
     
     # Wait for services to be ready
-    log_info "Waiting for services to start (up to 5 minutes)..."
+    log_info "Waiting for services to start (up to 2 minutes)..."
     log_info "Target URL: $base_url/health"
-    local max_attempts=30
+    local max_attempts=10
     local attempt=1
     local start_time=$(date +%s)
     
@@ -409,20 +546,21 @@ test_deployment() {
         else
             log_warning "HTTP $http_status - waiting for services to start..."
             
-            # Show container app status every 5 attempts
-            if [[ $((attempt % 5)) -eq 0 ]]; then
+            # Show container app status every 3 attempts
+            if [[ $((attempt % 3)) -eq 0 ]]; then
                 show_container_status
             fi
             
-            sleep 10
+            sleep 12
             ((attempt++))
         fi
     done
     
     if [[ $attempt -gt $max_attempts ]]; then
-        log_warning "Services did not respond within timeout, but deployment may still be successful"
-        log_warning "Check the Azure portal for container app status"
-        return 0
+        log_error "DEPLOYMENT FAILED: Services did not respond after $max_attempts attempts"
+        show_container_status
+        log_error "Container services are not starting properly - check authentication and image accessibility"
+        exit 1
     fi
     
     # Test key endpoints
@@ -468,10 +606,20 @@ main() {
     install_containerapp_extension
     check_resource_providers
     
+    # Determine if we need ACR for private repository
+    local use_acr="false"
+    local acr_name=""
+    
+    if is_repo_private; then
+        use_acr="true"
+        acr_name=$(ensure_acr)
+        copy_images_to_acr "$acr_name"
+    fi
+    
     # Create temporary files with substituted values
     local temp_params
     local temp_bicep
-    temp_params=$(create_parameters_file)
+    temp_params=$(create_parameters_file "$use_acr" "$acr_name")
     temp_bicep=$(create_bicep_file)
     
     # Ensure cleanup on exit
