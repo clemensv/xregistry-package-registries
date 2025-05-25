@@ -242,24 +242,25 @@ install_containerapp_extension() {
     fi
 }
 
-# Register required resource providers
-register_resource_providers() {
-    log_info "Registering required Azure resource providers..."
+# Check required resource providers
+check_resource_providers() {
+    log_info "Checking required Azure resource providers..."
     
     if [[ "$DRY_RUN" == "false" ]]; then
-        # Register Microsoft.Insights (Application Insights, monitoring)
-        log_verbose "Registering Microsoft.Insights..."
-        az provider register --namespace Microsoft.Insights --wait
+        # Check critical providers without trying to register them
+        log_verbose "Checking Microsoft.Insights registration..."
+        local insights_status=$(az provider show --namespace Microsoft.Insights --query "registrationState" -o tsv)
+        if [[ "$insights_status" != "Registered" ]]; then
+            log_warning "Microsoft.Insights not registered. This may cause deployment issues."
+        fi
         
-        # Register Microsoft.App (Container Apps)
-        log_verbose "Registering Microsoft.App..."
-        az provider register --namespace Microsoft.App --wait
+        log_verbose "Checking Microsoft.App registration..."
+        local app_status=$(az provider show --namespace Microsoft.App --query "registrationState" -o tsv)
+        if [[ "$app_status" != "Registered" ]]; then
+            log_warning "Microsoft.App not registered. This may cause deployment issues."
+        fi
         
-        # Register Microsoft.OperationalInsights (Log Analytics)
-        log_verbose "Registering Microsoft.OperationalInsights..."
-        az provider register --namespace Microsoft.OperationalInsights --wait
-        
-        log_success "Resource providers registered successfully"
+        log_success "Resource provider check completed"
     fi
 }
 
@@ -424,7 +425,7 @@ main() {
     check_azure_cli
     ensure_resource_group
     install_containerapp_extension
-    register_resource_providers
+    check_resource_providers
     
     # Create temporary files with substituted values
     local temp_params
