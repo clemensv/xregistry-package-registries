@@ -33,10 +33,10 @@ param bridgeCpu string = '0.25'
 param bridgeMemory string = '0.5Gi'
 
 @description('CPU allocation for service containers')
-param serviceCpu string = '0.35'
+param serviceCpu string = '0.3'
 
 @description('Memory allocation for service containers')
-param serviceMemory string = '0.7Gi'
+param serviceMemory string = '0.6Gi'
 
 @description('Minimum number of replicas')
 param minReplicas int = 1

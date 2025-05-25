@@ -267,3 +267,20 @@ az containerapp update \
 - Vulnerability scanning included in CI/CD pipeline
 - HTTPS-only ingress (enforced by Azure Container Apps)
 - Optional API key authentication via `XREGISTRY_API_KEY` 
+
+# xRegistry Package Registries Deployment
+
+This document describes the deployment process for the xRegistry Package Registries application.
+
+<!-- DEPLOYMENT TRIGGER: Math fix applied - 1.75 CPU + 3.5 GB exactly matches Azure Container Apps limits -->
+
+## Resource Allocation Fix Applied
+
+**Previous Error:** `ContainerAppInvalidResourceTotal` - Total requested 1.90 CPU + 3.8 GB was invalid
+
+**Fixed Allocation:**
+- Bridge: 0.25 CPU + 0.5 GB
+- Services (5×): 0.3 CPU + 0.6 GB each = 1.5 CPU + 3.0 GB
+- **TOTAL: 1.75 CPU + 3.5 GB** ✅ (exact Azure match: `[cpu: 1.75, memory: 3.5Gi]`)
+
+This deployment should now succeed with the corrected resource allocation. 

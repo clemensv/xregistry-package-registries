@@ -1,0 +1,5 @@
+DEPLOYMENT TRIGGER: Resource allocation math fix applied
+Timestamp: 2025-05-25 10:30:00 UTC
+Fixed allocation: 1.75 CPU + 3.5 GB (exact Azure match)
+Previous error: ContainerAppInvalidResourceTotal (1.90 CPU + 3.8 GB)
+Status: Ready for deployment 
