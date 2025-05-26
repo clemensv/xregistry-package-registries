@@ -98,12 +98,12 @@ describe('PyPI Docker Integration Tests', function() {
     console.log(`Using port: ${serverPort}`);
 
     // Build the PyPI Docker image
-    const pypiPath = path.resolve(__dirname, '../../pypi');
+    const rootPath = path.resolve(__dirname, '../../');
     console.log('Building PyPI Docker image...');
     
     await executeCommand(
-      `docker build -t pypi-test-image:latest .`,
-      pypiPath
+      `docker build -f pypi.Dockerfile -t pypi-test-image:latest .`,
+      rootPath
     );
 
     // Run the Docker container
@@ -172,9 +172,8 @@ describe('PyPI Docker Integration Tests', function() {
       const response = await loggedAxiosGet(`${baseUrl}/model`);
       expect(response.status).to.equal(200);
       expect(response.data).to.be.an('object');
-      expect(response.data).to.have.property('model');
-      expect(response.data.model).to.have.property('groups');
-      expect(response.data.model.groups).to.have.property('pythonregistries');
+      expect(response.data).to.have.property('groups');
+      expect(response.data.groups).to.have.property('pythonregistries');
     });
 
     it('should respond to /capabilities endpoint', async () => {
@@ -192,24 +191,24 @@ describe('PyPI Docker Integration Tests', function() {
       expect(response.data).to.be.an('object');
     });
 
-    it('should respond to a specific PyPI registry (pypi-org)', async () => {
-      const response = await loggedAxiosGet(`${baseUrl}/pythonregistries/pypi-org`);
+    it('should respond to a specific PyPI registry (pypi.org)', async () => {
+      const response = await loggedAxiosGet(`${baseUrl}/pythonregistries/pypi.org`);
       expect(response.status).to.equal(200);
       expect(response.data).to.be.an('object');
-      expect(response.data).to.have.property('registryid', 'pypi-org');
+      expect(response.data).to.have.property('name', 'pypi.org');
     });
   });
 
   describe('Package Endpoints', () => {
-    it('should respond to packages endpoint for pypi-org', async () => {
-      const response = await loggedAxiosGet(`${baseUrl}/pythonregistries/pypi-org/packages`);
+    it('should respond to packages endpoint for pypi.org', async () => {
+      const response = await loggedAxiosGet(`${baseUrl}/pythonregistries/pypi.org/packages`);
       expect(response.status).to.equal(200);
       expect(response.data).to.be.an('object');
     });
 
     it('should respond to a specific package (requests)', async () => {
       try {
-        const response = await loggedAxiosGet(`${baseUrl}/pythonregistries/pypi-org/packages/requests`);
+        const response = await loggedAxiosGet(`${baseUrl}/pythonregistries/pypi.org/packages/requests`);
         expect(response.status).to.equal(200);
         expect(response.data).to.be.an('object');
         
@@ -240,7 +239,7 @@ describe('PyPI Docker Integration Tests', function() {
 
     it('should return 404 for non-existent package', async () => {
       try {
-        await loggedAxiosGet(`${baseUrl}/pythonregistries/pypi-org/packages/non-existent-package-123456789`);
+        await loggedAxiosGet(`${baseUrl}/pythonregistries/pypi.org/packages/non-existent-package-123456789`);
         expect.fail('Should have thrown an error');
       } catch (error) {
         expect(error.response.status).to.equal(404);

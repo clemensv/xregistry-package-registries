@@ -123,6 +123,18 @@ app.disable('x-powered-by');
 // Add OpenTelemetry middleware for request tracing and logging
 app.use(logger.middleware());
 
+// Add CORS middleware
+app.use((req, res, next) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.set('Access-Control-Expose-Headers', 'Link');
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+  next();
+});
+
 // Add middleware for API key authentication (if configured)
 if (API_KEY) {
   logger.info("API key authentication enabled");

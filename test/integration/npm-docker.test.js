@@ -6,7 +6,7 @@ const { promisify } = require('util');
 
 const execPromise = promisify(exec);
 
-describe('NuGet Docker Integration Tests', function() {
+describe('NPM Docker Integration Tests', function() {
   this.timeout(120000); // 2 minutes timeout for Docker operations
 
   let containerName;
@@ -90,29 +90,29 @@ describe('NuGet Docker Integration Tests', function() {
     this.timeout(180000); // 3 minutes for build
 
     // Generate unique container name and random port
-    containerName = `nuget-test-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    containerName = `npm-test-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     serverPort = getRandomPort();
     baseUrl = `http://localhost:${serverPort}`;
 
     console.log(`Using container name: ${containerName}`);
     console.log(`Using port: ${serverPort}`);
 
-    // Build the NuGet Docker image
+    // Build the NPM Docker image
     const rootPath = path.resolve(__dirname, '../../');
-    console.log('Building NuGet Docker image...');
+    console.log('Building NPM Docker image...');
     
     await executeCommand(
-      `docker build -f nuget.Dockerfile -t nuget-test-image:latest .`,
+      `docker build -f npm.Dockerfile -t npm-test-image:latest .`,
       rootPath
     );
 
     // Run the Docker container
-    console.log('Starting NuGet Docker container...');
+    console.log('Starting NPM Docker container...');
     await executeCommand(
-      `docker run -d --name ${containerName} -p ${serverPort}:3200 ` +
-      `-e XREGISTRY_NUGET_PORT=3200 ` +
-      `-e XREGISTRY_NUGET_QUIET=false ` +
-      `nuget-test-image:latest`
+      `docker run -d --name ${containerName} -p ${serverPort}:4873 ` +
+      `-e XREGISTRY_NPM_PORT=4873 ` +
+      `-e XREGISTRY_NPM_QUIET=false ` +
+      `npm-test-image:latest`
     );
 
     containerRunning = true;
@@ -122,14 +122,14 @@ describe('NuGet Docker Integration Tests', function() {
     await checkContainerStatus(containerName);
 
     // Wait for the server to be ready
-    console.log('Waiting for NuGet server to be ready...');
+    console.log('Waiting for NPM server to be ready...');
     const isReady = await waitForServer(baseUrl);
     if (!isReady) {
       await checkContainerStatus(containerName);
-      throw new Error('NuGet server failed to start within the expected time');
+      throw new Error('NPM server failed to start within the expected time');
     }
 
-    console.log('NuGet server is ready for testing');
+    console.log('NPM server is ready for testing');
   });
 
   after(async function() {
@@ -140,7 +140,7 @@ describe('NuGet Docker Integration Tests', function() {
         console.log('Final container status before cleanup:');
         await checkContainerStatus(containerName);
         
-        console.log('Stopping and removing NuGet Docker container...');
+        console.log('Stopping and removing NPM Docker container...');
         await executeCommand(`docker stop ${containerName}`);
         await executeCommand(`docker rm ${containerName}`);
         console.log('Container cleanup completed');
@@ -151,7 +151,7 @@ describe('NuGet Docker Integration Tests', function() {
 
     // Clean up the test image
     try {
-      await executeCommand('docker rmi nuget-test-image:latest');
+      await executeCommand('docker rmi npm-test-image:latest');
       console.log('Test image cleanup completed');
     } catch (error) {
       console.error('Error cleaning up test image:', error.message);
@@ -165,7 +165,7 @@ describe('NuGet Docker Integration Tests', function() {
       expect(response.status).to.equal(200);
       expect(response.data).to.be.an('object');
       expect(response.data).to.have.property('registryid');
-      expect(response.data.registryid).to.equal('nuget-wrapper');
+      expect(response.data.registryid).to.equal('npm-wrapper');
     });
 
     it('should respond to /model endpoint', async () => {
@@ -173,7 +173,7 @@ describe('NuGet Docker Integration Tests', function() {
       expect(response.status).to.equal(200);
       expect(response.data).to.be.an('object');
       expect(response.data).to.have.property('groups');
-      expect(response.data.groups).to.have.property('dotnetregistries');
+      expect(response.data.groups).to.have.property('noderegistries');
     });
 
     it('should respond to /capabilities endpoint', async () => {
@@ -185,52 +185,40 @@ describe('NuGet Docker Integration Tests', function() {
   });
 
   describe('Registry Endpoints', () => {
-    it('should respond to /dotnetregistries endpoint', async () => {
-      const response = await loggedAxiosGet(`${baseUrl}/dotnetregistries`);
+    it('should respond to /noderegistries endpoint', async () => {
+      const response = await loggedAxiosGet(`${baseUrl}/noderegistries`);
       expect(response.status).to.equal(200);
       expect(response.data).to.be.an('object');
     });
 
-    it('should respond to a specific NuGet registry (nuget.org)', async () => {
-      const response = await loggedAxiosGet(`${baseUrl}/dotnetregistries/nuget.org`);
+    it('should respond to a specific NPM registry (npmjs.org)', async () => {
+      const response = await loggedAxiosGet(`${baseUrl}/noderegistries/npmjs.org`);
       expect(response.status).to.equal(200);
       expect(response.data).to.be.an('object');
-      expect(response.data).to.have.property('name', 'nuget.org');
+      expect(response.data).to.have.property('name', 'npmjs.org');
     });
   });
 
   describe('Package Endpoints', () => {
-    it('should respond to packages endpoint for nuget.org', async () => {
-      const response = await loggedAxiosGet(`${baseUrl}/dotnetregistries/nuget.org/packages`);
+    it('should respond to packages endpoint for npmjs.org', async () => {
+      const response = await loggedAxiosGet(`${baseUrl}/noderegistries/npmjs.org/packages`);
       expect(response.status).to.equal(200);
       expect(response.data).to.be.an('object');
+      // Basic structure validation
     });
 
-    it('should respond to a specific package (Newtonsoft.Json)', async () => {
-      try {
-        const response = await loggedAxiosGet(`${baseUrl}/dotnetregistries/nuget.org/packages/Newtonsoft.Json`);
-        expect(response.status).to.equal(200);
-        expect(response.data).to.be.an('object');
-        
-        if (response.data.id) {
-          expect(response.data.id.toLowerCase()).to.equal('newtonsoft.json');
-        }
-      } catch (error) {
-        // If package not found, it might be a temporary issue with the NuGet registry
-        if (error.response && error.response.status === 404) {
-          console.log('Newtonsoft.Json package not found - this may be expected if the external registry is unavailable');
-          expect(error.response.status).to.equal(404);
-        } else {
-          throw error;
-        }
-      }
+    it('should respond to a specific package (lodash)', async () => {
+      const response = await loggedAxiosGet(`${baseUrl}/noderegistries/npmjs.org/packages/lodash`);
+      expect(response.status).to.equal(200);
+      expect(response.data).to.be.an('object');
+      expect(response.data).to.have.property('name', 'lodash');
     });
   });
 
   describe('Error Handling', () => {
     it('should return 404 for non-existent registry', async () => {
       try {
-        await loggedAxiosGet(`${baseUrl}/dotnetregistries/non-existent-registry`);
+        await loggedAxiosGet(`${baseUrl}/noderegistries/non-existent-registry`);
         expect.fail('Should have thrown an error');
       } catch (error) {
         expect(error.response.status).to.equal(404);
@@ -239,7 +227,7 @@ describe('NuGet Docker Integration Tests', function() {
 
     it('should return 404 for non-existent package', async () => {
       try {
-        await loggedAxiosGet(`${baseUrl}/dotnetregistries/nuget.org/packages/NonExistentPackage123456789`);
+        await loggedAxiosGet(`${baseUrl}/noderegistries/npmjs.org/packages/non-existent-package-12345`);
         expect.fail('Should have thrown an error');
       } catch (error) {
         expect(error.response.status).to.equal(404);
@@ -252,7 +240,7 @@ describe('NuGet Docker Integration Tests', function() {
       const response = await loggedAxiosGet(baseUrl);
       expect(response.headers).to.have.property('access-control-allow-origin', '*');
       expect(response.headers).to.have.property('access-control-allow-methods');
-      expect(response.headers).to.have.property('access-control-allow-headers');
+      expect(response.headers['access-control-allow-methods']).to.include('GET');
     });
   });
 }); 

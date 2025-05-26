@@ -15,10 +15,8 @@ echo "Building Docker image: $IMAGE_BASENAME:$TAG..."
 # Get the directory of the script
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Change to the script's directory to ensure context for Docker build
-cd "$SCRIPT_DIR" || exit
-
-docker build -t "$IMAGE_BASENAME:$TAG" .
+# Build from parent directory with new Dockerfile location
+docker build -f ../oci.Dockerfile -t "$IMAGE_BASENAME:$TAG" ..
 if [ $? -ne 0 ]; then
   echo "Error: Docker build failed."
   exit 1

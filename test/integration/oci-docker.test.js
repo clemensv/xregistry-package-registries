@@ -98,12 +98,12 @@ describe('OCI Docker Integration Tests', function() {
     console.log(`Using port: ${serverPort}`);
 
     // Build the OCI Docker image
-    const ociPath = path.resolve(__dirname, '../../oci');
+    const rootPath = path.resolve(__dirname, '../../');
     console.log('Building OCI Docker image...');
     
     await executeCommand(
-      `docker build -t oci-test-image:latest .`,
-      ociPath
+      `docker build -f oci.Dockerfile -t oci-test-image:latest .`,
+      rootPath
     );
 
     // Run the Docker container
@@ -165,16 +165,15 @@ describe('OCI Docker Integration Tests', function() {
       expect(response.status).to.equal(200);
       expect(response.data).to.be.an('object');
       expect(response.data).to.have.property('registryid');
-      expect(response.data.registryid).to.equal('oci-wrapper');
+      expect(response.data.registryid).to.equal('xregistry-oci-proxy');
     });
 
     it('should respond to /model endpoint', async () => {
       const response = await loggedAxiosGet(`${baseUrl}/model`);
       expect(response.status).to.equal(200);
       expect(response.data).to.be.an('object');
-      expect(response.data).to.have.property('model');
-      expect(response.data.model).to.have.property('groups');
-      expect(response.data.model.groups).to.have.property('containerregistries');
+      expect(response.data).to.have.property('groups');
+      expect(response.data.groups).to.have.property('containerregistries');
     });
 
     it('should respond to /capabilities endpoint', async () => {
@@ -196,7 +195,7 @@ describe('OCI Docker Integration Tests', function() {
       const response = await loggedAxiosGet(`${baseUrl}/containerregistries/microsoft`);
       expect(response.status).to.equal(200);
       expect(response.data).to.be.an('object');
-      expect(response.data).to.have.property('registryid', 'microsoft');
+      expect(response.data).to.have.property('name', 'microsoft');
     });
   });
 

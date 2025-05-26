@@ -65,7 +65,7 @@ npm start
 ### Build Docker Image
 
 ```bash
-docker build -t xregistry-proxy .
+docker build -f ../bridge.Dockerfile -t xregistry-proxy ..
 ```
 
 ### Run Container
@@ -106,7 +106,7 @@ az acr create --name xregistryacr --resource-group xregistry-rg --sku Basic --ad
 
 # Build and push image
 az acr login --name xregistryacr
-docker build -t xregistryacr.azurecr.io/xregistry-proxy:latest .
+docker build -f ../bridge.Dockerfile -t xregistryacr.azurecr.io/xregistry-proxy:latest ..
 docker push xregistryacr.azurecr.io/xregistry-proxy:latest
 
 # Create Container App Environment

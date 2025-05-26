@@ -220,8 +220,7 @@ For each registry (NPM, PYPI, MAVEN, NUGET, OCI):
 
 ```powershell
 # Build individual registry
-cd pypi
-docker build -t xregistry-pypi .
+docker build -f pypi.Dockerfile -t xregistry-pypi .
 
 # Build all images
 docker-compose build

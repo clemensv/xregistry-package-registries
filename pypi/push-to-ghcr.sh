@@ -15,7 +15,7 @@ IMAGE_NAME="pypi-xregistry"
 FULL_IMAGE_NAME="ghcr.io/${GITHUB_USERNAME}/${REPO_NAME}/${IMAGE_NAME}"
 
 echo "===== Building Docker image ====="
-docker build -t ${IMAGE_NAME} .
+docker build -f ../pypi.Dockerfile -t ${IMAGE_NAME} ..
 
 echo "===== Tagging Docker image ====="
 docker tag ${IMAGE_NAME} ${FULL_IMAGE_NAME}:latest

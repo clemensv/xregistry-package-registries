@@ -229,7 +229,7 @@ cd test/integration
 node run-docker-integration-tests.js
 
 # In another terminal, start bridge
-cd ../../bridge
+cd bridge
 npm run build
 PORT=8092 node dist/proxy.js
 ```

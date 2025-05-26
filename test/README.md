@@ -1,107 +1,205 @@
-# Test Suite for XRegistry Package Registries
+# xRegistry Test Suite
 
-This directory contains comprehensive unit and integration tests for the unified package registries server.
+This directory contains comprehensive testing infrastructure for the xRegistry package registries project.
 
 ## Test Structure
 
 ```
 test/
-├── package.json              # Test dependencies and scripts
-├── unit/                     # Unit tests for individual components
-│   ├── server-loading.test.js       # Tests server module loading
-│   ├── server-attachment.test.js    # Tests server attachment to Express
-│   ├── unified-server.test.js       # Tests unified server configuration
-│   └── pypi-sorting.test.js         # Tests PyPI sorting logic
-├── integration/              # Integration tests for full workflows
-│   └── unified-server-endpoints.test.js  # Tests unified server endpoints
-└── regression/               # Regression tests to prevent known issues
-    └── pypi-sorting-regression.test.js   # Prevents PyPI sorting regressions
+├── integration/           # Integration test files and configurations
+├── unit/                 # Unit test files
+├── regression/           # Regression test files
+├── run-docker-integration-tests.ps1      # PowerShell Docker tests
+├── run-docker-integration-tests.sh       # Bash Docker tests
+├── run-bridge-integration-tests.ps1      # PowerShell bridge tests
+├── run-bridge-integration-tests.sh       # Bash bridge tests
+└── README.md             # This file
 ```
 
-## Running Tests
+## Test Scripts
 
-### Prerequisites
+### Docker Integration Tests
 
-Install test dependencies:
-```bash
-cd test
-npm install
+Tests individual package registry services in Docker containers.
+
+#### PowerShell Version (Windows)
+```powershell
+# Run all services
+.\test\run-docker-integration-tests.ps1
+
+# Run specific service
+.\test\run-docker-integration-tests.ps1 -Service maven
+
+# Run in parallel
+.\test\run-docker-integration-tests.ps1 -Parallel
 ```
 
-### Running All Tests
-
+#### Bash Version (Linux/macOS/CI)
 ```bash
-# From the test directory
-npm test
+# Run all services
+./test/run-docker-integration-tests.sh
 
-# Or from the root directory
-npm run test
+# Run specific service
+./test/run-docker-integration-tests.sh --service maven
+
+# Run in parallel
+./test/run-docker-integration-tests.sh --parallel
+
+# Show help
+./test/run-docker-integration-tests.sh --help
 ```
 
-### Running Specific Test Suites
+**Supported Services:** `maven`, `nuget`, `pypi`, `oci`, `npm`
+
+### Bridge Integration Tests
+
+Tests the unified bridge service orchestrating all package registries using Docker Compose.
+
+#### PowerShell Version (Windows)
+```powershell
+# Run with default settings
+.\test\run-bridge-integration-tests.ps1
+
+# Custom timeout and keep services running
+.\test\run-bridge-integration-tests.ps1 -Timeout 600 -KeepServices -Verbose
+```
+
+#### Bash Version (Linux/macOS/CI)
+```bash
+# Run with default settings
+./test/run-bridge-integration-tests.sh
+
+# Custom timeout and verbose output
+./test/run-bridge-integration-tests.sh --timeout 600 --verbose
+
+# Keep services running for debugging
+./test/run-bridge-integration-tests.sh --keep-services
+
+# Show help
+./test/run-bridge-integration-tests.sh --help
+```
+
+## NPM Scripts
+
+The following npm scripts are available for running tests:
 
 ```bash
-# Unit tests only
+# Unit tests
 npm run test:unit
 
-# Integration tests only
+# Basic integration tests (Mocha only)
 npm run test:integration
 
-# Regression tests only
-npm run test:regression
+# Docker integration tests
+npm run test:integration:docker        # PowerShell version
+npm run test:integration:docker:bash   # Bash version
+
+# Bridge integration tests
+npm run test:integration:bridge        # PowerShell version
+npm run test:integration:bridge:bash   # Bash version
+
+# All tests
+npm test
 ```
 
-### Running Individual Test Files
+## CI/CD Integration
 
-```bash
-# Run a specific test file
-npx mocha unit/server-loading.test.js
+### Checkin Validation Workflow
 
-# Run with verbose output
-npx mocha unit/server-loading.test.js --reporter spec
-```
+The `.github/workflows/checkin-validation.yml` workflow runs on every push and pull request:
 
-## Test Categories
+1. **Unit & Integration Tests** - Basic test suite validation
+2. **Docker Integration Tests** - Matrix testing of all services
+3. **Bridge Integration Tests** - Full stack integration testing
+4. **Code Quality & Security** - npm audit and Dockerfile linting
 
-### Unit Tests
+### Manual Testing
 
-- **Server Loading**: Verifies that all server modules (PyPI, NPM, Maven, NuGet, OCI) can be loaded without errors and export the required `attachToApp` function.
-
-- **Server Attachment**: Tests that servers can be properly attached to Express applications and return valid server information.
-
-- **Unified Server**: Tests the unified server configuration and Express app setup.
-
-- **PyPI Sorting**: Tests the custom sorting logic implemented for PyPI package listings (letter-starting packages before number/symbol-starting packages).
-
-### Integration Tests
-
-- **Unified Server Endpoints**: Tests the complete unified server with all registries attached, verifying that endpoints respond correctly and CORS headers are properly set.
-
-### Regression Tests
-
-- **PyPI Sorting Regression**: Comprehensive tests to ensure the PyPI sorting functionality continues to work correctly and prevents regressions of the custom sorting behavior.
+For local development, use the PowerShell versions on Windows and bash versions on Linux/macOS.
 
 ## Test Configuration
 
-- **Timeout**: Tests have a 10-second timeout for normal operations, 5 seconds for unit tests, and 15 seconds for integration tests.
-- **Quiet Mode**: Tests run in quiet mode to reduce console output during testing.
-- **Error Handling**: Tests gracefully handle cases where servers cannot be loaded or attached.
+### Integration Test Files
 
-## Adding New Tests
+- `test/integration/*-docker.test.js` - Individual service Docker tests
+- `test/integration/bridge-docker-compose.test.js` - Bridge orchestration tests
+- `test/integration/docker-compose.bridge.yml` - Docker Compose configuration
+- `test/integration/bridge-downstreams-test.json` - Bridge service configuration
 
-When adding new functionality:
+### Prerequisites
 
-1. **Unit Tests**: Add tests in the `unit/` directory for individual components or functions.
-2. **Integration Tests**: Add tests in the `integration/` directory for complete workflows.
-3. **Regression Tests**: Add tests in the `regression/` directory for critical functionality that should not break.
+- **Docker** and **Docker Compose**
+- **Node.js** 16+ and **npm**
+- **Git Bash** (Windows) or standard bash (Linux/macOS)
 
-## Test Dependencies
+### Environment Variables
 
-- **Mocha**: Test framework
-- **Chai**: Assertion library
-- **Supertest**: HTTP assertion library for testing Express applications
-- **Sinon**: Mocking and stubbing library (available but not currently used)
+Tests use the following environment variables:
 
-## Continuous Integration
+- `XREGISTRY_*_PORT` - Service ports (automatically set)
+- `XREGISTRY_*_API_KEY` - API keys for testing (automatically generated)
+- `XREGISTRY_*_QUIET` - Logging level control
 
-These tests are designed to be run in CI/CD pipelines to ensure code quality and prevent regressions. All tests should pass before merging changes to the main branch. 
+## Troubleshooting
+
+### Common Issues
+
+1. **Port conflicts**: Tests use random ports to avoid conflicts
+2. **Docker cleanup**: Scripts automatically clean up containers, images, and volumes
+3. **Timeouts**: Increase timeout values for slower systems
+4. **Windows path issues**: Use Git Bash for consistent path handling
+
+### Debug Mode
+
+For debugging failing tests:
+
+```bash
+# Keep services running after tests
+./test/run-bridge-integration-tests.sh --keep-services --verbose
+
+# Check Docker resources
+docker ps -a
+docker images
+docker logs [container-name]
+```
+
+### Cleanup
+
+Manual cleanup if needed:
+
+```bash
+# Remove test containers
+docker ps -a --filter "name=*-test-*" -q | xargs docker rm -f
+
+# Remove test images
+docker images --filter "reference=*test*" -q | xargs docker rmi -f
+
+# Remove test volumes
+docker volume ls --filter "name=*test*" -q | xargs docker volume rm
+```
+
+## Test Coverage
+
+- **Unit Tests**: Core functionality and utilities
+- **Integration Tests**: Individual service API endpoints
+- **Docker Tests**: Containerized service behavior
+- **Bridge Tests**: Cross-service orchestration and routing
+- **End-to-End Tests**: Complete workflow validation
+
+## Performance Considerations
+
+- Sequential execution prevents resource conflicts
+- Random port assignment avoids port collisions
+- Automatic cleanup prevents resource accumulation
+- Configurable timeouts accommodate different environments
+- Parallel execution available for faster CI runs
+
+## Contributing
+
+When adding new tests:
+
+1. Follow existing naming conventions
+2. Add both PowerShell and bash script support if needed
+3. Update this README with new test descriptions
+4. Ensure proper cleanup in test scripts
+5. Test on both Windows and Linux environments 

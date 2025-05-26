@@ -1,361 +1,394 @@
-# xRegistry Observability Strategy
+# xRegistry Observability Implementation
 
 ## Overview
 
-This document outlines the comprehensive observability strategy implemented for the xRegistry application, covering deployment automation, **OpenTelemetry-conformant structured logging**, and Azure Application Insights integration.
+The xRegistry package registries implement structured logging and telemetry
+collection using OpenTelemetry standards. All services send telemetry data to
+Azure Application Insights for monitoring, debugging, and operational analysis.
 
-## 🚀 Key Achievements
+## Architecture
 
-### 1. Infrastructure-as-Code Deployment Refactoring
+### Components
 
-**✅ COMPLETED**: Extracted deployment logic into reusable, parameterized scripts and templates.
+- **OpenTelemetry SDK**: Standardized telemetry collection and export
+- **Azure Application Insights**: Telemetry storage and analysis platform
+- **Log Analytics Workspace**: Structured log storage with 30-day retention
+- **Azure Monitor**: Alerting and dashboard platform
 
-#### Files Created:
-- `/deploy/main.bicep` - Complete Bicep template with Application Insights, Log Analytics, and alerts
-- `/deploy/parameters.json` - Template for deployment parameters
-- `/deploy/deploy.sh` - Bash deployment script (Linux/macOS/WSL)
-- `/deploy/deploy.ps1` - PowerShell deployment script (Windows/Cross-platform)
-- `/deploy/README.md` - Comprehensive deployment documentation
+### Data Flow
 
-#### Benefits:
-- **Reusable deployment scripts** with parameter validation and error handling
-- **Cross-platform support** (Bash and PowerShell)
-- **Comprehensive error handling** with retry logic and health checks
-- **FQDN resolution** for proper service configuration
-- **Dry-run capability** for testing deployments
-- **Automated testing** of deployed endpoints
-
-#### Usage:
-```bash
-# Linux/macOS/WSL
-./deploy/deploy.sh --repository "owner/repo" --github-actor "user" --github-token "token"
-
-# Windows PowerShell
-.\deploy\deploy.ps1 -RepositoryName "owner/repo" -GitHubActor "user" -GitHubToken "token"
+```
+Service → OpenTelemetry SDK → OTLP Exporter → Application Insights → Log Analytics
 ```
 
-### 2. Azure Application Insights Integration
+Each service runs OpenTelemetry instrumentation that automatically captures:
+- HTTP requests and responses
+- Database queries and external API calls
+- Exceptions and error details
+- Custom application metrics
+- Distributed trace context
 
-**✅ COMPLETED**: Full observability stack with Azure cloud-native monitoring.
+## Implementation Details
 
-#### Infrastructure Components:
-- **Application Insights** - Application performance monitoring and telemetry
-- **Log Analytics Workspace** - Centralized logging with 30-day retention
-- **Action Groups** - Email notifications to `clemensv@microsoft.com`
-- **Metric Alerts** - Operational alerts for critical issues
+### Shared Logging Library
 
-#### Alert Configuration:
-1. **Service Health Alert** - Triggers when no container replicas are running
-2. **Error Rate Alert** - Triggers on >10 5xx errors in 5 minutes
-3. **Response Time Alert** - Triggers on >5 second average response time
+Location: `/shared/logging/logger.js`
 
-#### Monitoring Capabilities:
-- **Request tracking** - All HTTP requests across all services
-- **Dependency tracking** - External API calls and integrations
-- **Performance metrics** - CPU, memory, request rates, response times
-- **Exception tracking** - Automatic error capture and stack traces
-- **Custom telemetry** - Application-specific metrics and events
-- **Distributed tracing** - End-to-end request correlation across services
+The `XRegistryLogger` class provides OpenTelemetry-conformant logging with the
+following features:
 
-### 3. OpenTelemetry-Conformant Logging Implementation
+- W3C Trace Context propagation
+- Structured JSON log format
+- Automatic HTTP request instrumentation
+- Exception tracking with stack traces
+- Custom metrics recording
 
-**✅ COMPLETED**: Industry-standard OpenTelemetry logging with Azure Application Insights integration.
+### Service Integration
 
-#### Shared Logging Library:
-- `/shared/logging/logger.js` - OpenTelemetry-conformant XRegistryLogger class
-- `/shared/logging/package.json` - Package definition with OpenTelemetry dependencies
+Each service (bridge, npm, pypi, maven, nuget, oci) implements the logger:
 
-#### OpenTelemetry Compliance Features:
-- **W3C Trace Context propagation** for proper distributed tracing
-- **OpenTelemetry semantic conventions** for standardized attribute naming
-- **Proper span context correlation** between logs and traces
-- **OTLP exporters** for Azure Application Insights integration
-- **Resource detection** with cloud platform metadata
-- **Structured JSON logging** with OTel severity levels
-- **Automatic instrumentation** for HTTP requests, dependencies, and errors
-- **Backward compatibility** with existing API for smooth transition
+```javascript
+const { createLogger } = require('../shared/logging/logger');
 
-#### Log Format (OpenTelemetry-Conformant):
+const logger = createLogger({
+  serviceName: 'xregistry-npm',
+  logLevel: 'info'
+});
+
+app.use(logger.middleware());
+```
+
+### Log Format
+
+Standard log entries use this structure:
+
 ```json
 {
-  "timestamp": "2024-05-25T07:17:00.000Z",
+  "timestamp": "2024-01-15T10:30:00.000Z",
   "level": "INFO",
-  "service": "xregistry-bridge", 
-  "message": "HTTP request received",
+  "service": "xregistry-bridge",
+  "message": "Package request processed",
   "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
   "span_id": "00f067aa0ba902b7",
   "service.name": "xregistry-bridge",
   "service.version": "1.0.0",
-  "deployment.environment": "production",
   "http.method": "GET",
-  "http.url": "/model",
-  "http.user_agent": "curl/7.68.0",
-  "net.peer.ip": "192.168.1.100"
+  "http.status_code": 200,
+  "http.url": "/npm/packages/lodash",
+  "http.response_time_ms": 245,
+  "net.peer.ip": "10.0.0.15"
 }
 ```
 
-## 📊 Current Implementation Status
+## Data Types Collected
 
-### Bridge Service (JavaScript) - ✅ READY FOR OTEL
-**Implementation:**
-```javascript
-// bridge/src/proxy.js (or similar)
-const { createLogger } = require('../../shared/logging/logger');
+### Request Telemetry
+- Request URL, method, headers
+- Response status codes and timing
+- User agent and client IP
+- Request and response payload sizes
 
-const logger = createLogger({
-  serviceName: process.env.SERVICE_NAME || 'xregistry-bridge',
-  logLevel: process.env.LOG_LEVEL || 'info'
-});
+### Dependency Telemetry
+- External API calls to package registries
+- Database queries and connection details
+- Cache hit/miss rates
+- Third-party service response times
 
-// Replace morgan middleware
-app.use(logger.middleware());
+### Exception Telemetry
+- Exception type and message
+- Stack traces with source code context
+- Request context when exception occurred
+- User impact and error frequency
 
-// Replace console.log calls
-logger.info('Bridge service starting', { port: PORT, baseUrl: BASE_URL });
-logger.error('Downstream service error', { error: error.message, service: serviceName });
-```
+### Custom Metrics
+- Package download counts by registry
+- Cache efficiency metrics
+- Service health indicators
+- Business logic performance counters
 
-### Package Services (JavaScript) - ✅ READY FOR OTEL
-**Implementation for npm, pypi, maven, nuget, oci:**
-```javascript
-// {service}/server.js
-const { createLogger } = require('../shared/logging/logger');
+### Trace Telemetry
+- End-to-end request correlation
+- Service boundary crossing timing
+- Distributed transaction flow
+- Performance bottleneck identification
 
-const logger = createLogger({
-  serviceName: process.env.SERVICE_NAME || 'xregistry-npm',
-  logLevel: process.env.LOG_LEVEL || 'info',
-  enableFile: !!LOG_FILE,
-  logFile: LOG_FILE
-});
+## Using Azure Application Insights
 
-// Replace existing logging
-app.use(logger.middleware());
+### Accessing Data
 
-// Replace custom logRequest function
-logger.logStartup(PORT, { apiKeyEnabled: !!API_KEY, baseUrl: BASE_URL });
-logger.error('Package fetch failed', { packageName, error: error.message });
-```
+Navigate to the Application Insights resource in the Azure portal. Data appears
+in several views:
 
-## 🔧 OpenTelemetry Implementation Benefits
+- **Live Metrics**: Real-time performance counters
+- **Application Map**: Service dependency visualization
+- **Performance**: Request timing and throughput analysis
+- **Failures**: Exception tracking and error analysis
+- **Logs**: Raw telemetry data query interface
 
-### Standards Compliance:
-- **W3C Trace Context** for interoperable distributed tracing
-- **OpenTelemetry semantic conventions** for consistent attribute naming
-- **Industry-standard APIs** for logging, tracing, and metrics
-- **Vendor-neutral implementation** with Azure-specific exporters
-- **Future-proof architecture** with CNCF-governed standards
+### Common Queries
 
-### Enhanced Observability:
-- **Automatic span creation** for all HTTP requests
-- **Trace-log correlation** for complete request visibility
-- **Performance metrics** with OpenTelemetry histograms and counters
-- **Resource detection** for cloud platform and service metadata
-- **Error tracking** with proper exception recording in spans
+#### Request Success Rate by Service
 
-### Developer Experience:
-- **Backward compatibility** with existing logging API
-- **Rich development console output** with trace IDs
-- **File logging support** for legacy requirements
-- **Express middleware integration** for automatic request tracking
-- **Child logger support** for contextual logging
-
-## 📈 Observability Benefits
-
-### For Developers:
-- **Standards-based tracing** with W3C Trace Context compatibility
-- **Rich span context** automatically correlated with logs
-- **OpenTelemetry ecosystem** compatibility for tooling and integrations
-- **Consistent semantic conventions** across all services
-- **Enhanced debugging** with complete request traces
-
-### For Operations:
-- **Industry-standard observability** with OpenTelemetry APIs
-- **Vendor flexibility** with OTLP exporters
-- **Rich telemetry data** automatically exported to Azure Application Insights
-- **Standardized metrics** following OpenTelemetry conventions
-- **Compliance-ready** observability with CNCF standards
-
-### For Business:
-- **Future-proof observability** with industry standards
-- **Vendor independence** through OpenTelemetry abstraction
-- **Rich operational insights** with automatic instrumentation
-- **Standards compliance** for enterprise requirements
-- **Ecosystem compatibility** with OpenTelemetry tooling
-
-## 🔍 Key Monitoring Queries
-
-### Application Insights (Kusto/KQL)
-
-#### Request Success Rate by Service:
 ```kusto
 requests
 | where timestamp > ago(1h)
 | summarize 
-    Total = count(),
-    Success = countif(success == true),
-    SuccessRate = round(100.0 * countif(success == true) / count(), 2)
+    total = count(),
+    successful = countif(success == true),
+    failure_rate = round(100.0 * countif(success == false) / count(), 2)
   by cloud_RoleName
-| order by SuccessRate asc
+| order by failure_rate desc
 ```
 
-#### OpenTelemetry Trace Analysis:
-```kusto
-traces
-| where timestamp > ago(1h)
-| where customDimensions.["trace_id"] != ""
-| summarize 
-    LogCount = count(),
-    Services = dcount(customDimensions.["service.name"]),
-    UniqueTraces = dcount(customDimensions.["trace_id"])
-| project LogCount, Services, UniqueTraces, 
-  TracesPerService = round(1.0 * UniqueTraces / Services, 2)
-```
+#### Error Analysis with Context
 
-#### Error Rate with Trace Context:
 ```kusto
 exceptions
 | where timestamp > ago(24h)
-| join kind=leftouter (
-    traces 
-    | where timestamp > ago(24h)
-    | where customDimensions.["trace_id"] != ""
-) on $left.operation_Id == $right.customDimensions.["trace_id"]
-| summarize ErrorCount = count() by cloud_RoleName, bin(timestamp, 1h)
+| join kind=inner requests on operation_Id
+| project 
+    timestamp,
+    service = cloud_RoleName,
+    error_type = type,
+    error_message = outerMessage,
+    request_url = url,
+    user_agent = client_Browser
+| order by timestamp desc
+```
+
+#### Performance Trending
+
+```kusto
+requests
+| where timestamp > ago(7d)
+| where cloud_RoleName == "xregistry-bridge"
+| summarize 
+    avg_duration = avg(duration),
+    p95_duration = percentile(duration, 95),
+    request_count = count()
+  by bin(timestamp, 1h)
 | render timechart
 ```
 
-#### Performance by Endpoint with Spans:
+#### Trace Analysis for Slow Requests
+
 ```kusto
 requests
 | where timestamp > ago(1h)
-| extend SpanId = tostring(customDimensions.["span_id"])
-| extend TraceId = tostring(customDimensions.["trace_id"])
-| summarize 
-    AvgDuration = avg(duration),
-    P95Duration = percentile(duration, 95),
-    RequestCount = count(),
-    UniqueTraces = dcount(TraceId)
-  by name
-| order by P95Duration desc
+| where duration > 5000
+| join kind=inner traces on operation_Id
+| project 
+    timestamp,
+    duration,
+    url,
+    trace_message = message,
+    custom_properties = customDimensions
+| order by duration desc
 ```
 
-### Log Analytics (Container Logs)
+### Dependency Analysis
 
-#### OpenTelemetry Logs with Trace Context:
+```kusto
+dependencies
+| where timestamp > ago(1h)
+| summarize 
+    call_count = count(),
+    avg_duration = avg(duration),
+    failure_rate = round(100.0 * countif(success == false) / count(), 2)
+  by target, type
+| order by failure_rate desc
+```
+
+## Using Azure Monitor
+
+### Alert Rules
+
+Configure alerts based on telemetry data:
+
+#### High Error Rate Alert
+- **Metric**: `requests/failed`
+- **Condition**: Count > 10 in 5 minutes
+- **Action**: Email notification to operations team
+
+#### Slow Response Time Alert
+- **Metric**: `requests/duration`
+- **Condition**: Average > 5000ms over 5 minutes
+- **Action**: Auto-scale container instances
+
+#### Service Availability Alert
+- **Metric**: `availabilityResults/availabilityPercentage`
+- **Condition**: < 95% over 10 minutes
+- **Action**: SMS notification and incident creation
+
+### Dashboards
+
+Create custom dashboards using these widgets:
+
+#### Service Health Dashboard
+- Request rate and success percentage charts
+- Active user count and geographic distribution
+- Cache hit rates and dependency response times
+- Current error rate and exception frequency
+
+#### Performance Dashboard
+- Response time percentiles (50th, 95th, 99th)
+- Throughput by endpoint and service
+- Database query performance metrics
+- Memory and CPU utilization trends
+
+#### Business Metrics Dashboard
+- Package download counts by registry type
+- Most popular packages and versions
+- User activity patterns and peak usage times
+- Revenue-impacting performance metrics
+
+## Log Analytics Queries
+
+### Container Logs Analysis
+
 ```kusto
 ContainerAppConsoleLogs_CL
-| where Log_s contains "trace_id"
+| where TimeGenerated > ago(1h)
 | extend LogData = parse_json(Log_s)
-| where LogData.level in ("ERROR", "WARN")
+| where LogData.level == "ERROR"
 | project 
-    TimeGenerated, 
-    ContainerName_s, 
-    Level = LogData.level,
+    TimeGenerated,
+    Service = ContainerName_s,
     Message = LogData.message,
     TraceId = LogData.trace_id,
-    SpanId = LogData.span_id,
-    ServiceName = LogData["service.name"]
+    ErrorDetails = LogData.error
 | order by TimeGenerated desc
 ```
 
-#### Service Health by Trace Analysis:
+### Service Startup Analysis
+
 ```kusto
 ContainerAppConsoleLogs_CL
-| where Log_s contains "Service starting" or Log_s contains "Service shutting down"
+| where Log_s contains "Service starting"
 | extend LogData = parse_json(Log_s)
 | project 
     TimeGenerated,
-    ContainerName_s,
-    Event = case(LogData.message contains "starting", "START", "STOP"),
-    ServiceName = LogData["service.name"],
-    Port = LogData["service.startup.port"]
-| summarize 
-    Starts = countif(Event == "START"),
-    Stops = countif(Event == "STOP")
-  by ContainerName_s, ServiceName
+    Service = ContainerName_s,
+    Port = LogData.port,
+    ApiKeyEnabled = LogData.apiKeyEnabled
+| summarize StartupCount = count() by Service, bin(TimeGenerated, 1h)
 ```
 
-## 📋 Implementation Timeline
+### Trace Correlation
 
-### ✅ COMPLETED (Current State):
-1. **OpenTelemetry-conformant logger** implemented as standard
-2. **Azure Application Insights integration** with OTLP exporters
-3. **W3C Trace Context propagation** enabled
-4. **Backward compatibility** maintained for existing code
-5. **Deployment infrastructure** updated with observability stack
+```kusto
+ContainerAppConsoleLogs_CL
+| extend LogData = parse_json(Log_s)
+| where LogData.trace_id == "specific-trace-id"
+| project 
+    TimeGenerated,
+    Service = ContainerName_s,
+    LogLevel = LogData.level,
+    Message = LogData.message,
+    SpanId = LogData.span_id
+| order by TimeGenerated asc
+```
 
-### Immediate (Week 1):
-1. **Update all JavaScript services** to use the OpenTelemetry logger
-2. **Replace morgan and custom logging** with standardized middleware
-3. **Test OpenTelemetry telemetry** in development environment
-4. **Validate trace propagation** across service boundaries
+## Troubleshooting Common Issues
 
-### Short Term (Week 2-3):
-1. **Deploy to staging** with OpenTelemetry logging enabled
-2. **Monitor telemetry quality** and adjust sampling rates
-3. **Create OpenTelemetry dashboards** in Azure portal
-4. **Document service-specific implementation** patterns
+### High Error Rates
 
-### Medium Term (Month 1):
-1. **Custom metrics implementation** for business KPIs
-2. **Advanced trace analysis** and performance optimization
-3. **Alerting refinement** based on OpenTelemetry data
-4. **Integration testing** with external OpenTelemetry tools
+1. Query recent exceptions:
+```kusto
+exceptions | where timestamp > ago(1h) | summarize count() by type
+```
 
-## 🚨 Alert Conditions
+2. Identify affected services:
+```kusto
+requests | where success == false | summarize count() by cloud_RoleName
+```
 
-### Service Health Alert
-- **Condition**: No active container replicas
-- **Threshold**: < 1 replica for 5 minutes
-- **Severity**: Critical
-- **Action**: Email notification + Auto-restart attempt
+3. Analyze error patterns:
+```kusto
+exceptions | where timestamp > ago(1h) | project timestamp, type, outerMessage, operation_Name
+```
 
-### Error Rate Alert
-- **Condition**: High 5xx error rate (tracked via OpenTelemetry spans)
-- **Threshold**: > 10 errors in 5 minutes
-- **Severity**: High
-- **Action**: Email notification + Trace analysis
+### Performance Degradation
 
-### Response Time Alert
-- **Condition**: Slow response times (from OpenTelemetry request spans)
-- **Threshold**: > 5 seconds average for 5 minutes
-- **Severity**: Medium
-- **Action**: Email notification + Performance review
+1. Find slow requests:
+```kusto
+requests | where duration > 5000 | project timestamp, url, duration, cloud_RoleName
+```
 
-### OpenTelemetry-Specific Alerts:
-- **Trace sampling failures** (telemetry export errors)
-- **Missing span context** (broken trace propagation)
-- **High error span rates** (exceptions in traces)
-- **Telemetry export latency** (observability pipeline health)
+2. Analyze dependency performance:
+```kusto
+dependencies | where duration > 2000 | summarize avg(duration) by target
+```
 
-## 🔒 Security Considerations
+3. Check resource utilization:
+```kusto
+performanceCounters | where counter == "% Processor Time" | summarize avg(value) by bin(timestamp, 5m)
+```
 
-### Data Privacy:
-- **OpenTelemetry semantic conventions** for consistent data classification
-- **Automatic sensitive data sanitization** (API keys, tokens, cookies)
-- **Trace context security** with proper propagation boundaries
-- **Compliance-ready telemetry** with data retention controls
+### Service Availability Issues
 
-### Standards Compliance:
-- **W3C Trace Context** for secure trace propagation
-- **OpenTelemetry security model** for telemetry pipeline protection
-- **Azure Application Insights** security and compliance features
-- **RBAC for observability data** with proper access controls
+1. Check service health:
+```kusto
+requests | summarize availability = 100.0 * countif(success)/count() by cloud_RoleName
+```
 
-## 💰 Cost Considerations
+2. Identify outage periods:
+```kusto
+availabilityResults | where success == false | project timestamp, location, message
+```
 
-### OpenTelemetry Benefits:
-- **Vendor independence** reducing lock-in costs
-- **Efficient telemetry** with sampling and batching
-- **Standardized exporters** reducing integration costs
-- **Future flexibility** with OTLP protocol support
+3. Correlate with infrastructure events:
+```kusto
+traces | where message contains "Service shutting down" or message contains "Service starting"
+```
 
-### Azure Application Insights:
-- **OTLP ingestion** at standard Application Insights rates
-- **Enhanced telemetry richness** for better value
-- **Estimated monthly cost**: $70-150 for typical workload
-- **ROI through standards adoption**: Significantly higher through reduced vendor lock-in and enhanced observability
+## Configuration
 
----
+### Environment Variables
 
-This observability strategy provides **industry-standard, OpenTelemetry-conformant monitoring** for the xRegistry application, ensuring compliance with modern observability standards while maintaining full Azure Application Insights integration and operational excellence. 
+- `APPLICATIONINSIGHTS_CONNECTION_STRING`: Application Insights connection
+  string
+- `OTEL_EXPORTER_OTLP_ENDPOINT`: OpenTelemetry collector endpoint
+- `OTEL_RESOURCE_ATTRIBUTES`: Service metadata for telemetry
+- `LOG_LEVEL`: Minimum log level (error, warn, info, debug)
+
+### Sampling Configuration
+
+Default sampling rates:
+- **Traces**: 100% for errors, 10% for successful requests
+- **Logs**: 100% for error/warn, 50% for info, 10% for debug
+- **Metrics**: 100% collection with 1-minute aggregation
+
+## Data Retention
+
+- **Application Insights**: 90 days default, 730 days maximum
+- **Log Analytics**: 30 days configured, up to 2 years available
+- **Live Metrics**: 24 hours real-time data
+- **Raw Telemetry**: Export to storage for long-term retention
+
+## Security Considerations
+
+### Data Privacy
+- Personal identifiers automatically redacted from logs
+- API keys and tokens masked in telemetry
+- Request/response payloads excluded by default
+- GDPR compliance through data purge capabilities
+
+### Access Control
+- Role-based access to Application Insights data
+- Separate reader/writer permissions for different teams
+- Audit logging for telemetry data access
+- Network isolation for telemetry collection endpoints
+
+## Cost Management
+
+### Typical Monthly Costs
+- **Application Insights**: $50-150 based on data volume
+- **Log Analytics**: $20-80 for 30-day retention
+- **Storage**: $10-30 for exported telemetry data
+
+### Cost Optimization
+- Adjust sampling rates based on traffic patterns
+- Use smart detection to reduce alert noise
+- Configure data retention based on compliance requirements
+- Export historical data to cheaper storage tiers 

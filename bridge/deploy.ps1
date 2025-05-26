@@ -44,7 +44,7 @@ try {
 
     # Build and Push Proxy Image
     Write-Host "🏗️ Building and pushing proxy image..." -ForegroundColor Yellow
-    docker build -t $ProxyImage .
+    docker build -f ../bridge.Dockerfile -t $ProxyImage ..
     docker push $ProxyImage
     Write-Host "✅ Proxy image built and pushed" -ForegroundColor Green
 

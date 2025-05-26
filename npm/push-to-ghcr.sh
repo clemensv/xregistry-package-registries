@@ -19,7 +19,7 @@ echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_USER" --password-stdin
 
 # Build the image
 echo "Building Docker image..."
-docker build -t "ghcr.io/$GITHUB_USER/$IMAGE_NAME:$VERSION" .
+docker build -f ../npm.Dockerfile -t "ghcr.io/$GITHUB_USER/$IMAGE_NAME:$VERSION" ..
 docker tag "ghcr.io/$GITHUB_USER/$IMAGE_NAME:$VERSION" "ghcr.io/$GITHUB_USER/$IMAGE_NAME:latest"
 
 # Push the image

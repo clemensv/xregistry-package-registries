@@ -115,7 +115,7 @@ To deploy manually:
 
 ```bash
 # Build and push image
-docker build -t $ACR_NAME.azurecr.io/xregistry-unified:latest .
+docker build -f bridge.Dockerfile -t $ACR_NAME.azurecr.io/xregistry-unified:latest .
 docker push $ACR_NAME.azurecr.io/xregistry-unified:latest
 
 # Update container app

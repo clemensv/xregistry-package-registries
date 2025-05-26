@@ -11,7 +11,7 @@ $ImageName = "pypi-xregistry"
 $FullImageName = "ghcr.io/${GitHubUsername}/${RepoName}/${ImageName}"
 
 Write-Host "===== Building Docker image =====" -ForegroundColor Cyan
-docker build -t ${ImageName} .
+docker build -f ../pypi.Dockerfile -t ${ImageName} ..
 
 Write-Host "===== Tagging Docker image =====" -ForegroundColor Cyan
 docker tag ${ImageName} ${FullImageName}:latest

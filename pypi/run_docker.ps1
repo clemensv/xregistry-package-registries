@@ -61,7 +61,7 @@ $ImageName = "xregistry-pypi-bridge"
 # Build Docker image if not skipped
 if (-not $SkipBuild) {
     Write-Host "Building Docker image '$ImageName'..."
-    docker build -t $ImageName .
+    docker build -f ../pypi.Dockerfile -t $ImageName ..
 }
 
 # Build the Docker command

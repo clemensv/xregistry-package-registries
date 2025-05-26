@@ -73,7 +73,7 @@ IMAGE_NAME="xregistry-pypi-bridge"
 # Build Docker image if not skipped
 if [ "$SKIP_BUILD" = false ]; then
   echo "Building Docker image '$IMAGE_NAME'..."
-  docker build -t $IMAGE_NAME .
+  docker build -f ../pypi.Dockerfile -t $IMAGE_NAME ..
 fi
 
 # Build the Docker command

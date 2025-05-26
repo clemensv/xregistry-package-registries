@@ -2,8 +2,8 @@ services:
   # NPM Registry Service
   npm-registry:
     build:
-      context: ../../npm
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: npm.Dockerfile
     container_name: bridge-test-npm
     ports:
       - "4873:3100"
@@ -23,8 +23,8 @@ services:
   # PyPI Registry Service  
   pypi-registry:
     build:
-      context: ../../pypi
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: pypi.Dockerfile
     container_name: bridge-test-pypi
     ports:
       - "8081:3000"
@@ -44,8 +44,8 @@ services:
   # Maven Registry Service
   maven-registry:
     build:
-      context: ../../maven
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: maven.Dockerfile
     container_name: bridge-test-maven
     ports:
       - "8082:3300"
@@ -65,8 +65,8 @@ services:
   # NuGet Registry Service
   nuget-registry:
     build:
-      context: ../../nuget
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: nuget.Dockerfile
     container_name: bridge-test-nuget
     ports:
       - "8083:3200"
@@ -86,8 +86,8 @@ services:
   # OCI Registry Service
   oci-registry:
     build:
-      context: ../../oci
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: oci.Dockerfile
     container_name: bridge-test-oci
     ports:
       - "8084:3400"
@@ -107,8 +107,8 @@ services:
   # Bridge Proxy Service
   bridge-proxy:
     build:
-      context: ../../bridge
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: bridge.Dockerfile
     container_name: bridge-test-proxy
     ports:
       - "8080:8080"

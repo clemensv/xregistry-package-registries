@@ -97,7 +97,7 @@ If you prefer to build and run the Docker container manually:
 #### Build the Docker image
 
 ```bash
-docker build -t xregistry-pypi-bridge .
+docker build -f ../pypi.Dockerfile -t xregistry-pypi-bridge ..
 ```
 
 #### Run on a different port

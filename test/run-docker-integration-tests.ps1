@@ -5,12 +5,12 @@
     Runs Docker integration tests for all package registry services.
 
 .DESCRIPTION
-    This script runs comprehensive Docker integration tests for Maven, NuGet, PyPI, and OCI services.
+    This script runs comprehensive Docker integration tests for Maven, NuGet, PyPI, OCI, and NPM services.
     Each test builds the service's Docker image, runs it on a random port, tests various endpoints,
     and cleans up afterwards.
 
 .PARAMETER Service
-    Specific service to test (maven, nuget, pypi, oci). If not specified, all services are tested.
+    Specific service to test (maven, nuget, pypi, oci, npm). If not specified, all services are tested.
 
 .PARAMETER Parallel
     Whether to run tests in parallel. Default is false for better resource management.
@@ -29,7 +29,7 @@
 #>
 
 param(
-    [ValidateSet("maven", "nuget", "pypi", "oci")]
+    [ValidateSet("maven", "nuget", "pypi", "oci", "npm")]
     [string]$Service,
     
     [switch]$Parallel
@@ -119,7 +119,7 @@ function Invoke-ServiceTest {
 try {
     Test-Prerequisites
     
-    $services = if ($Service) { @($Service) } else { @("maven", "nuget", "pypi", "oci") }
+    $services = if ($Service) { @($Service) } else { @("maven", "nuget", "pypi", "oci", "npm") }
     $totalStartTime = Get-Date
     
     Write-Host "Will test the following services: $($services -join ', ')" -ForegroundColor Cyan
@@ -168,7 +168,7 @@ finally {
     Write-Host "`nPerforming cleanup..." -ForegroundColor Yellow
     
     # Stop and remove any test containers that might be running
-    $testContainers = docker ps -a --filter "name=maven-test-" --filter "name=nuget-test-" --filter "name=pypi-test-" --filter "name=oci-test-" -q
+    $testContainers = docker ps -a --filter "name=maven-test-" --filter "name=nuget-test-" --filter "name=pypi-test-" --filter "name=oci-test-" --filter "name=npm-test-" -q
     if ($testContainers) {
         Write-Host "Cleaning up test containers..." -ForegroundColor Gray
         docker stop $testContainers 2>$null
