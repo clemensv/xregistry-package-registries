@@ -16,6 +16,7 @@ GITHUB_TOKEN=""
 AZURE_SUBSCRIPTION=""
 DRY_RUN="false"
 VERBOSE="false"
+FORCE_GHCR="true"
 
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -70,6 +71,7 @@ OPTIONS:
     -s, --subscription ID           Azure subscription ID (optional, uses current)
     -d, --dry-run                   Show what would be deployed without executing
     -v, --verbose                   Enable verbose output
+    --force-ghcr                    Force use of GHCR even for private repos (requires valid token)
     -h, --help                      Show this help message
 
 EXAMPLES:
@@ -133,6 +135,10 @@ parse_args() {
                 ;;
             -v|--verbose)
                 VERBOSE="true"
+                shift
+                ;;
+            --force-ghcr)
+                FORCE_GHCR="true"
                 shift
                 ;;
             -h|--help)
@@ -275,26 +281,48 @@ check_resource_providers() {
 is_repo_private() {
     log_info "Checking repository visibility..."
     
-    # Use GitHub API to check repo visibility
+    # First try without authentication for public repos
     local repo_info
-    repo_info=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
-                     -H "Accept: application/vnd.github.v3+json" \
+    repo_info=$(curl -s -H "Accept: application/vnd.github.v3+json" \
                      "https://api.github.com/repos/$REPOSITORY_NAME" 2>/dev/null)
     
-    if [[ $? -ne 0 ]] || [[ -z "$repo_info" ]]; then
-        log_warning "Could not determine repository visibility, assuming private for safety"
-        return 0
+    # If public API call succeeds, check if it's private
+    if [[ $? -eq 0 ]] && [[ -n "$repo_info" ]]; then
+        local is_private=$(echo "$repo_info" | jq -r '.private // true')
+        
+        if [[ "$is_private" == "true" ]]; then
+            log_info "Repository is private - will use ACR for image storage"
+            return 0
+        else
+            log_info "Repository is public - will use GHCR directly"
+            return 1
+        fi
     fi
     
-    local is_private=$(echo "$repo_info" | jq -r '.private // true')
-    
-    if [[ "$is_private" == "true" ]]; then
-        log_info "Repository is private - will use ACR for image storage"
-        return 0
-    else
-        log_info "Repository is public - will use GHCR directly"
-        return 1
+    # If public API call failed, try with authentication
+    if [[ -n "$GITHUB_TOKEN" ]]; then
+        log_verbose "Public API call failed, trying with authentication..."
+        repo_info=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
+                         -H "Accept: application/vnd.github.v3+json" \
+                         "https://api.github.com/repos/$REPOSITORY_NAME" 2>/dev/null)
+        
+        if [[ $? -eq 0 ]] && [[ -n "$repo_info" ]]; then
+            local is_private=$(echo "$repo_info" | jq -r '.private // true')
+            
+            if [[ "$is_private" == "true" ]]; then
+                log_info "Repository is private - will use ACR for image storage"
+                return 0
+            else
+                log_info "Repository is public - will use GHCR directly"
+                return 1
+            fi
+        fi
     fi
+    
+    # If both calls failed, assume private for safety
+    log_warning "Could not determine repository visibility, assuming private for safety"
+    log_warning "This may happen with invalid GitHub tokens or network issues"
+    return 0
 }
 
 # Create ACR instance if needed
@@ -523,10 +551,30 @@ create_parameters_file() {
         log_info "Using ACR: $registry_server (username: $registry_username)"
     else
         registry_server="ghcr.io"
-        registry_username="$GITHUB_ACTOR"
-        registry_password="$GITHUB_TOKEN"
         image_repository="$REPOSITORY_NAME/"
-        log_info "Using GHCR: $registry_server"
+        
+        # For public repositories, we can use GHCR without authentication
+        # Check if we have a valid token, otherwise use empty credentials
+        if [[ -n "$GITHUB_TOKEN" ]] && [[ -n "$GITHUB_ACTOR" ]]; then
+            # Test if the token is valid by making a simple API call
+            local token_test=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
+                                   -H "Accept: application/vnd.github.v3+json" \
+                                   "https://api.github.com/user" 2>/dev/null)
+            
+            if [[ $? -eq 0 ]] && [[ -n "$token_test" ]] && [[ $(echo "$token_test" | jq -r '.message // "valid"') != "Bad credentials" ]]; then
+                log_info "Using GHCR with authentication: $registry_server (user: $GITHUB_ACTOR)"
+                registry_username="$GITHUB_ACTOR"
+                registry_password="$GITHUB_TOKEN"
+            else
+                log_info "Using GHCR without authentication for public repository: $registry_server"
+                registry_username=""
+                registry_password=""
+            fi
+        else
+            log_info "Using GHCR without authentication for public repository: $registry_server"
+            registry_username=""
+            registry_password=""
+        fi
     fi
     
     # Read template and substitute values
@@ -563,6 +611,7 @@ deploy_infrastructure() {
     log_info "Resource Group: $RESOURCE_GROUP"
     log_info "Location: $LOCATION"
     log_info "Image Tag: $IMAGE_TAG"
+    log_info "Note: For new container builds, ensure GitHub Actions have completed for tag: v$IMAGE_TAG"
     log_info "Repository: $REPOSITORY_NAME"
     
     if [[ "$DRY_RUN" == "true" ]]; then
@@ -731,7 +780,10 @@ main() {
     local use_acr="false"
     local acr_name=""
     
-    if is_repo_private; then
+    if [[ "$FORCE_GHCR" == "true" ]]; then
+        log_info "Forcing use of GHCR (--force-ghcr specified)"
+        use_acr="false"
+    elif is_repo_private; then
         use_acr="true"
         acr_name=$(ensure_acr)
         copy_images_to_acr "$acr_name"

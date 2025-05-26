@@ -439,6 +439,15 @@ app.get('/', (req, res) => {
   const inline = req.query.inline as string;
   const specversion = (req.query.specversion as string) || '1.0';
   
+  // Debug logging for BASE_URL issue
+  logger.info('Root endpoint called', { 
+    baseUrl: BASE_URL, 
+    requestHost: req.get('host'),
+    requestUrl: req.url,
+    requestProtocol: req.protocol,
+    originalUrl: req.originalUrl
+  });
+  
   // Check if requested specversion is supported
   if (specversion !== '1.0' && specversion !== '1.0-rc1') {
     return res.status(400).json({
@@ -450,11 +459,14 @@ app.get('/', (req, res) => {
   const now = new Date().toISOString();
   const groups = Object.keys(groupTypeToBackend);
   
+  // Force use of BASE_URL environment variable
+  const effectiveBaseUrl = BASE_URL;
+  
   // Build the base registry response according to xRegistry spec
   const registryResponse: any = {
     specversion: specversion,
     registryid: 'xregistry-bridge',
-    self: BASE_URL,
+    self: effectiveBaseUrl,
     xid: '/',
     epoch: bridgeEpoch,
     name: 'xRegistry Bridge',
@@ -466,7 +478,7 @@ app.get('/', (req, res) => {
   // Add group collections (REQUIRED)
   for (const groupType of groups) {
     const plural = consolidatedModel.groups?.[groupType]?.plural || groupType;
-    registryResponse[`${plural}url`] = `${BASE_URL}/${groupType}`;
+    registryResponse[`${plural}url`] = `${effectiveBaseUrl}/${groupType}`;
     registryResponse[`${plural}count`] = 0; // TODO: implement actual count
   }
   

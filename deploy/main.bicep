@@ -20,6 +20,9 @@ param containerRegistryPassword string
 @description('Container image tag')
 param imageTag string = 'latest'
 
+@description('Force deployment timestamp')
+param deploymentTimestamp string = utcNow()
+
 @description('GitHub repository name for container images')
 param repositoryName string
 
@@ -223,7 +226,8 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
           }
         ]
       }
-      registries: [
+      // For public GHCR repos, containerRegistryUsername will be empty and no registry auth is needed
+      registries: empty(containerRegistryUsername) ? [] : [
         {
           server: containerRegistryServer
           username: containerRegistryUsername
@@ -319,6 +323,10 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             {
               name: 'SERVICE_NAME'
               value: 'xregistry-bridge'
+            }
+            {
+              name: 'DEPLOYMENT_TIMESTAMP'
+              value: deploymentTimestamp
             }
           ]
           probes: [
