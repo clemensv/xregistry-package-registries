@@ -44,6 +44,18 @@ param minReplicas int = 1
 @description('Maximum number of replicas')
 param maxReplicas int = 3
 
+@description('Custom domain name for the application')
+param customDomainName string = 'packages.mcpxreg.com'
+
+@description('Domain verification key for managed certificate')
+param domainVerificationKey string = '4DB3F9C0627FBAE988A42C7C3870CE028A6C0CA15ED27DD32926EDC26EDD5B38'
+
+@description('Whether to create a new managed certificate or use existing one')
+param createManagedCertificate bool = true
+
+@description('Existing managed certificate resource ID (if not creating new)')
+param existingCertificateId string = ''
+
 // Variables
 var resourcePrefix = '${baseName}-${environment}'
 var containerAppName = resourcePrefix
@@ -51,6 +63,8 @@ var containerAppEnvName = resourcePrefix
 var logAnalyticsWorkspaceName = '${resourcePrefix}-logs'
 var appInsightsName = '${resourcePrefix}-insights'
 var actionGroupName = '${resourcePrefix}-alerts'
+var managedCertificateName = replace(customDomainName, '.', '-')
+var managedCertificateId = createManagedCertificate ? '${containerAppEnvironment.id}/managedCertificates/${managedCertificateName}' : existingCertificateId
 
 // Generate unique API keys for each service
 var npmApiKey = 'npm-${uniqueString(resourceGroup().id, 'npm')}'
@@ -60,7 +74,7 @@ var nugetApiKey = 'nuget-${uniqueString(resourceGroup().id, 'nuget')}'
 var ociApiKey = 'oci-${uniqueString(resourceGroup().id, 'oci')}'
 
 // Use a computed base URL that will be valid
-var baseUrl = 'https://${containerAppName}.${containerAppEnvironment.properties.defaultDomain}'
+var baseUrl = 'https://${customDomainName}'
 
 // Container image URIs
 // Determine image path format based on registry type
@@ -160,11 +174,31 @@ resource containerAppEnvironment 'Microsoft.App/managedEnvironments@2023-05-01' 
   }
 }
 
+// Managed Certificate for custom domain (only created if createManagedCertificate is true)
+resource managedCertificate 'Microsoft.App/managedEnvironments/managedCertificates@2023-05-01' = if (createManagedCertificate) {
+  name: managedCertificateName
+  parent: containerAppEnvironment
+  properties: {
+    subjectName: customDomainName
+    domainControlValidation: 'TXT'
+    validationMethod: 'TXT'
+    // The domain verification token will be used by Azure to validate domain ownership
+    // You need to create a TXT record in your DNS with name: asuid.packages.mcpxreg.com
+    // and value: the domain verification key provided as parameter
+  }
+  dependsOn: [
+    containerAppEnvironment
+  ]
+}
+
 // Container App
 resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
   name: containerAppName
   location: location
-  dependsOn: [
+  dependsOn: createManagedCertificate ? [
+    containerAppEnvironment
+    managedCertificate
+  ] : [
     containerAppEnvironment
   ]
   properties: {
@@ -178,6 +212,13 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
           {
             weight: 100
             latestRevision: true
+          }
+        ]
+        customDomains: [
+          {
+            name: customDomainName
+            bindingType: 'SniEnabled'
+            certificateId: managedCertificateId
           }
         ]
       }
@@ -979,4 +1020,21 @@ output apiKeys object = {
   maven: mavenApiKey
   nuget: nugetApiKey
   oci: ociApiKey
-} 
+}
+
+// Certificate and domain configuration outputs
+output customDomainName string = customDomainName
+output managedCertificateId string = managedCertificateId
+output managedCertificateName string = managedCertificateName
+output domainVerificationRequired object = createManagedCertificate ? {
+  txtRecordName: 'asuid.${customDomainName}'
+  txtRecordValue: domainVerificationKey
+  instructions: 'Create a TXT record in your DNS with the above name and value to verify domain ownership'
+  status: 'New certificate will be created - DNS verification required'
+} : {
+  txtRecordName: 'N/A'
+  txtRecordValue: 'N/A' 
+  instructions: 'Using existing certificate'
+  status: 'Using existing certificate'
+}
+output baseUrl string = baseUrl 
