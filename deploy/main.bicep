@@ -51,10 +51,10 @@ param customDomainName string = 'packages.mcpxreg.com'
 param domainVerificationKey string = '4DB3F9C0627FBAE988A42C7C3870CE028A6C0CA15ED27DD32926EDC26EDD5B38'
 
 @description('Whether to create a new managed certificate or use existing one')
-param createManagedCertificate bool = false
+param createManagedCertificate bool = true
 
 @description('Existing managed certificate resource ID (if not creating new)')
-param existingCertificateId string = '/subscriptions/87dc3419-ee4f-4833-8e15-d25cc10df733/resourceGroups/xregistry-package-registries/providers/Microsoft.App/managedEnvironments/xregistry-pkg-registries-prod/managedCertificates/packages-mcpxreg-com'
+param existingCertificateId string = ''
 
 // Variables
 var resourcePrefix = '${baseName}-${environment}'

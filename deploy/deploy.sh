@@ -571,6 +571,31 @@ deploy_infrastructure() {
         return 0
     fi
 
+    # Check for existing managed certificates
+    log_info "Checking for existing managed certificates..."
+    local existing_cert_id=""
+    local env_name="xregistry-pkg-registries-prod"
+    
+    # Query existing certificates for the domain
+    existing_cert_id=$(az containerapp env certificate list \
+        --name "$env_name" \
+        --resource-group "$RESOURCE_GROUP" \
+        --query "[?contains(properties.subjectName, 'packages.mcpxreg.com')].id" \
+        --output tsv 2>/dev/null | head -1)
+    
+    if [[ -n "$existing_cert_id" ]]; then
+        log_info "Found existing certificate: $existing_cert_id"
+        # Update parameters to use existing certificate
+        local updated_params=$(mktemp)
+        jq --arg certId "$existing_cert_id" \
+           '.parameters.createManagedCertificate.value = false | .parameters.existingCertificateId.value = $certId' \
+           "$temp_params" > "$updated_params"
+        temp_params="$updated_params"
+        log_info "Updated deployment to use existing certificate"
+    else
+        log_info "No existing certificate found, will create new one"
+    fi
+
     # Validate the deployment
     log_info "Validating deployment..."
     az deployment group validate \
