@@ -25,6 +25,9 @@
     },
     "alertEmailAddress": {
       "value": "clemensv@microsoft.com"
+    },
+    "useCustomDomain": {
+      "value": false
     }
   }
 } 

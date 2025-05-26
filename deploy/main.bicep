@@ -56,6 +56,9 @@ param createManagedCertificate bool = true
 @description('Existing managed certificate resource ID (if not creating new)')
 param existingCertificateId string = ''
 
+@description('Whether to use custom domain for baseUrl (false uses Azure FQDN to avoid bootstrap issues)')
+param useCustomDomain bool = false
+
 // Variables
 var resourcePrefix = '${baseName}-${environment}'
 var containerAppName = resourcePrefix
@@ -74,7 +77,8 @@ var nugetApiKey = 'nuget-${uniqueString(resourceGroup().id, 'nuget')}'
 var ociApiKey = 'oci-${uniqueString(resourceGroup().id, 'oci')}'
 
 // Use a computed base URL that will be valid
-var baseUrl = 'https://${customDomainName}' 
+// For initial deployment, use Azure FQDN to avoid chicken-and-egg problem
+var baseUrl = useCustomDomain ? 'https://${customDomainName}' : 'https://${containerAppName}.${containerAppEnvName}.${location}.azurecontainerapps.io' 
 
 // Container image URIs
 // Determine image path format based on registry type
@@ -215,13 +219,13 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             latestRevision: true
           }
         ]
-        customDomains: [
+        customDomains: useCustomDomain ? [
           {
             name: customDomainName
             bindingType: 'SniEnabled'
             certificateId: managedCertificateId
           }
-        ]
+        ] : []
       }
       registries: [
         {
