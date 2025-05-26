@@ -27,7 +27,7 @@
       "value": "clemensv@microsoft.com"
     },
     "useCustomDomain": {
-      "value": false
+      "value": true
     }
   }
 } 
