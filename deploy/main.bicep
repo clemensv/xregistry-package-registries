@@ -74,7 +74,7 @@ var nugetApiKey = 'nuget-${uniqueString(resourceGroup().id, 'nuget')}'
 var ociApiKey = 'oci-${uniqueString(resourceGroup().id, 'oci')}'
 
 // Use a computed base URL that will be valid
-var baseUrl = 'https://${customDomainName}'
+var baseUrl = 'https://${customDomainName}' 
 
 // Container image URIs
 // Determine image path format based on registry type
@@ -898,7 +898,7 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
 // Service Health Alert
 resource serviceHealthAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
   name: '${resourcePrefix}-service-health'
-  location: 'global'
+  location: location
   properties: {
     description: 'Alert when service health degrades'
     severity: 2
@@ -933,7 +933,7 @@ resource serviceHealthAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
 // High Error Rate Alert
 resource errorRateAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
   name: '${resourcePrefix}-error-rate'
-  location: 'global'
+  location: location
   properties: {
     description: 'Alert when error rate is high'
     severity: 1
@@ -975,7 +975,7 @@ resource errorRateAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
 // High Response Time Alert
 resource responseTimeAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
   name: '${resourcePrefix}-response-time'
-  location: 'global'
+  location: location
   properties: {
     description: 'Alert when response time is high'
     severity: 2
