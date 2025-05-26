@@ -51,10 +51,10 @@ param customDomainName string = 'packages.mcpxreg.com'
 param domainVerificationKey string = '4DB3F9C0627FBAE988A42C7C3870CE028A6C0CA15ED27DD32926EDC26EDD5B38'
 
 @description('Whether to create a new managed certificate or use existing one')
-param createManagedCertificate bool = true
+param createManagedCertificate bool = false
 
 @description('Existing managed certificate resource ID (if not creating new)')
-param existingCertificateId string = ''
+param existingCertificateId string = '/subscriptions/87dc3419-ee4f-4833-8e15-d25cc10df733/resourceGroups/xregistry-package-registries/providers/Microsoft.App/managedEnvironments/xregistry-pkg-registries-prod/managedCertificates/packages-mcpxreg-com'
 
 // Variables
 var resourcePrefix = '${baseName}-${environment}'
@@ -411,14 +411,8 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             {
               type: 'startup'
               httpGet: {
-                path: '/model'
+                path: '/health'
                 port: 3100
-                httpHeaders: [
-                  {
-                    name: 'Authorization'
-                    value: 'Bearer ${npmApiKey}'
-                  }
-                ]
               }
               initialDelaySeconds: 30
               periodSeconds: 5
@@ -428,14 +422,8 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             {
               type: 'liveness'
               httpGet: {
-                path: '/model'
+                path: '/health'
                 port: 3100
-                httpHeaders: [
-                  {
-                    name: 'Authorization'
-                    value: 'Bearer ${npmApiKey}'
-                  }
-                ]
               }
               initialDelaySeconds: 60
               periodSeconds: 10
@@ -445,14 +433,8 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             {
               type: 'readiness'
               httpGet: {
-                path: '/model'
+                path: '/health'
                 port: 3100
-                httpHeaders: [
-                  {
-                    name: 'Authorization'
-                    value: 'Bearer ${npmApiKey}'
-                  }
-                ]
               }
               initialDelaySeconds: 5
               periodSeconds: 5
@@ -515,14 +497,8 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             {
               type: 'startup'
               httpGet: {
-                path: '/model'
+                path: '/health'
                 port: 3000
-                httpHeaders: [
-                  {
-                    name: 'Authorization'
-                    value: 'Bearer ${pypiApiKey}'
-                  }
-                ]
               }
               initialDelaySeconds: 30
               periodSeconds: 5
@@ -532,14 +508,8 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             {
               type: 'liveness'
               httpGet: {
-                path: '/model'
+                path: '/health'
                 port: 3000
-                httpHeaders: [
-                  {
-                    name: 'Authorization'
-                    value: 'Bearer ${pypiApiKey}'
-                  }
-                ]
               }
               initialDelaySeconds: 60
               periodSeconds: 10
@@ -549,14 +519,8 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             {
               type: 'readiness'
               httpGet: {
-                path: '/model'
+                path: '/health'
                 port: 3000
-                httpHeaders: [
-                  {
-                    name: 'Authorization'
-                    value: 'Bearer ${pypiApiKey}'
-                  }
-                ]
               }
               initialDelaySeconds: 5
               periodSeconds: 5
@@ -619,14 +583,8 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             {
               type: 'startup'
               httpGet: {
-                path: '/model'
+                path: '/health'
                 port: 3300
-                httpHeaders: [
-                  {
-                    name: 'Authorization'
-                    value: 'Bearer ${mavenApiKey}'
-                  }
-                ]
               }
               initialDelaySeconds: 30
               periodSeconds: 5
@@ -636,14 +594,8 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             {
               type: 'liveness'
               httpGet: {
-                path: '/model'
+                path: '/health'
                 port: 3300
-                httpHeaders: [
-                  {
-                    name: 'Authorization'
-                    value: 'Bearer ${mavenApiKey}'
-                  }
-                ]
               }
               initialDelaySeconds: 60
               periodSeconds: 10
@@ -653,14 +605,8 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             {
               type: 'readiness'
               httpGet: {
-                path: '/model'
+                path: '/health'
                 port: 3300
-                httpHeaders: [
-                  {
-                    name: 'Authorization'
-                    value: 'Bearer ${mavenApiKey}'
-                  }
-                ]
               }
               initialDelaySeconds: 5
               periodSeconds: 5
@@ -723,14 +669,8 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             {
               type: 'startup'
               httpGet: {
-                path: '/model'
+                path: '/health'
                 port: 3200
-                httpHeaders: [
-                  {
-                    name: 'Authorization'
-                    value: 'Bearer ${nugetApiKey}'
-                  }
-                ]
               }
               initialDelaySeconds: 30
               periodSeconds: 5
@@ -740,14 +680,8 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             {
               type: 'liveness'
               httpGet: {
-                path: '/model'
+                path: '/health'
                 port: 3200
-                httpHeaders: [
-                  {
-                    name: 'Authorization'
-                    value: 'Bearer ${nugetApiKey}'
-                  }
-                ]
               }
               initialDelaySeconds: 60
               periodSeconds: 10
@@ -757,14 +691,8 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             {
               type: 'readiness'
               httpGet: {
-                path: '/model'
+                path: '/health'
                 port: 3200
-                httpHeaders: [
-                  {
-                    name: 'Authorization'
-                    value: 'Bearer ${nugetApiKey}'
-                  }
-                ]
               }
               initialDelaySeconds: 5
               periodSeconds: 5
@@ -827,14 +755,8 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             {
               type: 'startup'
               httpGet: {
-                path: '/model'
+                path: '/health'
                 port: 3400
-                httpHeaders: [
-                  {
-                    name: 'Authorization'
-                    value: 'Bearer ${ociApiKey}'
-                  }
-                ]
               }
               initialDelaySeconds: 30
               periodSeconds: 5
@@ -844,14 +766,8 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             {
               type: 'liveness'
               httpGet: {
-                path: '/model'
+                path: '/health'
                 port: 3400
-                httpHeaders: [
-                  {
-                    name: 'Authorization'
-                    value: 'Bearer ${ociApiKey}'
-                  }
-                ]
               }
               initialDelaySeconds: 60
               periodSeconds: 10
@@ -861,14 +777,8 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             {
               type: 'readiness'
               httpGet: {
-                path: '/model'
+                path: '/health'
                 port: 3400
-                httpHeaders: [
-                  {
-                    name: 'Authorization'
-                    value: 'Bearer ${ociApiKey}'
-                  }
-                ]
               }
               initialDelaySeconds: 5
               periodSeconds: 5
