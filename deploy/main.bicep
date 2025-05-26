@@ -83,12 +83,12 @@ var baseUrl = 'https://${customDomainName}'
 // Determine image path format based on registry type
 // When using ACR, repositoryName will be 'ACR_NO_PREFIX' to indicate no prefix needed
 var imagePrefix = (empty(repositoryName) || repositoryName == 'ACR_NO_PREFIX') ? '' : '${repositoryName}/'
-var bridgeImage = '${containerRegistryServer}/${imagePrefix}xregistry-bridge:${imageTag}'
-var npmImage = '${containerRegistryServer}/${imagePrefix}xregistry-npm-bridge:${imageTag}'
-var pypiImage = '${containerRegistryServer}/${imagePrefix}xregistry-pypi-bridge:${imageTag}'
-var mavenImage = '${containerRegistryServer}/${imagePrefix}xregistry-maven-bridge:${imageTag}'
-var nugetImage = '${containerRegistryServer}/${imagePrefix}xregistry-nuget-bridge:${imageTag}'
-var ociImage = '${containerRegistryServer}/${imagePrefix}xregistry-oci-bridge:${imageTag}'
+var bridgeImage = (empty(repositoryName) || repositoryName == 'ACR_NO_PREFIX') ? '${containerRegistryServer}/xregistry-bridge:${imageTag}' : '${containerRegistryServer}/${imagePrefix}xregistry-bridge:${imageTag}'
+var npmImage = (empty(repositoryName) || repositoryName == 'ACR_NO_PREFIX') ? '${containerRegistryServer}/xregistry-npm-bridge:${imageTag}' : '${containerRegistryServer}/${imagePrefix}xregistry-npm-bridge:${imageTag}'
+var pypiImage = (empty(repositoryName) || repositoryName == 'ACR_NO_PREFIX') ? '${containerRegistryServer}/xregistry-pypi-bridge:${imageTag}' : '${containerRegistryServer}/${imagePrefix}xregistry-pypi-bridge:${imageTag}'
+var mavenImage = (empty(repositoryName) || repositoryName == 'ACR_NO_PREFIX') ? '${containerRegistryServer}/xregistry-maven-bridge:${imageTag}' : '${containerRegistryServer}/${imagePrefix}xregistry-maven-bridge:${imageTag}'
+var nugetImage = (empty(repositoryName) || repositoryName == 'ACR_NO_PREFIX') ? '${containerRegistryServer}/xregistry-nuget-bridge:${imageTag}' : '${containerRegistryServer}/${imagePrefix}xregistry-nuget-bridge:${imageTag}'
+var ociImage = (empty(repositoryName) || repositoryName == 'ACR_NO_PREFIX') ? '${containerRegistryServer}/xregistry-oci-bridge:${imageTag}' : '${containerRegistryServer}/${imagePrefix}xregistry-oci-bridge:${imageTag}'
 
 // Downstream services configuration for bridge
 var downstreamsConfig = {

@@ -158,6 +158,12 @@ parse_args() {
     GITHUB_ACTOR="${GITHUB_ACTOR:-${GITHUB_ACTOR_ENV:-}}"
     GITHUB_TOKEN="${GITHUB_TOKEN:-${GITHUB_TOKEN_ENV:-}}"
     AZURE_SUBSCRIPTION="${AZURE_SUBSCRIPTION:-${AZURE_SUBSCRIPTION_ENV:-}}"
+    
+    # Strip 'v' prefix from image tag if present (Git tags use v1.0.0, container tags use 1.0.0)
+    if [[ "$IMAGE_TAG" =~ ^v[0-9] ]]; then
+        IMAGE_TAG="${IMAGE_TAG#v}"
+        log_info "Stripped 'v' prefix from image tag, using: $IMAGE_TAG"
+    fi
 }
 
 # Validate required parameters
