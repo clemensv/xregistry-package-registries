@@ -101,6 +101,7 @@
                 "available_platforms": {
                   "type": "array",
                   "description": "Available platforms for multi-platform images.",
+                  "namecharset": "extended",
                   "item": {
                     "type": "object",
                     "attributes": {
@@ -289,10 +290,6 @@
                   "description": "The URL for accessing the image configuration."
                 }
               }
-            },
-            "labels": {
-              "type": "object",
-              "description": "Custom labels applied to the container image."
             },
             "annotations": {
               "type": "object",
