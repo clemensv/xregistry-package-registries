@@ -177,6 +177,7 @@ resource containerAppEnvironment 'Microsoft.App/managedEnvironments@2023-05-01' 
 // Managed Certificate for custom domain (only created if createManagedCertificate is true)
 resource managedCertificate 'Microsoft.App/managedEnvironments/managedCertificates@2023-05-01' = if (createManagedCertificate) {
   name: managedCertificateName
+  location: location
   parent: containerAppEnvironment
   properties: {
     subjectName: customDomainName
