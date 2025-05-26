@@ -208,7 +208,7 @@ describe('OCI Docker Integration Tests', function() {
 
     it('should respond to a specific image (dotnet/runtime)', async () => {
       try {
-        const response = await loggedAxiosGet(`${baseUrl}/containerregistries/microsoft/images/dotnet/runtime`);
+        const response = await loggedAxiosGet(`${baseUrl}/containerregistries/microsoft/images/dotnet~runtime`);
         expect(response.status).to.equal(200);
         expect(response.data).to.be.an('object');
         

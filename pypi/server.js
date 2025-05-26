@@ -822,10 +822,6 @@ app.get(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`, async (req, res) => {
       const aIsLetter = /^[a-zA-Z]/.test(aFirstChar);
       const bIsLetter = /^[a-zA-Z]/.test(bFirstChar);
       
-      // Debug logging for packages starting with numbers to see what's happening
-      if (!QUIET_MODE && (aFirstChar === '0' || bFirstChar === '0')) {
-        console.log(`Sorting debug: "${a}" (isLetter: ${aIsLetter}) vs "${b}" (isLetter: ${bIsLetter})`);
-      }
       
       // If one starts with letter and other doesn't, letter comes first
       if (aIsLetter && !bIsLetter) return -1;

@@ -123,7 +123,7 @@ npx mocha test/integration/oci-docker.test.js --timeout 300000
   - `/containerregistries`
   - `/containerregistries/microsoft`
   - `/containerregistries/microsoft/images`
-  - `/containerregistries/microsoft/images/dotnet/runtime`
+  - `/containerregistries/microsoft/images/dotnet~runtime`
 
 ## Configuration
 

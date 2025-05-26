@@ -280,7 +280,7 @@ describe('Bridge Docker Compose Integration Tests', function() {
 
     it('should access OCI images through bridge', async () => {
       try {
-        const response = await loggedAxiosGet(`${bridgeUrl}/containerregistries/microsoft/images/dotnet/runtime`);
+        const response = await loggedAxiosGet(`${bridgeUrl}/containerregistries/microsoft/images/dotnet~runtime`);
         expect(response.status).to.equal(200);
         expect(response.data).to.be.an('object');
       } catch (error) {

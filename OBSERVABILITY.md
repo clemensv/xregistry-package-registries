@@ -2,31 +2,35 @@
 
 ## Overview
 
-The xRegistry package registries implement structured logging and telemetry
-collection using OpenTelemetry standards. All services send telemetry data to
-Azure Application Insights for monitoring, debugging, and operational analysis.
+The xRegistry package registries implement basic structured logging using a
+custom logging library. The logging infrastructure is prepared for Azure
+Application Insights integration through deployment configuration, but uses a
+simple JSON logging format.
 
 ## Architecture
 
 ### Components
 
-- **OpenTelemetry SDK**: Standardized telemetry collection and export
-- **Azure Application Insights**: Telemetry storage and analysis platform
+- **Custom Logger**: Simple structured logging library
+  (`shared/logging/logger.js`)
+- **Azure Application Insights**: Configured in deployment for telemetry
+  collection
 - **Log Analytics Workspace**: Structured log storage with 30-day retention
-- **Azure Monitor**: Alerting and dashboard platform
+  (deployment configuration)
+- **Azure Monitor**: Alerting and dashboard platform (deployment configuration)
 
 ### Data Flow
 
 ```
-Service → OpenTelemetry SDK → OTLP Exporter → Application Insights → Log Analytics
+Service → Custom Logger → JSON Logs → (Manual Integration) → Application Insights → Log Analytics
 ```
 
-Each service runs OpenTelemetry instrumentation that automatically captures:
+Each service uses the custom logger that captures:
 - HTTP requests and responses
-- Database queries and external API calls
-- Exceptions and error details
-- Custom application metrics
-- Distributed trace context
+- Service startup and shutdown events
+- Error messages with stack traces
+- Custom application events
+- Request correlation through request IDs
 
 ## Implementation Details
 
@@ -34,14 +38,17 @@ Each service runs OpenTelemetry instrumentation that automatically captures:
 
 Location: `/shared/logging/logger.js`
 
-The `XRegistryLogger` class provides OpenTelemetry-conformant logging with the
-following features:
+The `XRegistryLogger` class provides structured logging with these features:
 
-- W3C Trace Context propagation
 - Structured JSON log format
-- Automatic HTTP request instrumentation
-- Exception tracking with stack traces
-- Custom metrics recording
+- Express middleware for automatic request logging
+- File and console output options
+- Request correlation through generated request IDs
+- Error tracking with stack traces
+
+**Note**: Despite the package.json description mentioning OpenTelemetry, the
+actual implementation uses basic structured logging without OpenTelemetry SDK
+integration.
 
 ### Service Integration
 
@@ -52,13 +59,16 @@ const { createLogger } = require('../shared/logging/logger');
 
 const logger = createLogger({
   serviceName: 'xregistry-npm',
-  logLevel: 'info'
+  serviceVersion: '1.0.0',
+  environment: 'production',
+  enableFile: false,
+  enableConsole: true
 });
 
 app.use(logger.middleware());
 ```
 
-### Log Format
+### Actual Log Format
 
 Standard log entries use this structure:
 
@@ -66,69 +76,130 @@ Standard log entries use this structure:
 {
   "timestamp": "2024-01-15T10:30:00.000Z",
   "level": "INFO",
-  "service": "xregistry-bridge",
-  "message": "Package request processed",
-  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
-  "span_id": "00f067aa0ba902b7",
-  "service.name": "xregistry-bridge",
-  "service.version": "1.0.0",
-  "http.method": "GET",
-  "http.status_code": 200,
-  "http.url": "/npm/packages/lodash",
-  "http.response_time_ms": 245,
-  "net.peer.ip": "10.0.0.15"
+  "message": "Request completed",
+  "service": "xregistry-npm",
+  "version": "1.0.0",
+  "environment": "production",
+  "hostname": "container-hostname",
+  "pid": 1,
+  "requestId": "abc123def",
+  "method": "GET",
+  "url": "/npm/packages/lodash",
+  "statusCode": 200,
+  "duration": 245
 }
 ```
 
 ## Data Types Collected
 
 ### Request Telemetry
-- Request URL, method, headers
+- Request method, URL, and completion status
 - Response status codes and timing
-- User agent and client IP
-- Request and response payload sizes
+- User agent and request headers
+- Generated request ID for correlation
 
-### Dependency Telemetry
-- External API calls to package registries
-- Database queries and connection details
-- Cache hit/miss rates
-- Third-party service response times
+### Application Events
+- Service startup and shutdown events
+- Health check results
+- Dependency call results
+- Custom application messages
 
-### Exception Telemetry
+### Error Information
 - Exception type and message
-- Stack traces with source code context
-- Request context when exception occurred
-- User impact and error frequency
+- Stack traces with source context
+- Request context when errors occur
+- Error frequency tracking
 
-### Custom Metrics
-- Package download counts by registry
-- Cache efficiency metrics
+### Performance Data
+- Request duration timing
+- Dependency call timing
 - Service health indicators
-- Business logic performance counters
+- Resource utilization (basic)
 
-### Trace Telemetry
-- End-to-end request correlation
-- Service boundary crossing timing
-- Distributed transaction flow
-- Performance bottleneck identification
+## Deployment Configuration
 
-## Using Azure Application Insights
+### Azure Application Insights Integration
 
-### Accessing Data
+The deployment infrastructure configures Application Insights integration:
 
-Navigate to the Application Insights resource in the Azure portal. Data appears
-in several views:
+**Bicep Template** (`deploy/main.bicep`):
+- Creates Application Insights resource
+- Configures connection string as container secret
+- Sets up Log Analytics workspace
+- Creates monitoring alerts
 
-- **Live Metrics**: Real-time performance counters
-- **Application Map**: Service dependency visualization
-- **Performance**: Request timing and throughput analysis
-- **Failures**: Exception tracking and error analysis
-- **Logs**: Raw telemetry data query interface
+**Environment Variables Set by Deployment**:
+- `APPLICATIONINSIGHTS_CONNECTION_STRING`: Application Insights connection
+  string
+- `APPLICATIONINSIGHTS_INSTRUMENTATION_KEY`: Instrumentation key for telemetry
+- `SERVICE_NAME`: Service identifier for telemetry
+- `LOG_LEVEL`: Minimum log level (error, warn, info, debug)
 
-### Common Queries
+### Container Apps Configuration
 
-#### Request Success Rate by Service
+Each container is configured with:
+- Application Insights connection string
+- Service-specific environment variables
+- Health check endpoints
+- Resource limits and scaling rules
 
+## Log Analysis
+
+### Container Logs in Log Analytics
+
+Query structured logs from containers:
+
+```kusto
+ContainerAppConsoleLogs_CL
+| where TimeGenerated > ago(1h)
+| extend LogData = parse_json(Log_s)
+| where LogData.level == "ERROR"
+| project 
+    TimeGenerated,
+    Service = ContainerName_s,    
+    Message = LogData.message,
+    RequestId = LogData.requestId,
+    ErrorDetails = LogData.error
+| order by TimeGenerated desc
+```
+
+### Service Health Analysis
+
+```kusto
+ContainerAppConsoleLogs_CL
+| where Log_s contains "Service started"
+| extend LogData = parse_json(Log_s)
+| project 
+    TimeGenerated,
+    Service = ContainerName_s,
+    Port = LogData.port,
+    Environment = LogData.environment
+| summarize StartupCount = count() by Service, bin(TimeGenerated, 1h)
+```
+
+### Request Correlation
+
+```kusto
+ContainerAppConsoleLogs_CL
+| extend LogData = parse_json(Log_s)
+| where LogData.requestId == "specific-request-id"
+| project 
+    TimeGenerated,
+    Service = ContainerName_s,
+    LogLevel = LogData.level,
+    Message = LogData.message,
+    Method = LogData.method,
+    URL = LogData.url
+| order by TimeGenerated asc
+```
+
+## Available Monitoring (Post-Deployment)
+
+### If Application Insights is Connected
+
+Once deployed with Application Insights connection:
+
+#### Basic Request Tracking
 ```kusto
 requests
 | where timestamp > ago(1h)
@@ -140,28 +211,10 @@ requests
 | order by failure_rate desc
 ```
 
-#### Error Analysis with Context
-
-```kusto
-exceptions
-| where timestamp > ago(24h)
-| join kind=inner requests on operation_Id
-| project 
-    timestamp,
-    service = cloud_RoleName,
-    error_type = type,
-    error_message = outerMessage,
-    request_url = url,
-    user_agent = client_Browser
-| order by timestamp desc
-```
-
-#### Performance Trending
-
+#### Performance Analysis
 ```kusto
 requests
-| where timestamp > ago(7d)
-| where cloud_RoleName == "xregistry-bridge"
+| where timestamp > ago(24h)
 | summarize 
     avg_duration = avg(duration),
     p95_duration = percentile(duration, 95),
@@ -170,225 +223,139 @@ requests
 | render timechart
 ```
 
-#### Trace Analysis for Slow Requests
+### Alert Rules (Configured in Deployment)
 
-```kusto
-requests
-| where timestamp > ago(1h)
-| where duration > 5000
-| join kind=inner traces on operation_Id
-| project 
-    timestamp,
-    duration,
-    url,
-    trace_message = message,
-    custom_properties = customDimensions
-| order by duration desc
-```
+The deployment sets up these monitoring alerts:
 
-### Dependency Analysis
+#### Service Health Alert
+- **Condition**: No active container replicas
+- **Threshold**: < 1 replica for 5 minutes
+- **Action**: Email notification
 
-```kusto
-dependencies
-| where timestamp > ago(1h)
-| summarize 
-    call_count = count(),
-    avg_duration = avg(duration),
-    failure_rate = round(100.0 * countif(success == false) / count(), 2)
-  by target, type
-| order by failure_rate desc
-```
+#### Error Rate Alert  
+- **Condition**: High error rate in logs
+- **Threshold**: Configurable based on log analysis
+- **Action**: Email notification
 
-## Using Azure Monitor
+#### Response Time Alert
+- **Condition**: Slow response times detected
+- **Threshold**: Configurable performance thresholds
+- **Action**: Email notification
 
-### Alert Rules
-
-Configure alerts based on telemetry data:
-
-#### High Error Rate Alert
-- **Metric**: `requests/failed`
-- **Condition**: Count > 10 in 5 minutes
-- **Action**: Email notification to operations team
-
-#### Slow Response Time Alert
-- **Metric**: `requests/duration`
-- **Condition**: Average > 5000ms over 5 minutes
-- **Action**: Auto-scale container instances
-
-#### Service Availability Alert
-- **Metric**: `availabilityResults/availabilityPercentage`
-- **Condition**: < 95% over 10 minutes
-- **Action**: SMS notification and incident creation
-
-### Dashboards
-
-Create custom dashboards using these widgets:
-
-#### Service Health Dashboard
-- Request rate and success percentage charts
-- Active user count and geographic distribution
-- Cache hit rates and dependency response times
-- Current error rate and exception frequency
-
-#### Performance Dashboard
-- Response time percentiles (50th, 95th, 99th)
-- Throughput by endpoint and service
-- Database query performance metrics
-- Memory and CPU utilization trends
-
-#### Business Metrics Dashboard
-- Package download counts by registry type
-- Most popular packages and versions
-- User activity patterns and peak usage times
-- Revenue-impacting performance metrics
-
-## Log Analytics Queries
-
-### Container Logs Analysis
-
-```kusto
-ContainerAppConsoleLogs_CL
-| where TimeGenerated > ago(1h)
-| extend LogData = parse_json(Log_s)
-| where LogData.level == "ERROR"
-| project 
-    TimeGenerated,
-    Service = ContainerName_s,
-    Message = LogData.message,
-    TraceId = LogData.trace_id,
-    ErrorDetails = LogData.error
-| order by TimeGenerated desc
-```
-
-### Service Startup Analysis
-
-```kusto
-ContainerAppConsoleLogs_CL
-| where Log_s contains "Service starting"
-| extend LogData = parse_json(Log_s)
-| project 
-    TimeGenerated,
-    Service = ContainerName_s,
-    Port = LogData.port,
-    ApiKeyEnabled = LogData.apiKeyEnabled
-| summarize StartupCount = count() by Service, bin(TimeGenerated, 1h)
-```
-
-### Trace Correlation
-
-```kusto
-ContainerAppConsoleLogs_CL
-| extend LogData = parse_json(Log_s)
-| where LogData.trace_id == "specific-trace-id"
-| project 
-    TimeGenerated,
-    Service = ContainerName_s,
-    LogLevel = LogData.level,
-    Message = LogData.message,
-    SpanId = LogData.span_id
-| order by TimeGenerated asc
-```
-
-## Troubleshooting Common Issues
+## Troubleshooting
 
 ### High Error Rates
 
-1. Query recent exceptions:
+1. Check recent error logs:
 ```kusto
-exceptions | where timestamp > ago(1h) | summarize count() by type
+ContainerAppConsoleLogs_CL
+| extend LogData = parse_json(Log_s)
+| where LogData.level == "ERROR"
+| summarize count() by LogData.service, LogData.message
 ```
 
-2. Identify affected services:
+2. Analyze error patterns:
 ```kusto
-requests | where success == false | summarize count() by cloud_RoleName
+ContainerAppConsoleLogs_CL
+| extend LogData = parse_json(Log_s)
+| where LogData.level == "ERROR"
+| project TimeGenerated, Service = LogData.service, Message = LogData.message
+| order by TimeGenerated desc
 ```
 
-3. Analyze error patterns:
-```kusto
-exceptions | where timestamp > ago(1h) | project timestamp, type, outerMessage, operation_Name
-```
-
-### Performance Degradation
+### Performance Issues
 
 1. Find slow requests:
 ```kusto
-requests | where duration > 5000 | project timestamp, url, duration, cloud_RoleName
+ContainerAppConsoleLogs_CL
+| extend LogData = parse_json(Log_s)
+| where LogData.duration > 5000
+| project TimeGenerated, Service = LogData.service, Duration = LogData.duration, URL = LogData.url
 ```
 
-2. Analyze dependency performance:
+2. Check service startup issues:
 ```kusto
-dependencies | where duration > 2000 | summarize avg(duration) by target
+ContainerAppConsoleLogs_CL
+| where Log_s contains "Service started" or Log_s contains "Error"
+| extend LogData = parse_json(Log_s)
+| project TimeGenerated, Service = ContainerName_s, Level = LogData.level, Message = LogData.message
 ```
 
-3. Check resource utilization:
-```kusto
-performanceCounters | where counter == "% Processor Time" | summarize avg(value) by bin(timestamp, 5m)
-```
-
-### Service Availability Issues
+### Service Availability
 
 1. Check service health:
 ```kusto
-requests | summarize availability = 100.0 * countif(success)/count() by cloud_RoleName
+ContainerAppConsoleLogs_CL
+| extend LogData = parse_json(Log_s)
+| where LogData.message contains "Service started" or LogData.message contains "Service shutting down"
+| project TimeGenerated, Service = LogData.service, Event = LogData.message
+| order by TimeGenerated desc
 ```
 
-2. Identify outage periods:
-```kusto
-availabilityResults | where success == false | project timestamp, location, message
-```
+## Current Limitations
 
-3. Correlate with infrastructure events:
-```kusto
-traces | where message contains "Service shutting down" or message contains "Service starting"
-```
+### No OpenTelemetry Integration
+- The logger uses basic structured logging, not OpenTelemetry SDK
+- No automatic trace correlation or distributed tracing
+- No span creation or W3C Trace Context propagation
+- Manual correlation only through request IDs
+
+### Manual Application Insights Integration
+- Deployment configures Application Insights connection
+- Actual telemetry export requires manual implementation
+- Log analysis primarily through Log Analytics queries
+- No automatic metrics or dependency tracking
+
+### Basic Error Tracking
+- Error logging includes stack traces
+- No automatic error aggregation or smart detection
+- Manual correlation of errors with requests
+- Limited context for debugging complex issues
 
 ## Configuration
 
-### Environment Variables
+### Logging Configuration
 
-- `APPLICATIONINSIGHTS_CONNECTION_STRING`: Application Insights connection
-  string
-- `OTEL_EXPORTER_OTLP_ENDPOINT`: OpenTelemetry collector endpoint
-- `OTEL_RESOURCE_ATTRIBUTES`: Service metadata for telemetry
-- `LOG_LEVEL`: Minimum log level (error, warn, info, debug)
+Environment variables for logging behavior:
+- `LOG_LEVEL`: Controls minimum log level (error, warn, info, debug)
+- `SERVICE_NAME`: Identifies the service in logs
+- `NODE_ENV`: Environment identifier (production, development)
 
-### Sampling Configuration
+### File Logging (Optional)
 
-Default sampling rates:
-- **Traces**: 100% for errors, 10% for successful requests
-- **Logs**: 100% for error/warn, 50% for info, 10% for debug
-- **Metrics**: 100% collection with 1-minute aggregation
+Services can enable file logging:
+```javascript
+const logger = createLogger({
+  enableFile: true,
+  logFile: '/app/logs/service.log'
+});
+```
 
 ## Data Retention
 
-- **Application Insights**: 90 days default, 730 days maximum
-- **Log Analytics**: 30 days configured, up to 2 years available
-- **Live Metrics**: 24 hours real-time data
-- **Raw Telemetry**: Export to storage for long-term retention
+- **Container Logs**: 30 days in Log Analytics (configured in deployment)
+- **Application Insights**: 90 days default (if connected)
+- **File Logs**: Local to container, lost on restart
 
 ## Security Considerations
 
 ### Data Privacy
-- Personal identifiers automatically redacted from logs
-- API keys and tokens masked in telemetry
-- Request/response payloads excluded by default
-- GDPR compliance through data purge capabilities
+- Request bodies and sensitive headers not logged by default
+- API keys and tokens not included in structured logs
+- Error messages may contain sensitive information in stack traces
 
 ### Access Control
-- Role-based access to Application Insights data
-- Separate reader/writer permissions for different teams
-- Audit logging for telemetry data access
-- Network isolation for telemetry collection endpoints
+- Log access through Azure RBAC permissions
+- Container logs readable by Log Analytics readers
+- Application Insights data requires separate permissions
 
-## Cost Management
+## Cost Implications
 
-### Typical Monthly Costs
-- **Application Insights**: $50-150 based on data volume
-- **Log Analytics**: $20-80 for 30-day retention
-- **Storage**: $10-30 for exported telemetry data
+### Current Implementation
+- **Log Analytics**: $20-80/month for container logs
+- **Application Insights**: $0 (not actively sending telemetry)
+- **Storage**: Minimal for basic logging
 
-### Cost Optimization
-- Adjust sampling rates based on traffic patterns
-- Use smart detection to reduce alert noise
-- Configure data retention based on compliance requirements
-- Export historical data to cheaper storage tiers 
+### If Full Application Insights Integration Added
+- **Application Insights**: $50-150/month for active telemetry
+- **Enhanced monitoring**: Higher cost but better observability 

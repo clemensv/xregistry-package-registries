@@ -122,7 +122,7 @@ The bridge integration tests validate the complete system integration:
 #### OCI Registry
 - ✅ Access OCI images through bridge (`/containerregistries`)
 - ✅ Specific OCI registry access (`/containerregistries/microsoft`)
-- ✅ Image metadata (`/images/dotnet/runtime`)
+- ✅ Image metadata (`/images/dotnet~runtime`)
 
 ### Authentication Testing
 - ✅ API key forwarding validation

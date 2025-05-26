@@ -101,7 +101,7 @@ npm run test:integration:bridge -- -KeepServices
 - **PyPI**: `/pythonregistries`, `/pythonregistries/pypi-org`, `/packages/requests`
 - **Maven**: `/javaregistries`, `/javaregistries/maven-central`, `/packages/junit:junit`  
 - **NuGet**: `/dotnetregistries`, `/dotnetregistries/nuget-org`, `/packages/Newtonsoft.Json`
-- **OCI**: `/containerregistries`, `/containerregistries/microsoft`, `/images/dotnet/runtime`
+- **OCI**: `/containerregistries`, `/containerregistries/microsoft`, `/images/dotnet~runtime`
 
 ### 🔧 **System Integration:**
 - Cross-registry discovery (`/model`, `/capabilities`)

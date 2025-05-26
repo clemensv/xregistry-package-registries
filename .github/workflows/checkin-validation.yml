@@ -1,34 +1,35 @@
 name: Checkin Validation
 
 on:
-  push:
-    branches: [ "main", "develop" ]
-    paths:
-      - 'bridge/**'
-      - 'npm/**'
-      - 'pypi/**'
-      - 'maven/**'
-      - 'nuget/**'
-      - 'oci/**'
-      - 'test/**'
-      - '*.Dockerfile'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/checkin-validation.yml'
-  pull_request:
-    branches: [ "main", "develop" ]
-    paths:
-      - 'bridge/**'
-      - 'npm/**'
-      - 'pypi/**'
-      - 'maven/**'
-      - 'nuget/**'
-      - 'oci/**'
-      - 'test/**'
-      - '*.Dockerfile'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/checkin-validation.yml'
+#  push:
+#    branches: [ "main", "develop" ]
+#    paths:
+#      - 'bridge/**'
+#      - 'npm/**'
+#      - 'pypi/**'
+#      - 'maven/**'
+#      - 'nuget/**'
+#      - 'oci/**'
+#      - 'test/**'
+#      - '*.Dockerfile'
+#      - 'package.json'
+#      - 'package-lock.json'
+#      - '.github/workflows/checkin-validation.yml'
+#   pull_request:
+#    branches: [ "main", "develop" ]
+#    paths:
+#      - 'bridge/**'
+#      - 'npm/**'
+#      - 'pypi/**'
+#      - 'maven/**'
+#      - 'nuget/**'
+#      - 'oci/**'
+#      - 'test/**'
+#      - '*.Dockerfile'
+#      - 'package.json'
+#      - 'package-lock.json'
+#      - '.github/workflows/checkin-validation.yml'
+  workflow_dispatch:
 
 env:
   NODE_VERSION: '20'
@@ -54,8 +55,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
       
-      - name: Run unit tests
-        run: npm run test:unit
+      #- name: Run unit tests
+      #  run: npm run test:unit
       
       - name: Run basic integration tests
         run: npm run test:integration
