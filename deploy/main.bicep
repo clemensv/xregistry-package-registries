@@ -899,7 +899,7 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
 // Service Health Alert
 resource serviceHealthAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
   name: '${resourcePrefix}-service-health'
-  location: location
+  location: 'global'
   properties: {
     description: 'Alert when service health degrades'
     severity: 2
@@ -934,7 +934,7 @@ resource serviceHealthAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
 // High Error Rate Alert
 resource errorRateAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
   name: '${resourcePrefix}-error-rate'
-  location: location
+  location: 'global'
   properties: {
     description: 'Alert when error rate is high'
     severity: 1
@@ -976,7 +976,7 @@ resource errorRateAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
 // High Response Time Alert
 resource responseTimeAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
   name: '${resourcePrefix}-response-time'
-  location: location
+  location: 'global'
   properties: {
     description: 'Alert when response time is high'
     severity: 2

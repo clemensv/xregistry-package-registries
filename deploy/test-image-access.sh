@@ -16,10 +16,11 @@ REGISTRY="ghcr.io"
 REPOSITORY="${1:-clemensv/xregistry-package-registries}"
 TAG="${2:-latest}"
 GITHUB_TOKEN="${3:-}"
+GITHUB_ACTOR="${4:-clemensv}"
 
 if [ -z "$GITHUB_TOKEN" ]; then
     echo -e "${RED}ERROR: GitHub token is required${NC}"
-    echo "Usage: $0 <repository> <tag> <github_token>"
+    echo "Usage: $0 <repository> <tag> <github_token> [github_actor]"
     exit 1
 fi
 
@@ -41,7 +42,7 @@ IMAGES=(
 
 # Test registry authentication
 echo -e "${YELLOW}🔐 Testing registry authentication...${NC}"
-echo "$GITHUB_TOKEN" | docker login "$REGISTRY" --username "clemensv" --password-stdin
+echo "$GITHUB_TOKEN" | docker login "$REGISTRY" --username "$GITHUB_ACTOR" --password-stdin
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}❌ Registry authentication failed${NC}"
@@ -130,7 +131,7 @@ for IMAGE in "${IMAGES[@]}"; do
                 }],
                 \"imageRegistryCredentials\": [{
                     \"server\": \"$REGISTRY\",
-                    \"username\": \"clemensv\",
+                    \"username\": \"$GITHUB_ACTOR\",
                     \"password\": \"$GITHUB_TOKEN\"
                 }],
                 \"osType\": \"Linux\",
