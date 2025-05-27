@@ -348,9 +348,9 @@ create_parameters_file() {
         
         image_repository="ACR_NO_PREFIX"  # Special marker for ACR - no repository prefix needed
         log_info "Using ACR: $registry_server (username: $registry_username)"
-    else
-        registry_server="ghcr.io"
-        image_repository="$REPOSITORY_NAME/"
+            else
+            registry_server="ghcr.io"
+            image_repository="$REPOSITORY_NAME"
         
         # For public repositories, we can use GHCR without authentication
         # Check if we have a valid token, otherwise use empty credentials
