@@ -659,6 +659,7 @@ jobs:
             --repository "${{ github.repository }}" \
             --github-actor "${{ github.actor }}" \
             --github-token "${{ secrets.GITHUB_TOKEN }}" \
+            --enable-custom-domain \
             --verbose
 
       - name: Summary
