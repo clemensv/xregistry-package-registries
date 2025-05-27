@@ -392,7 +392,7 @@ create_parameters_file() {
         sed "s|{{IMAGE_TAG}}|$IMAGE_TAG|g" | \
         sed "s|{{REPOSITORY_NAME}}|$image_repository|g" | \
         sed "s|ghcr.io|$registry_server|g" | \
-        sed 's|"useCustomDomain": *{[^}]*}|"useCustomDomain": {"value": false}|g' \
+        sed 's|"useCustomDomain": {"value": true}|"useCustomDomain": {"value": false}|g' \
         > "$temp_params"; then
         log_info "✅ Parameter substitution successful"
         set -e
@@ -481,12 +481,12 @@ deploy_infrastructure() {
     log_info "Skipping certificate management for initial deployment..."
     log_info "Custom domain and certificates can be configured after successful deployment"
     
-    # Force certificate creation to false to avoid dependencies
+    # Force certificate creation and custom domain to false to avoid dependencies
     local updated_params=$(mktemp)
-    jq '.parameters.createManagedCertificate.value = false | .parameters.existingCertificateId.value = ""' \
+    jq '.parameters.createManagedCertificate.value = false | .parameters.existingCertificateId.value = "" | .parameters.useCustomDomain.value = false' \
        "$temp_params" > "$updated_params"
     temp_params="$updated_params"
-    log_info "Forced certificate creation to false for bootstrap deployment"
+    log_info "Forced certificate creation and custom domain to false for bootstrap deployment"
 
     # Verify Container App Environment exists before deployment
     log_info "Verifying Container App Environment exists..."
