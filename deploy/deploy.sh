@@ -505,29 +505,96 @@ deploy_infrastructure() {
         log_success "Container App Environment verified: $env_name"
     fi
 
-    # Enhanced validation with better error reporting
+    # Enhanced validation with comprehensive error reporting
     log_info "Validating deployment template and parameters..."
-    local validation_output
+    log_verbose "Template file: $temp_bicep"
+    log_verbose "Parameters file: $temp_params"
+    
+    # First validate that files exist and are readable
+    if [[ ! -f "$temp_bicep" ]]; then
+        log_error "Bicep template file not found: $temp_bicep"
+        exit 1
+    fi
+    
+    if [[ ! -f "$temp_params" ]]; then
+        log_error "Parameters file not found: $temp_params"
+        exit 1
+    fi
+    
+    # Validate JSON syntax of parameters file
+    if ! jq empty "$temp_params" 2>/dev/null; then
+        log_error "Parameters file contains invalid JSON"
+        log_error "Parameters file content:"
+        cat "$temp_params" | head -20
+        exit 1
+    fi
+    
+    # Show sanitized parameters that will be sent to Azure
+    log_info "Final parameters being sent to Azure (sanitized):"
+    jq '.parameters | to_entries | map(select(.key | test("password|secret|token") | not))' "$temp_params" 2>/dev/null || {
+        log_warning "Cannot parse parameters as JSON, showing first 10 lines:"
+        head -10 "$temp_params"
+    }
+    
+    log_info "Running Azure deployment validation..."
+    
+    # Show current Azure context for debugging
+    log_verbose "Current Azure context:"
+    az account show --query '{subscriptionId:id,tenantId:tenantId,name:name}' --output table 2>/dev/null || log_warning "Cannot show Azure context"
+    
+    # Verify resource group exists
+    if ! az group show --name "$RESOURCE_GROUP" >/dev/null 2>&1; then
+        log_error "Resource group '$RESOURCE_GROUP' does not exist or is not accessible"
+        log_error "Available resource groups:"
+        az group list --query '[].name' --output table 2>/dev/null || log_error "Cannot list resource groups"
+        exit 1
+    fi
+    
+    local validation_output validation_result
+    
+    # Run validation with detailed output capture
     validation_output=$(az deployment group validate \
         --resource-group "$RESOURCE_GROUP" \
         --template-file "$temp_bicep" \
         --parameters "@$temp_params" \
+        --verbose \
         --output json 2>&1)
+    validation_result=$?
     
-    local validation_result=$?
+    log_verbose "Azure CLI validation exit code: $validation_result"
+    
     if [[ $validation_result -ne 0 ]]; then
-        log_error "Deployment validation failed"
-        log_error "Validation output:"
-        echo "$validation_output" | jq -r '.error.message // .' 2>/dev/null || echo "$validation_output"
+        log_error "=== DEPLOYMENT VALIDATION FAILED ==="
+        log_error "Exit code: $validation_result"
+        log_error "Raw validation output:"
+        echo "$validation_output"
+        log_error "=================================="
         
-        # Check for common issues
-        if echo "$validation_output" | grep -q "unauthorized"; then
-            log_error "Authentication issue detected. Check Azure credentials and permissions."
-        elif echo "$validation_output" | grep -q "InvalidTemplate"; then
-            log_error "Template validation issue. Check Bicep template syntax."
-        elif echo "$validation_output" | grep -q "InvalidParameter"; then
-            log_error "Parameter validation issue. Check parameter values and types."
+        # Try to parse JSON error message
+        local error_message
+        error_message=$(echo "$validation_output" | jq -r '.error.message // empty' 2>/dev/null)
+        if [[ -n "$error_message" ]]; then
+            log_error "Parsed error message: $error_message"
         fi
+        
+        # Check for specific error patterns
+        if echo "$validation_output" | grep -q -i "unauthorized\|forbidden\|authentication"; then
+            log_error "🔐 AUTHENTICATION ISSUE: Check Azure credentials and permissions"
+            log_error "Verify that the service principal has Contributor access to resource group"
+        elif echo "$validation_output" | grep -q -i "invalidtemplate\|template.*error"; then
+            log_error "📋 TEMPLATE ISSUE: Check Bicep template syntax and structure"
+        elif echo "$validation_output" | grep -q -i "invalidparameter\|parameter.*error"; then
+            log_error "⚙️  PARAMETER ISSUE: Check parameter values and types"
+            log_error "Dumping parameters for review:"
+            jq '.' "$temp_params" 2>/dev/null || cat "$temp_params"
+        elif echo "$validation_output" | grep -q -i "subscription\|quota\|limit"; then
+            log_error "💰 SUBSCRIPTION ISSUE: Check subscription limits or quotas"
+        elif echo "$validation_output" | grep -q -i "location\|region"; then
+            log_error "🌍 LOCATION ISSUE: Check if resources are available in the specified region"
+        else
+            log_error "❓ UNKNOWN VALIDATION ERROR - see raw output above"
+        fi
+        
         exit 1
     fi
 
