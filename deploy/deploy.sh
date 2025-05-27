@@ -453,7 +453,7 @@ deploy_infrastructure() {
     log_info "Location: $LOCATION"
     log_info "Image Tag: $IMAGE_TAG"
     log_info "Repository: $REPOSITORY_NAME"
-    log_info "Registry Server: ${registry_server:-'unknown'}"
+    log_info "Registry Server: $registry_server"
     log_info "====================================="
     
     log_verbose "Deployment parameters (sanitized):"
@@ -541,13 +541,35 @@ deploy_infrastructure() {
     # Show current Azure context for debugging
     log_verbose "Current Azure context:"
     az account show --query '{subscriptionId:id,tenantId:tenantId,name:name}' --output table 2>/dev/null || log_warning "Cannot show Azure context"
+    log_verbose "✅ Azure context displayed"
     
-    # Verify resource group exists
-    if ! az group show --name "$RESOURCE_GROUP" >/dev/null 2>&1; then
-        log_error "Resource group '$RESOURCE_GROUP' does not exist or is not accessible"
-        log_error "Available resource groups:"
-        az group list --query '[].name' --output table 2>/dev/null || log_error "Cannot list resource groups"
+    # Verify resource group exists with detailed error handling
+    log_verbose "Verifying resource group access: $RESOURCE_GROUP"
+    local rg_check_output rg_check_result
+    rg_check_output=$(az group show --name "$RESOURCE_GROUP" --output json 2>&1)
+    rg_check_result=$?
+    
+    if [[ $rg_check_result -ne 0 ]]; then
+        log_error "Resource group verification failed"
+        log_error "Resource group: $RESOURCE_GROUP"
+        log_error "Error output: $rg_check_output"
+        
+        if echo "$rg_check_output" | grep -q -i "not found"; then
+            log_error "❌ Resource group '$RESOURCE_GROUP' does not exist"
+        elif echo "$rg_check_output" | grep -q -i "forbidden\|unauthorized"; then
+            log_error "❌ No access to resource group '$RESOURCE_GROUP'"
+            log_error "Check service principal permissions"
+        else
+            log_error "❌ Unknown resource group access issue"
+        fi
+        
+        log_info "Attempting to list available resource groups..."
+        az group list --query '[].name' --output table 2>/dev/null || log_error "Cannot list any resource groups"
         exit 1
+    else
+        log_verbose "✅ Resource group access verified"
+        local rg_location=$(echo "$rg_check_output" | jq -r '.location // "unknown"' 2>/dev/null)
+        log_verbose "Resource group location: $rg_location"
     fi
     
     local validation_output validation_result
