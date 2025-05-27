@@ -35,6 +35,9 @@
     "existingCertificateId": {
       "value": ""
     },
+    "autoDetectExistingCertificate": {
+      "value": true
+    },
     "bridgeCpu": {
       "value": "0.5"
     },

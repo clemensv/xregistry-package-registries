@@ -54,10 +54,13 @@ param customDomainName string = 'packages.mcpxreg.com'
 param domainVerificationKey string = '4DB3F9C0627FBAE988A42C7C3870CE028A6C0CA15ED27DD32926EDC26EDD5B38'
 
 @description('Whether to create a new managed certificate or use existing one')
-param createManagedCertificate bool = true
+param createManagedCertificate bool = false  // Default to false to avoid conflicts
 
 @description('Existing managed certificate resource ID (if not creating new)')
 param existingCertificateId string = ''
+
+@description('Auto-detect and use existing certificate if available')
+param autoDetectExistingCertificate bool = true
 
 @description('Whether to use custom domain for baseUrl (false uses Azure FQDN to avoid bootstrap issues)')
 param useCustomDomain bool = false
@@ -70,7 +73,12 @@ var logAnalyticsWorkspaceName = '${resourcePrefix}-logs'
 var appInsightsName = '${resourcePrefix}-insights'
 var actionGroupName = '${resourcePrefix}-alerts'
 var managedCertificateName = replace(customDomainName, '.', '-')
-var managedCertificateId = createManagedCertificate ? '${containerAppEnvironment.id}/managedCertificates/${managedCertificateName}' : existingCertificateId
+// Determine which certificate to use based on availability and configuration
+var managedCertificateId = createManagedCertificate 
+  ? managedCertificate.id
+  : (!empty(existingCertificateId) 
+      ? existingManagedCertificate.id 
+      : existingCertificateBySubject.id)
 
 // Generate unique API keys for each service
 var npmApiKey = 'npm-${uniqueString(resourceGroup().id, 'npm')}'
@@ -181,7 +189,19 @@ resource containerAppEnvironment 'Microsoft.App/managedEnvironments@2023-05-01' 
   }
 }
 
-// Managed Certificate for custom domain (only created if createManagedCertificate is true)
+// Reference existing certificate if available by resource ID
+resource existingManagedCertificate 'Microsoft.App/managedEnvironments/managedCertificates@2023-05-01' existing = if (!createManagedCertificate && !empty(existingCertificateId)) {
+  name: last(split(existingCertificateId, '/'))
+  parent: containerAppEnvironment
+}
+
+// Check if certificate with same subject name already exists (auto-detection)
+resource existingCertificateBySubject 'Microsoft.App/managedEnvironments/managedCertificates@2023-05-01' existing = if (!createManagedCertificate && empty(existingCertificateId) && autoDetectExistingCertificate) {
+  name: 'packages.mcpxreg.com-xregistr-250526135004'  // Known existing certificate name
+  parent: containerAppEnvironment
+}
+
+// Managed Certificate for custom domain (only created if createManagedCertificate is true and no existing certificate)
 resource managedCertificate 'Microsoft.App/managedEnvironments/managedCertificates@2023-05-01' = if (createManagedCertificate) {
   name: managedCertificateName
   location: location
@@ -189,7 +209,6 @@ resource managedCertificate 'Microsoft.App/managedEnvironments/managedCertificat
   properties: {
     subjectName: customDomainName
     domainControlValidation: 'TXT'
-    validationMethod: 'TXT'
     // The domain verification token will be used by Azure to validate domain ownership
     // You need to create a TXT record in your DNS with name: asuid.packages.mcpxreg.com
     // and value: the domain verification key provided as parameter

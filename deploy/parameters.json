@@ -28,6 +28,9 @@
     },
     "useCustomDomain": {
       "value": true
+    },
+    "autoDetectExistingCertificate": {
+      "value": true
     }
   }
 } 

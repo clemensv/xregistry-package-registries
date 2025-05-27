@@ -35,6 +35,9 @@
     "existingCertificateId": {
       "value": ""
     },
+    "autoDetectExistingCertificate": {
+      "value": false
+    },
     "location": {
       "value": "westeurope"
     }

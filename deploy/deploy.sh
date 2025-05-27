@@ -364,7 +364,7 @@ create_parameters_file() {
             # Test if the token is valid by making a simple API call
             local token_test=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
                                    -H "Accept: application/vnd.github.v3+json" \
-                                   "https://api.github.com/user" 2>/dev/null)
+                                       "https://api.github.com/user" 2>/dev/null)
             
             if [[ $? -eq 0 ]] && [[ -n "$token_test" ]] && [[ $(echo "$token_test" | jq -r '.message // "valid"') != "Bad credentials" ]]; then
                 log_info "Using GHCR with authentication: $registry_server (user: $GITHUB_ACTOR)"
@@ -485,16 +485,22 @@ deploy_infrastructure() {
 
     # Handle custom domain and certificate configuration
     if [[ "$ENABLE_CUSTOM_DOMAIN" == "true" ]]; then
-        log_info "Custom domain deployment enabled - will create managed certificate"
+        log_info "Custom domain deployment enabled - will auto-detect existing certificates"
         log_info "Ensure DNS TXT record is configured: asuid.packages.mcpxreg.com"
-        # Keep the original parameters for custom domain deployment
+        
+        # Enable custom domain but disable certificate creation to use existing one
+        local updated_params=$(mktemp)
+        jq '.parameters.createManagedCertificate.value = false | .parameters.autoDetectExistingCertificate.value = true | .parameters.existingCertificateId.value = "" | .parameters.useCustomDomain.value = true' \
+           "$temp_params" > "$updated_params"
+        temp_params="$updated_params"
+        log_info "Configured to use existing certificate with auto-detection"
     else
         log_info "Custom domain disabled - using Azure-provided FQDN for stable deployment"
         log_info "Use --enable-custom-domain flag to enable custom domain deployment"
         
         # Force certificate creation and custom domain to false to avoid dependencies
         local updated_params=$(mktemp)
-        jq '.parameters.createManagedCertificate.value = false | .parameters.existingCertificateId.value = "" | .parameters.useCustomDomain.value = false' \
+        jq '.parameters.createManagedCertificate.value = false | .parameters.autoDetectExistingCertificate.value = false | .parameters.existingCertificateId.value = "" | .parameters.useCustomDomain.value = false' \
            "$temp_params" > "$updated_params"
         temp_params="$updated_params"
         log_info "Forced certificate creation and custom domain to false for bootstrap deployment"
