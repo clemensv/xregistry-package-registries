@@ -2,7 +2,9 @@ version: '3.8'
 
 services:
   xregistry-oci-proxy:
-    build: .
+    build:
+      context: ..
+      dockerfile: oci.Dockerfile
     image: xregistry-oci-proxy
     ports:
       - "3000:3000"

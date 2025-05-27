@@ -1,36 +1,32 @@
-# Use official Python 3.11 Alpine image
-FROM python:3.11-alpine
+# Use official Node.js 23 Alpine image
+FROM node:23-alpine
 
 # Install diagnostic tools for troubleshooting
 RUN apk add --no-cache \
     curl \
     wget \
-    netstat-nat \
-    busybox-extras \
     bind-tools \
     jq \
     htop \
     procps
 
-# Set working directory
+# Create app directory
 WORKDIR /app
 
-# Copy requirements file
-COPY pypi/requirements.txt .
+# Copy package files
+COPY pypi/ pypi/
+COPY shared/ shared/
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy application code
-COPY pypi/src/ ./src/
-COPY shared/ ../shared/
+WORKDIR /app/pypi
+# Install dependencies
+RUN npm ci && npm cache clean --force
 
 # Create non-root user
-RUN addgroup -g 1001 -S python && \
-    adduser -S xregistry -u 1001 -G python
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S xregistry -u 1001
 
 # Change ownership of the app directory
-RUN chown -R xregistry:python /app
+RUN chown -R xregistry:nodejs /app
 USER xregistry
 
 # Expose port
@@ -41,4 +37,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
   CMD curl -f -s --max-time 5 http://localhost:3100/health || exit 1
 
 # Start the application
-CMD ["python", "src/server.py"] 
+CMD ["node", "server.js"] 

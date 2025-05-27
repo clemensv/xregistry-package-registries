@@ -1,34 +1,27 @@
-# Use official Node.js 18 Alpine image
-FROM node:18-alpine AS builder
+# Use official Node.js 23 Alpine image
+FROM node:23-alpine AS builder
 
 # Set working directory
 WORKDIR /app
 
 # Copy package files
-COPY bridge/package*.json ./
-COPY bridge/tsconfig.json ./
+COPY bridge/ bridge/
+COPY shared/ shared/
 
+WORKDIR /app/bridge
 # Install all dependencies (including dev dependencies for build)
 RUN npm ci && npm cache clean --force
-
-# Copy source code
-COPY bridge/src/ ./src/
-
-# Copy shared directory (needed for imports)
-COPY shared/ ../shared/
 
 # Build TypeScript
 RUN npm run build
 
 # Production stage
-FROM node:18-alpine AS production
+FROM node:23-alpine AS production
 
 # Install diagnostic tools for troubleshooting
 RUN apk add --no-cache \
     curl \
     wget \
-    netstat-nat \
-    busybox-extras \
     bind-tools \
     jq \
     htop \
@@ -38,16 +31,15 @@ RUN apk add --no-cache \
 WORKDIR /app
 
 # Copy package files
-COPY bridge/package*.json ./
+COPY bridge/ bridge/
+COPY shared/ shared/
 
+WORKDIR /app/bridge
 # Install only production dependencies
 RUN npm ci --only=production && npm cache clean --force
 
 # Copy built application from builder stage
-COPY --from=builder /app/dist ./dist
-
-# Copy shared logging module (needed at runtime)
-COPY --from=builder /shared ../shared
+COPY --from=builder /app/bridge/dist ./dist
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \

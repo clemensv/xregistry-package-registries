@@ -31,13 +31,23 @@ const argv = yargs
   })
   .option('log', {
     alias: 'l',
-    description: 'Path to log file in W3C Extended Log File Format',
+    description: 'Path to trace log file (OpenTelemetry format)',
     type: 'string',
     default: process.env.XREGISTRY_OCI_LOG || null
   })
+  .option('w3log', {
+    description: 'Enable W3C Extended Log Format and specify log file path',
+    type: 'string',
+    default: process.env.W3C_LOG_FILE
+  })
+  .option('w3log-stdout', {
+    description: 'Output W3C logs to stdout instead of file',
+    type: 'boolean',
+    default: process.env.W3C_LOG_STDOUT === 'true'
+  })
   .option('quiet', {
     alias: 'q',
-    description: 'Suppress logging to stdout',
+    description: 'Suppress trace logging to stderr',
     type: 'boolean',
     default: process.env.XREGISTRY_OCI_QUIET === 'true' || false
   })
@@ -52,6 +62,12 @@ const argv = yargs
     description: 'API key for authentication (if set, clients must provide this in Authorization header)',
     type: 'string',
     default: process.env.XREGISTRY_OCI_API_KEY || null
+  })
+  .option('log-level', {
+    description: 'Log level',
+    type: 'string',
+    choices: ['debug', 'info', 'warn', 'error'],
+    default: process.env.LOG_LEVEL || 'info'
   })
   .option('cache-dir', {
     type: 'string',
@@ -97,14 +113,17 @@ const API_KEY = argv.apiKey;
 const CACHE_DIR = path.resolve(argv.cacheDir);
 const CONFIG_FILE_PATH = path.resolve(argv.configFile);
 
-// Initialize OpenTelemetry logger
+// Initialize enhanced logger with W3C support and OTel context
 const logger = createLogger({
   serviceName: process.env.SERVICE_NAME || 'xregistry-oci',
   serviceVersion: process.env.SERVICE_VERSION || '1.0.0',
   environment: process.env.NODE_ENV || 'production',
   enableFile: !!LOG_FILE,
   logFile: LOG_FILE,
-  enableConsole: !QUIET_MODE
+  enableConsole: !QUIET_MODE,
+  enableW3CLog: !!(argv.w3log || argv['w3log-stdout']),
+  w3cLogFile: argv.w3log,
+  w3cLogToStdout: argv['w3log-stdout']
 });
 
 const REGISTRY_ID = "xregistry-oci-proxy";
@@ -161,17 +180,8 @@ app.use((req, res, next) => {
   next();
 });
 
-// Enhanced logging middleware with response time tracking
-app.use((req, res, next) => {
-  const startTime = Date.now();
-  
-  res.on('finish', () => {
-    const responseTime = Date.now() - startTime;
-    logRequest(req, res, responseTime);
-  });
-  
-  next();
-});
+// Add OpenTelemetry middleware for request tracing and logging
+app.use(logger.middleware());
 
 // Middleware to handle $details suffix
 app.use((req, res, next) => {
@@ -628,8 +638,20 @@ async function getAuthToken(backend, scope) {
   return null;
 }
 
-async function ociRequest(backend, requestPath, method = 'GET', additionalHeaders = {}) {
+async function ociRequest(backend, requestPath, method = 'GET', additionalHeaders = {}, req = null) {
+  const { v4: uuidv4 } = require('uuid');
+  const requestId = uuidv4().substring(0, 8);
+  
   try {
+    logger.debug("Making OCI request", { 
+      requestId,
+      backend: backend.name,
+      requestPath,
+      method,
+      traceId: req?.traceId,
+      correlationId: req?.correlationId
+    });
+    
     const scope = requestPath.includes('/manifests/') || requestPath.includes('/blobs/') ? 
       `repository:${requestPath.split('/')[2]}:pull` : null;
     
@@ -655,6 +677,16 @@ async function ociRequest(backend, requestPath, method = 'GET', additionalHeader
     });
 
     if (response.status >= 400) {
+      logger.debug("OCI request failed", { 
+        requestId,
+        backend: backend.name,
+        requestPath,
+        status: response.status,
+        error: response.data?.errors?.[0]?.message || response.statusText,
+        traceId: req?.traceId,
+        correlationId: req?.correlationId
+      });
+      
       const error = new Error(`HTTP ${response.status}`);
       error.statusCode = response.status;
       error.response = response;
@@ -662,12 +694,30 @@ async function ociRequest(backend, requestPath, method = 'GET', additionalHeader
       throw error;
     }
 
+    logger.debug("OCI request successful", { 
+      requestId,
+      backend: backend.name,
+      requestPath,
+      status: response.status,
+      traceId: req?.traceId,
+      correlationId: req?.correlationId
+    });
+
     return {
       body: response.data,
       headers: response.headers,
       status: response.status
     };
   } catch (error) {
+    logger.debug("Error in OCI request", { 
+      requestId,
+      backend: backend.name,
+      requestPath,
+      error: error.message,
+      traceId: req?.traceId,
+      correlationId: req?.correlationId
+    });
+    
     if (error.response) {
       error.statusCode = error.response.status;
       error.detail = error.response.data?.errors?.[0]?.message || error.response.statusText;
@@ -2064,15 +2114,10 @@ app.use((err, req, res, next) => {
 });
 
 function gracefulShutdown() {
-  if (!QUIET_MODE) {
-    console.log('Received shutdown signal. Closing server gracefully...');
-  }
-  
-  if (logStream) {
-    logStream.end();
-  }
-  
-  process.exit(0);
+  logger.info("Shutting down gracefully...");
+  logger.close().then(() => {
+    process.exit(0);
+  });
 }
 
 // Handle shutdown signals
@@ -2102,12 +2147,11 @@ async function startServer() {
         // Only start the server if running standalone
         if (require.main === module) {
           app.listen(PORT, () => {
-            if (!QUIET_MODE) {
-              console.log(`xRegistry OCI Proxy server running on port ${PORT}`);
-              console.log(`Registry Root: http://localhost:${PORT}/`);
-              console.log(`Registry Model: http://localhost:${PORT}/model`);
-              console.log(`Registry Capabilities: http://localhost:${PORT}/capabilities`);
-            }
+            logger.logStartup(PORT, { 
+              baseUrl: BASE_URL,
+              apiKeyEnabled: !!API_KEY,
+              backendsCount: OCI_BACKENDS.length
+            });
           });
         }
     } catch (error) {
