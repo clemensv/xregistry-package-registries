@@ -248,6 +248,12 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             certificateId: managedCertificateId
           }
         ] : []
+        corsPolicy: {
+          allowedOrigins: ['*']
+          allowedMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD']
+          allowedHeaders: ['*']
+          allowCredentials: false
+        }
       }
       // For public GHCR repos, containerRegistryUsername will be empty and no registry auth is needed
       registries: empty(containerRegistryUsername) ? [] : [
