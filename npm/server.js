@@ -5,6 +5,7 @@ const path = require("path");
 const yargs = require("yargs");
 const { exec } = require("child_process");
 const util = require("util");
+const { v4: uuidv4 } = require("uuid");
 const { createLogger } = require("../shared/logging/logger");
 
 const app = express();
@@ -22,13 +23,23 @@ const argv = yargs
   })
   .option('log', {
     alias: 'l',
-    description: 'Path to log file in W3C Extended Log File Format',
+    description: 'Path to trace log file (OpenTelemetry format)',
     type: 'string',
     default: process.env.XREGISTRY_NPM_LOG || null
   })
+  .option('w3log', {
+    description: 'Enable W3C Extended Log Format and specify log file path',
+    type: 'string',
+    default: process.env.W3C_LOG_FILE
+  })
+  .option('w3log-stdout', {
+    description: 'Output W3C logs to stdout instead of file',
+    type: 'boolean',
+    default: process.env.W3C_LOG_STDOUT === 'true'
+  })
   .option('quiet', {
     alias: 'q',
-    description: 'Suppress logging to stdout',
+    description: 'Suppress trace logging to stderr',
     type: 'boolean',
     default: process.env.XREGISTRY_NPM_QUIET === 'true' || false
   })
@@ -44,6 +55,12 @@ const argv = yargs
     type: 'string',
     default: process.env.XREGISTRY_NPM_API_KEY || null
   })
+  .option('log-level', {
+    description: 'Log level',
+    type: 'string',
+    choices: ['debug', 'info', 'warn', 'error'],
+    default: process.env.LOG_LEVEL || 'info'
+  })
   .help()
   .argv;
 
@@ -53,14 +70,17 @@ const QUIET_MODE = argv.quiet;
 const BASE_URL = argv.baseurl;
 const API_KEY = argv.apiKey;
 
-// Initialize OpenTelemetry logger
+// Initialize enhanced logger with W3C support and OTel context
 const logger = createLogger({
   serviceName: process.env.SERVICE_NAME || 'xregistry-npm',
   serviceVersion: process.env.SERVICE_VERSION || '1.0.0',
   environment: process.env.NODE_ENV || 'production',
   enableFile: !!LOG_FILE,
   logFile: LOG_FILE,
-  enableConsole: !QUIET_MODE
+  enableConsole: !QUIET_MODE,
+  enableW3CLog: !!(argv.w3log || argv['w3log-stdout']),
+  w3cLogFile: argv.w3log,
+  w3cLogToStdout: argv['w3log-stdout']
 });
 
 const REGISTRY_ID = "npm-wrapper";
@@ -84,30 +104,53 @@ let lastRefreshTime = 0;
 
 // Function to install/upgrade all-the-package-names and load the package list
 async function refreshPackageNames() {
-  logger.info("Refreshing package names cache...");
+  const operationId = uuidv4();
+  logger.info("Refreshing package names cache...", { 
+    operationId,
+    allPackagesDir: ALL_PACKAGES_DIR,
+    refreshInterval: REFRESH_INTERVAL 
+  });
   
   try {
     // Ensure the all-packages directory exists
     if (!fs.existsSync(ALL_PACKAGES_DIR)) {
       fs.mkdirSync(ALL_PACKAGES_DIR, { recursive: true });
+      logger.debug("Created all-packages directory", { 
+        operationId, 
+        directory: ALL_PACKAGES_DIR 
+      });
     }
     
     // Run npm install to get the latest version
     const installCmd = 'npm install --no-audit --no-fund';
-    logger.debug("Running npm install", { command: installCmd, cwd: ALL_PACKAGES_DIR });
+    logger.debug("Running npm install", { 
+      operationId,
+      command: installCmd, 
+      cwd: ALL_PACKAGES_DIR 
+    });
     
+    const startTime = Date.now();
     const { stdout, stderr } = await execPromise(installCmd, { cwd: ALL_PACKAGES_DIR });
+    const installDuration = Date.now() - startTime;
     
     if (stdout) {
-      logger.debug("npm install output", { stdout });
+      logger.debug("npm install output", { 
+        operationId,
+        stdout, 
+        duration: installDuration 
+      });
     }
     
     if (stderr && !stderr.includes('npm WARN')) {
-      logger.error("npm install error", { stderr });
+      logger.error("npm install error", { 
+        operationId,
+        stderr, 
+        duration: installDuration 
+      });
     }
     
     // Load the package list
-    logger.debug("Loading package names from all-the-package-names...");
+    logger.debug("Loading package names from all-the-package-names...", { operationId });
     
     // Load the module
     const packageNamesPath = path.join(ALL_PACKAGES_DIR, 'node_modules', 'all-the-package-names');
@@ -124,8 +167,11 @@ async function refreshPackageNames() {
       lastRefreshTime = Date.now();
       
       logger.info("Package names loaded successfully", { 
+        operationId,
         packageCount: packageNamesCache.length,
-        sorted: true 
+        sorted: true,
+        lastRefreshTime: new Date(lastRefreshTime).toISOString(),
+        totalDuration: Date.now() - startTime
       });
     } else {
       throw new Error("all-the-package-names did not return an array");
@@ -133,11 +179,20 @@ async function refreshPackageNames() {
     
     return true;
   } catch (error) {
-    logger.error("Error refreshing package names", { error: error.message });
+    logger.error("Error refreshing package names", { 
+      operationId,
+      error: error.message,
+      stack: error.stack,
+      allPackagesDir: ALL_PACKAGES_DIR,
+      currentCacheSize: packageNamesCache.length
+    });
     
     // If we failed to load the package names, try to provide a fallback
     if (packageNamesCache.length === 0) {
-      logger.warn("Using fallback list of popular packages");
+      logger.warn("Using fallback list of popular packages", { 
+        operationId,
+        fallbackCount: 24 
+      });
       packageNamesCache = [
         "angular", "apollo-server", "axios", "body-parser", "chalk", 
         "commander", "cors", "dotenv", "eslint", "express", "graphql", 
@@ -159,23 +214,57 @@ function scheduleRefresh() {
 }
 
 // Enhanced packageExists function that uses our cache
-async function packageExists(packageName) {
+async function packageExists(packageName, req = null) {
+  const checkId = uuidv4().substring(0, 8);
+  
   // First check if the package is in our cache
   if (packageNamesCache.includes(packageName)) {
+    logger.debug("Package found in cache", { 
+      checkId,
+      packageName,
+      cacheSize: packageNamesCache.length,
+      traceId: req?.traceId,
+      correlationId: req?.correlationId
+    });
     return true;
   }
   
   // If not in cache, fall back to checking the registry directly
+  const startTime = Date.now();
   try {
+    logger.debug("Package not in cache, checking NPM registry", { 
+      checkId,
+      packageName,
+      registryUrl: `https://registry.npmjs.org/${packageName}`,
+      traceId: req?.traceId,
+      correlationId: req?.correlationId
+    });
+    
     await cachedGet(`https://registry.npmjs.org/${packageName}`);
     
     // If the package exists but wasn't in our cache, add it
     if (!packageNamesCache.includes(packageName)) {
       packageNamesCache.push(packageName);
+      logger.info("Added new package to cache", { 
+        checkId,
+        packageName,
+        newCacheSize: packageNamesCache.length,
+        duration: Date.now() - startTime,
+        traceId: req?.traceId,
+        correlationId: req?.correlationId
+      });
     }
     
     return true;
   } catch (error) {
+    logger.debug("Package does not exist", { 
+      checkId,
+      packageName,
+      error: error.message,
+      duration: Date.now() - startTime,
+      traceId: req?.traceId,
+      correlationId: req?.correlationId
+    });
     return false;
   }
 }

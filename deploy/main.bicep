@@ -59,6 +59,9 @@ param createManagedCertificate bool = true
 @description('Existing managed certificate resource ID (if not creating new)')
 param existingCertificateId string = ''
 
+@description('Whether to use custom domain for baseUrl (false uses Azure FQDN to avoid bootstrap issues)')
+param useCustomDomain bool = false
+
 // Variables
 var resourcePrefix = '${baseName}-${environment}'
 var containerAppName = resourcePrefix
@@ -77,7 +80,8 @@ var nugetApiKey = 'nuget-${uniqueString(resourceGroup().id, 'nuget')}'
 var ociApiKey = 'oci-${uniqueString(resourceGroup().id, 'oci')}'
 
 // Use a computed base URL that will be valid
-var baseUrl = 'https://${customDomainName}' 
+// For initial deployment, use Azure FQDN to avoid chicken-and-egg problem
+var baseUrl = useCustomDomain ? 'https://${customDomainName}' : 'https://${containerAppName}.${containerAppEnvName}.${location}.azurecontainerapps.io' 
 
 // Container image URIs
 // Determine image path format based on registry type
@@ -218,13 +222,13 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             latestRevision: true
           }
         ]
-        customDomains: [
+        customDomains: useCustomDomain ? [
           {
             name: customDomainName
             bindingType: 'SniEnabled'
             certificateId: managedCertificateId
           }
-        ]
+        ] : []
       }
       // For public GHCR repos, containerRegistryUsername will be empty and no registry auth is needed
       registries: empty(containerRegistryUsername) ? [] : [
@@ -336,10 +340,10 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
                 path: '/health'
                 port: 8080
               }
-              initialDelaySeconds: 60
-              periodSeconds: 10
-              timeoutSeconds: 5
-              failureThreshold: 3
+              initialDelaySeconds: 120
+              periodSeconds: 15
+              timeoutSeconds: 10
+              failureThreshold: 6
             }
             {
               type: 'liveness'
@@ -347,10 +351,10 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
                 path: '/health'
                 port: 8080
               }
-              initialDelaySeconds: 60
+              initialDelaySeconds: 120
               periodSeconds: 30
               timeoutSeconds: 10
-              failureThreshold: 3
+              failureThreshold: 5
             }
             {
               type: 'readiness'
@@ -415,41 +419,8 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
               value: 'xregistry-npm'
             }
           ]
-          probes: [
-            {
-              type: 'startup'
-              httpGet: {
-                path: '/health'
-                port: 3100
-              }
-              initialDelaySeconds: 30
-              periodSeconds: 5
-              timeoutSeconds: 5
-              failureThreshold: 24
-            }
-            {
-              type: 'liveness'
-              httpGet: {
-                path: '/health'
-                port: 3100
-              }
-              initialDelaySeconds: 60
-              periodSeconds: 10
-              timeoutSeconds: 5
-              failureThreshold: 3
-            }
-            {
-              type: 'readiness'
-              httpGet: {
-                path: '/health'
-                port: 3100
-              }
-              initialDelaySeconds: 5
-              periodSeconds: 5
-              timeoutSeconds: 5
-              failureThreshold: 3
-            }
-          ]
+          // Temporarily disable probes to test if they're causing restarts
+          probes: []
         }
         // PyPI Container
         {
@@ -501,41 +472,8 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
               value: 'xregistry-pypi'
             }
           ]
-          probes: [
-            {
-              type: 'startup'
-              httpGet: {
-                path: '/health'
-                port: 3000
-              }
-              initialDelaySeconds: 30
-              periodSeconds: 5
-              timeoutSeconds: 5
-              failureThreshold: 24
-            }
-            {
-              type: 'liveness'
-              httpGet: {
-                path: '/health'
-                port: 3000
-              }
-              initialDelaySeconds: 60
-              periodSeconds: 10
-              timeoutSeconds: 5
-              failureThreshold: 3
-            }
-            {
-              type: 'readiness'
-              httpGet: {
-                path: '/health'
-                port: 3000
-              }
-              initialDelaySeconds: 5
-              periodSeconds: 5
-              timeoutSeconds: 5
-              failureThreshold: 3
-            }
-          ]
+          // Temporarily disable probes to test if they're causing restarts
+          probes: []
         }
         // Maven Container
         {
@@ -587,41 +525,8 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
               value: 'xregistry-maven'
             }
           ]
-          probes: [
-            {
-              type: 'startup'
-              httpGet: {
-                path: '/health'
-                port: 3300
-              }
-              initialDelaySeconds: 30
-              periodSeconds: 5
-              timeoutSeconds: 5
-              failureThreshold: 24
-            }
-            {
-              type: 'liveness'
-              httpGet: {
-                path: '/health'
-                port: 3300
-              }
-              initialDelaySeconds: 60
-              periodSeconds: 10
-              timeoutSeconds: 5
-              failureThreshold: 3
-            }
-            {
-              type: 'readiness'
-              httpGet: {
-                path: '/health'
-                port: 3300
-              }
-              initialDelaySeconds: 5
-              periodSeconds: 5
-              timeoutSeconds: 5
-              failureThreshold: 3
-            }
-          ]
+          // Temporarily disable probes to test if they're causing restarts
+          probes: []
         }
         // NuGet Container
         {
@@ -673,41 +578,8 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
               value: 'xregistry-nuget'
             }
           ]
-          probes: [
-            {
-              type: 'startup'
-              httpGet: {
-                path: '/health'
-                port: 3200
-              }
-              initialDelaySeconds: 30
-              periodSeconds: 5
-              timeoutSeconds: 5
-              failureThreshold: 24
-            }
-            {
-              type: 'liveness'
-              httpGet: {
-                path: '/health'
-                port: 3200
-              }
-              initialDelaySeconds: 60
-              periodSeconds: 10
-              timeoutSeconds: 5
-              failureThreshold: 3
-            }
-            {
-              type: 'readiness'
-              httpGet: {
-                path: '/health'
-                port: 3200
-              }
-              initialDelaySeconds: 5
-              periodSeconds: 5
-              timeoutSeconds: 5
-              failureThreshold: 3
-            }
-          ]
+          // Temporarily disable probes to test if they're causing restarts
+          probes: []
         }
         // OCI Container
         {
@@ -759,41 +631,8 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
               value: 'xregistry-oci'
             }
           ]
-          probes: [
-            {
-              type: 'startup'
-              httpGet: {
-                path: '/health'
-                port: 3400
-              }
-              initialDelaySeconds: 30
-              periodSeconds: 5
-              timeoutSeconds: 5
-              failureThreshold: 24
-            }
-            {
-              type: 'liveness'
-              httpGet: {
-                path: '/health'
-                port: 3400
-              }
-              initialDelaySeconds: 60
-              periodSeconds: 10
-              timeoutSeconds: 5
-              failureThreshold: 3
-            }
-            {
-              type: 'readiness'
-              httpGet: {
-                path: '/health'
-                port: 3400
-              }
-              initialDelaySeconds: 5
-              periodSeconds: 5
-              timeoutSeconds: 5
-              failureThreshold: 3
-            }
-          ]
+          // Temporarily disable probes to test if they're causing restarts
+          probes: []
         }
       ]
       scale: {

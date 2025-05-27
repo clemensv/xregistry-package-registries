@@ -9,49 +9,105 @@ const http_proxy_middleware_1 = require("http-proxy-middleware");
 const fs_1 = __importDefault(require("fs"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const buffer_1 = require("buffer");
+const yargs_1 = __importDefault(require("yargs"));
+const helpers_1 = require("yargs/helpers");
+const uuid_1 = require("uuid");
 const logger_1 = require("../../shared/logging/logger");
 dotenv_1.default.config();
-// Initialize OpenTelemetry logger
+// Parse command line arguments
+const argv = (0, yargs_1.default)((0, helpers_1.hideBin)(process.argv))
+    .option('w3log', {
+    type: 'string',
+    description: 'Enable W3C Extended Log Format and specify log file path',
+    default: process.env.W3C_LOG_FILE
+})
+    .option('w3log-stdout', {
+    type: 'boolean',
+    description: 'Output W3C logs to stdout instead of file',
+    default: process.env.W3C_LOG_STDOUT === 'true'
+})
+    .option('port', {
+    type: 'number',
+    description: 'Port to listen on',
+    default: parseInt(process.env.PORT || '8080')
+})
+    .option('log-level', {
+    type: 'string',
+    choices: ['debug', 'info', 'warn', 'error'],
+    description: 'Log level',
+    default: process.env.LOG_LEVEL || 'info'
+})
+    .help()
+    .alias('help', 'h')
+    .parseSync();
+// Initialize enhanced logger with W3C support
 const logger = (0, logger_1.createLogger)({
     serviceName: process.env.SERVICE_NAME || 'xregistry-bridge',
     serviceVersion: process.env.SERVICE_VERSION || '1.0.0',
-    environment: process.env.NODE_ENV || 'production'
+    environment: process.env.NODE_ENV || 'production',
+    enableW3CLog: !!(argv.w3log || argv['w3log-stdout']),
+    w3cLogFile: argv.w3log,
+    w3cLogToStdout: argv['w3log-stdout']
 });
 const app = (0, express_1.default)();
-const PORT = process.env['PORT'] || '8080';
+const PORT = argv.port;
 const BASE_URL = process.env['BASE_URL'] || `http://localhost:${PORT}`;
 const BASE_URL_HEADER = process.env['BASE_URL_HEADER'] || 'x-base-url';
 const BRIDGE_API_KEY = process.env['BRIDGE_API_KEY'] || '';
 const REQUIRED_GROUPS = process.env['REQUIRED_GROUPS']?.split(',') || [];
-// New resilient startup configuration
-const STARTUP_WAIT_TIME = parseInt(process.env['STARTUP_WAIT_TIME'] || '15000'); // 15 seconds
-const RETRY_INTERVAL = parseInt(process.env['RETRY_INTERVAL'] || '60000'); // 1 minute
-const SERVER_HEALTH_TIMEOUT = parseInt(process.env['SERVER_HEALTH_TIMEOUT'] || '10000'); // 10 seconds
+// Enhanced resilient startup configuration
+const STARTUP_WAIT_TIME = parseInt(process.env['STARTUP_WAIT_TIME'] || '60000'); // Increased default
+const RETRY_INTERVAL = parseInt(process.env['RETRY_INTERVAL'] || '60000');
+const SERVER_HEALTH_TIMEOUT = parseInt(process.env['SERVER_HEALTH_TIMEOUT'] || '10000');
 // Load downstream configuration from file or environment variable
 function loadDownstreamConfig() {
     // First try to read from environment variable (useful for container deployments)
     const downstreamsEnv = process.env['DOWNSTREAMS_JSON'];
     if (downstreamsEnv) {
-        logger.info('Loading downstream configuration from DOWNSTREAMS_JSON environment variable');
+        logger.info('Loading downstream configuration from DOWNSTREAMS_JSON environment variable', {
+            configLength: downstreamsEnv.length,
+            source: 'environment'
+        });
         try {
             const config = JSON.parse(downstreamsEnv);
-            return config.servers || [];
+            const servers = config.servers || [];
+            logger.info('Parsed downstream configuration', {
+                serverCount: servers.length,
+                servers: servers.map((s) => ({ url: s.url, hasApiKey: !!s.apiKey }))
+            });
+            return servers;
         }
         catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
-            logger.error('Failed to parse DOWNSTREAMS_JSON environment variable', { error: errorMessage });
+            logger.error('Failed to parse DOWNSTREAMS_JSON environment variable', {
+                error: errorMessage,
+                configPreview: downstreamsEnv.substring(0, 100) + '...'
+            });
             throw new Error('Invalid DOWNSTREAMS_JSON format');
         }
     }
     // Fallback to file-based configuration
     const configFile = process.env['BRIDGE_CONFIG_FILE'] || 'downstreams.json';
-    logger.info('Loading downstream configuration from file', { configFile });
+    logger.info('Loading downstream configuration from file', { configFile, source: 'file' });
     try {
-        return JSON.parse(fs_1.default.readFileSync(configFile, 'utf-8')).servers;
+        const fileContent = fs_1.default.readFileSync(configFile, 'utf-8');
+        const config = JSON.parse(fileContent);
+        const servers = config.servers || [];
+        logger.info('Loaded configuration from file', {
+            configFile,
+            serverCount: servers.length,
+            servers: servers.map((s) => ({ url: s.url, hasApiKey: !!s.apiKey }))
+        });
+        return servers;
     }
     catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        logger.error('Failed to read configuration file', { configFile, error: errorMessage });
+        logger.error('Failed to read configuration file', {
+            configFile,
+            error: errorMessage,
+            cwd: process.cwd(),
+            configExists: fs_1.default.existsSync(configFile)
+        });
         throw new Error(`Configuration file ${configFile} not found or invalid`);
     }
 }
@@ -60,20 +116,43 @@ const downstreams = loadDownstreamConfig();
 let serverStates = new Map();
 let httpServer = null;
 let isServerRunning = false;
-// Replace morgan with OpenTelemetry middleware
+// Enhanced request logging middleware
 app.use(logger.middleware());
 // User extraction from ACA headers
 function extractUser(req) {
     const encoded = req.headers['x-ms-client-principal'];
     if (!encoded)
         return null;
-    const decoded = buffer_1.Buffer.from(encoded, 'base64').toString('utf8');
-    return JSON.parse(decoded);
+    try {
+        const decoded = buffer_1.Buffer.from(encoded, 'base64').toString('utf8');
+        return JSON.parse(decoded);
+    }
+    catch (error) {
+        logger.warn('Failed to decode user principal', {
+            error: error instanceof Error ? error.message : String(error),
+            headerPresent: !!encoded
+        });
+        return null;
+    }
 }
-// Security middleware (API key OR ACA Entra group claim)
+// Enhanced security middleware with detailed logging
 app.use((req, res, next) => {
-    if (!BRIDGE_API_KEY && REQUIRED_GROUPS.length === 0)
+    // Skip authentication for health endpoints and localhost requests
+    if (req.path === '/health' || req.path === '/status' || req.hostname === 'localhost') {
+        logger.debug('Skipping authentication for endpoint', {
+            path: req.path,
+            hostname: req.hostname,
+            ip: req.ip
+        });
         return next();
+    }
+    if (!BRIDGE_API_KEY && REQUIRED_GROUPS.length === 0) {
+        logger.debug('No authentication configured, allowing request', {
+            method: req.method,
+            url: req.url
+        });
+        return next();
+    }
     const apiKeyOk = BRIDGE_API_KEY && req.headers.authorization?.includes(BRIDGE_API_KEY);
     const user = extractUser(req);
     const groupOk = REQUIRED_GROUPS.length === 0 || (user &&
@@ -83,18 +162,28 @@ app.use((req, res, next) => {
         logger.debug('Request authorized', {
             method: req.method,
             url: req.url,
+            path: req.path,
             authMethod: apiKeyOk ? 'api-key' : 'group-claim',
-            userId: user?.userId
+            userId: user?.userId,
+            userGroups: user?.claims?.filter((c) => c.typ === 'groups').map((c) => c.val) || []
         });
         return next();
     }
-    logger.warn('Unauthorized request', {
+    logger.warn('Unauthorized request blocked', {
         method: req.method,
         url: req.url,
+        path: req.path,
+        ip: req.ip,
+        userAgent: req.get('User-Agent'),
         hasApiKey: !!req.headers.authorization,
-        userGroups: user?.claims?.filter((c) => c.typ === 'groups').map((c) => c.val) || []
+        hasUserPrincipal: !!req.headers['x-ms-client-principal'],
+        userGroups: user?.claims?.filter((c) => c.typ === 'groups').map((c) => c.val) || [],
+        requiredGroups: REQUIRED_GROUPS
     });
-    return res.status(401).send('Unauthorized');
+    return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'Valid API key or group membership required'
+    });
 });
 // Consolidation logic
 let consolidatedModel = {};
@@ -108,13 +197,29 @@ function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 // Test server connectivity and fetch model
-async function testServer(server) {
+async function testServer(server, req) {
     const startTime = Date.now();
+    const headers = {};
     try {
-        const headers = {};
         if (server.apiKey)
             headers['Authorization'] = `Bearer ${server.apiKey}`;
-        logger.debug('Testing server connectivity', { serverUrl: server.url });
+        // Add distributed tracing headers if we have a request context
+        if (req && req.logger) {
+            const traceHeaders = req.logger.createDownstreamHeaders ?
+                req.logger.createDownstreamHeaders(req) : {};
+            Object.assign(headers, traceHeaders);
+        }
+        else {
+            // Generate trace context for internal calls
+            const traceId = (0, uuid_1.v4)().replace(/-/g, '');
+            const spanId = (0, uuid_1.v4)().replace(/-/g, '').substring(0, 16);
+            headers['x-correlation-id'] = (0, uuid_1.v4)();
+            headers['traceparent'] = `00-${traceId}-${spanId}-01`;
+        }
+        logger.debug('Testing server connectivity', {
+            serverUrl: server.url,
+            traceHeaders: Object.keys(headers).filter(h => h.startsWith('x-') || h === 'traceparent')
+        });
         // Test /model endpoint specifically
         const modelResponse = await axios_1.default.get(`${server.url}/model`, {
             headers,
@@ -129,7 +234,9 @@ async function testServer(server) {
         logger.info('Server connectivity test successful', {
             serverUrl: server.url,
             duration,
-            modelGroups: Object.keys(modelResponse.data.groups || {}).length
+            modelGroups: Object.keys(modelResponse.data.groups || {}).length,
+            traceId: headers['x-trace-id'] || 'generated',
+            correlationId: headers['x-correlation-id']
         });
         return {
             model: modelResponse.data,
@@ -141,7 +248,9 @@ async function testServer(server) {
         logger.error('Server connectivity test failed', {
             serverUrl: server.url,
             duration,
-            error: error instanceof Error ? error.message : String(error)
+            error: error instanceof Error ? error.message : String(error),
+            traceId: headers['x-trace-id'] || 'generated',
+            correlationId: headers['x-correlation-id']
         });
         return null;
     }
@@ -324,6 +433,11 @@ async function checkServerHealth(server) {
         const headers = {};
         if (server.apiKey)
             headers['Authorization'] = `Bearer ${server.apiKey}`;
+        // Add trace context for health checks
+        const traceId = (0, uuid_1.v4)().replace(/-/g, '');
+        const spanId = (0, uuid_1.v4)().replace(/-/g, '').substring(0, 16);
+        headers['x-correlation-id'] = (0, uuid_1.v4)();
+        headers['traceparent'] = `00-${traceId}-${spanId}-01`;
         await axios_1.default.get(`${server.url}/model`, {
             headers,
             timeout: 5000 // 5 second timeout for health checks
@@ -354,17 +468,37 @@ function setupDynamicRoutes() {
                 if (backend.apiKey) {
                     proxyReq.setHeader('Authorization', `Bearer ${backend.apiKey}`);
                 }
+                // Inject distributed tracing headers
+                if (req.logger && req.logger.createDownstreamHeaders) {
+                    const traceHeaders = req.logger.createDownstreamHeaders(req);
+                    Object.entries(traceHeaders).forEach(([key, value]) => {
+                        proxyReq.setHeader(key, value);
+                    });
+                    logger.debug('Injected trace headers into proxy request', {
+                        groupType,
+                        targetUrl,
+                        traceId: req.traceId,
+                        correlationId: req.correlationId,
+                        requestId: req.requestId,
+                        injectedHeaders: Object.keys(traceHeaders)
+                    });
+                }
             },
             onError: (err, req, res) => {
                 logger.error('Proxy error', {
                     groupType,
                     targetUrl,
-                    error: err instanceof Error ? err.message : String(err)
+                    error: err instanceof Error ? err.message : String(err),
+                    traceId: req.traceId,
+                    correlationId: req.correlationId,
+                    requestId: req.requestId
                 });
                 res.status(502).json({
                     error: 'Bad Gateway',
                     message: `Upstream server ${targetUrl} is not available`,
-                    groupType
+                    groupType,
+                    traceId: req.traceId,
+                    correlationId: req.correlationId
                 });
             }
         }));

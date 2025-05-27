@@ -1,40 +1,41 @@
+# Use official Node.js 23 Alpine image
 FROM node:23-alpine
+
+# Install diagnostic tools for troubleshooting
+RUN apk add --no-cache \
+    curl \
+    wget \
+    bind-tools \
+    jq \
+    htop \
+    procps
 
 # Create app directory
 WORKDIR /app
 
-# Copy package.json and package-lock.json
-COPY nuget/package.json ./
+# Copy package files
+COPY nuget/ nuget/
+COPY shared/ shared/
 
-# Install app dependencies
-RUN npm install --production
+WORKDIR /app/nuget
+# Install dependencies
+RUN npm ci && npm cache clean --force
 
-# Copy shared logging module to parent directory so ../shared/logging/logger works
-COPY shared/ ../shared/
 
-# Bundle app source
-COPY nuget/ .
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S xregistry -u 1001
 
-# Create cache and logs directories
-RUN mkdir -p cache
-RUN mkdir -p /logs
+# Change ownership of the app directory
+RUN chown -R xregistry:nodejs /app
+USER xregistry
 
-# Set environment variables
-ENV NODE_ENV=production
-ENV XREGISTRY_NUGET_PORT=3200
-ENV PORT=3200
+# Expose port
+EXPOSE 3300
 
-# Document the available configuration options
-ENV XREGISTRY_NUGET_LOG=
-ENV XREGISTRY_NUGET_QUIET=false
-ENV XREGISTRY_NUGET_BASEURL=
-ENV XREGISTRY_NUGET_API_KEY=
+# Enhanced health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
+  CMD curl -f -s --max-time 5 http://localhost:3300/health || exit 1
 
-# Expose the port the app runs on
-EXPOSE ${XREGISTRY_NUGET_PORT}
-
-# Define volume for logs
-VOLUME ["/logs"]
-
-# Command to run the app
+# Start the application
 CMD ["node", "server.js"] 

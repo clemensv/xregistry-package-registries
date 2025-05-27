@@ -1,31 +1,40 @@
-# Use an official Node.js runtime as a parent image
+# Use official Node.js 23 Alpine image
 FROM node:23-alpine
+
+# Install diagnostic tools for troubleshooting
+RUN apk add --no-cache \
+    curl \
+    wget \
+    bind-tools \
+    jq \
+    htop \
+    procps
 
 # Create app directory
 WORKDIR /app
 
-# Copy package.json and package-lock.json (if available)
-COPY oci/package*.json ./
+# Copy package files
+COPY oci/ oci/
+COPY shared/ shared/
 
-# Install app dependencies
-RUN npm install --omit=dev
+WORKDIR /app/oci
+# Install dependencies
+RUN npm ci && npm cache clean --force
 
-# Copy shared logging module to parent directory so ../shared/logging/logger works
-COPY shared/ ../shared/
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S xregistry -u 1001
 
-# Copy the rest of the application code to the working directory
-COPY oci/ .
+# Change ownership of the app directory
+RUN chown -R xregistry:nodejs /app
+USER xregistry
 
-# Make port 3000 available to the world outside this container
-EXPOSE 3000
+# Expose port
+EXPOSE 3400
 
-# Set environment variables for OCI registry configuration
-ENV XREGISTRY_OCI_PORT=3000
-ENV PORT=3000
-ENV XREGISTRY_OCI_LOG=
-ENV XREGISTRY_OCI_QUIET=false
-ENV XREGISTRY_OCI_BASEURL=
-ENV XREGISTRY_OCI_API_KEY=
+# Enhanced health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
+  CMD curl -f -s --max-time 5 http://localhost:3400/health || exit 1
 
-# Run the OCI registry when the container launches
+# Start the application
 CMD ["node", "server.js"] 

@@ -17,13 +17,23 @@ const argv = yargs
   })
   .option('log', {
     alias: 'l',
-    description: 'Path to log file in W3C Extended Log File Format',
+    description: 'Path to trace log file (OpenTelemetry format)',
     type: 'string',
     default: process.env.XREGISTRY_MAVEN_LOG || null
   })
+  .option('w3log', {
+    description: 'Enable W3C Extended Log Format and specify log file path',
+    type: 'string',
+    default: process.env.W3C_LOG_FILE
+  })
+  .option('w3log-stdout', {
+    description: 'Output W3C logs to stdout instead of file',
+    type: 'boolean',
+    default: process.env.W3C_LOG_STDOUT === 'true'
+  })
   .option('quiet', {
     alias: 'q',
-    description: 'Suppress logging to stdout',
+    description: 'Suppress trace logging to stderr',
     type: 'boolean',
     default: process.env.XREGISTRY_MAVEN_QUIET === 'true' || false
   })
@@ -39,6 +49,12 @@ const argv = yargs
     type: 'string',
     default: process.env.XREGISTRY_MAVEN_API_KEY || null
   })
+  .option('log-level', {
+    description: 'Log level',
+    type: 'string',
+    choices: ['debug', 'info', 'warn', 'error'],
+    default: process.env.LOG_LEVEL || 'info'
+  })
   .help()
   .argv;
 
@@ -48,14 +64,17 @@ const QUIET_MODE = argv.quiet;
 const BASE_URL = argv.baseurl;
 const API_KEY = argv.apiKey;
 
-// Initialize OpenTelemetry logger
+// Initialize enhanced logger with W3C support and OTel context
 const logger = createLogger({
   serviceName: process.env.SERVICE_NAME || 'xregistry-maven',
   serviceVersion: process.env.SERVICE_VERSION || '1.0.0',
   environment: process.env.NODE_ENV || 'production',
   enableFile: !!LOG_FILE,
   logFile: LOG_FILE,
-  enableConsole: !QUIET_MODE
+  enableConsole: !QUIET_MODE,
+  enableW3CLog: !!(argv.w3log || argv['w3log-stdout']),
+  w3cLogFile: argv.w3log,
+  w3cLogToStdout: argv['w3log-stdout']
 });
 
 const REGISTRY_ID = "maven-wrapper";
@@ -948,12 +967,43 @@ async function cachedGet(url, headers = {}) {
 }
 
 // Helper function to check if a package exists in Maven Central
-async function packageExists(groupId, artifactId) {
+async function packageExists(groupId, artifactId, req = null) {
+  const { v4: uuidv4 } = require('uuid');
+  const checkId = uuidv4().substring(0, 8);
+  
   try {
+    logger.debug("Checking package existence in Maven Central", { 
+      checkId,
+      groupId,
+      artifactId,
+      traceId: req?.traceId,
+      correlationId: req?.correlationId
+    });
+    
     const searchUrl = `${MAVEN_API_BASE_URL}?q=g:"${encodeURIComponent(groupId)}"+AND+a:"${encodeURIComponent(artifactId)}"&core=gav&rows=1&wt=json`;
     const response = await cachedGet(searchUrl);
-    return response.response.numFound > 0;
+    const exists = response.response.numFound > 0;
+    
+    logger.debug(exists ? "Package found in Maven Central" : "Package not found in Maven Central", { 
+      checkId,
+      groupId,
+      artifactId,
+      exists,
+      numFound: response.response.numFound,
+      traceId: req?.traceId,
+      correlationId: req?.correlationId
+    });
+    
+    return exists;
   } catch (error) {
+    logger.debug("Error checking package existence", { 
+      checkId,
+      groupId,
+      artifactId,
+      error: error.message,
+      traceId: req?.traceId,
+      correlationId: req?.correlationId
+    });
     return false;
   }
 }
@@ -1625,26 +1675,21 @@ if (require.main === module) {
 
   // Start the standalone server
   standaloneApp.listen(PORT, () => {
-    console.log(`Maven xRegistry wrapper listening on port ${PORT}`);
-    if (BASE_URL) {
-      console.log(`Using base URL: ${BASE_URL}`);
-    }
+    logger.logStartup(PORT, { 
+      baseUrl: BASE_URL,
+      apiKeyEnabled: !!API_KEY 
+    });
   });
   
-  // Handle process termination for graceful shutdown
-  process.on('SIGTERM', () => {
-    console.log('SIGTERM received, shutting down gracefully');
-    if (logStream) {
-      logStream.end();
-    }
-    process.exit(0);
-  });
+  // Graceful shutdown function
+  function gracefulShutdown() {
+    logger.info("Shutting down gracefully...");
+    logger.close().then(() => {
+      process.exit(0);
+    });
+  }
 
-  process.on('SIGINT', () => {
-    console.log('SIGINT received, shutting down gracefully');
-    if (logStream) {
-      logStream.end();
-    }
-    process.exit(0);
-  });
+  // Handle process termination for graceful shutdown
+  process.on('SIGTERM', gracefulShutdown);
+  process.on('SIGINT', gracefulShutdown);
 } 

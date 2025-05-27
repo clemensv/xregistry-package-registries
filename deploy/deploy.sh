@@ -283,220 +283,13 @@ check_resource_providers() {
     fi
 }
 
-# Check if repository is private
-is_repo_private() {
-    log_info "Checking repository visibility..."
-    
-    # First try without authentication for public repos
-    local repo_info
-    repo_info=$(curl -s -H "Accept: application/vnd.github.v3+json" \
-                     "https://api.github.com/repos/$REPOSITORY_NAME" 2>/dev/null)
-    
-    # If public API call succeeds, check if it's private
-    if [[ $? -eq 0 ]] && [[ -n "$repo_info" ]]; then
-        local is_private=$(echo "$repo_info" | jq -r '.private // true')
-        
-        if [[ "$is_private" == "true" ]]; then
-            log_info "Repository is private - will use ACR for image storage"
-            return 0
-        else
-            log_info "Repository is public - will use GHCR directly"
-            return 1
-        fi
-    fi
-    
-    # If public API call failed, try with authentication
-    if [[ -n "$GITHUB_TOKEN" ]]; then
-        log_verbose "Public API call failed, trying with authentication..."
-        repo_info=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
-                         -H "Accept: application/vnd.github.v3+json" \
-                         "https://api.github.com/repos/$REPOSITORY_NAME" 2>/dev/null)
-        
-        if [[ $? -eq 0 ]] && [[ -n "$repo_info" ]]; then
-            local is_private=$(echo "$repo_info" | jq -r '.private // true')
-            
-            if [[ "$is_private" == "true" ]]; then
-                log_info "Repository is private - will use ACR for image storage"
-                return 0
-            else
-                log_info "Repository is public - will use GHCR directly"
-                return 1
-            fi
-        fi
-    fi
-    
-    # If both calls failed, assume private for safety
-    log_warning "Could not determine repository visibility, assuming private for safety"
-    log_warning "This may happen with invalid GitHub tokens or network issues"
-    return 0
-}
+# Repository visibility check disabled - always use GHCR
+# is_repo_private() {
+#     # Forced to use GHCR directly
+#     return 1
+# }
 
-# Create ACR instance if needed
-ensure_acr() {
-    # ACR names must be lowercase alphanumeric only, 5-50 characters
-    local base_name="${RESOURCE_GROUP//-/}"    # Remove dashes
-    base_name="${base_name//[^a-zA-Z0-9]/}"    # Remove all non-alphanumeric characters
-    base_name="${base_name,,}"                 # Convert to lowercase
-    
-    # Ensure name is between 5-50 characters
-    if [[ ${#base_name} -gt 47 ]]; then
-        base_name="${base_name:0:47}"          # Truncate to 47 to leave room for 'acr'
-    elif [[ ${#base_name} -lt 2 ]]; then
-        base_name="xregistry"                  # Fallback if too short
-    fi
-    
-    local acr_name="${base_name}acr"
-    
-    # Validate ACR name meets requirements
-    if [[ ${#acr_name} -lt 5 ]] || [[ ${#acr_name} -gt 50 ]]; then
-        log_error "Generated ACR name '$acr_name' is invalid (length: ${#acr_name}, must be 5-50 characters)"
-        exit 1
-    fi
-    
-    if [[ ! "$acr_name" =~ ^[a-z0-9]+$ ]]; then
-        log_error "Generated ACR name '$acr_name' contains invalid characters (must be lowercase alphanumeric only)"
-        exit 1
-    fi
-    
-    log_info "Ensuring ACR instance exists: $acr_name"
-    
-    if az acr show --name "$acr_name" --resource-group "$RESOURCE_GROUP" &>/dev/null; then
-        log_verbose "ACR already exists"
-    else
-        log_info "Creating ACR instance: $acr_name (length: ${#acr_name})"
-        
-        if [[ "$DRY_RUN" == "false" ]]; then
-            # Create ACR with explicit output handling
-            log_info "Executing: az acr create --name '$acr_name' --resource-group '$RESOURCE_GROUP' --location '$LOCATION' --sku Basic --admin-enabled true"
-            
-            if az acr create \
-                --name "$acr_name" \
-                --resource-group "$RESOURCE_GROUP" \
-                --location "$LOCATION" \
-                --sku Basic \
-                --admin-enabled true \
-                --output table; then
-                log_success "ACR created successfully"
-                
-                # Wait for ACR to be fully provisioned
-                log_info "Waiting for ACR admin user to be ready..."
-                sleep 30
-                
-                # Verify ACR is accessible
-                if az acr show --name "$acr_name" --resource-group "$RESOURCE_GROUP" --query "name" -o tsv &>/dev/null; then
-                    log_success "ACR is accessible"
-                else
-                    log_error "ACR was created but is not accessible"
-                    exit 1
-                fi
-            else
-                log_error "Failed to create ACR: $acr_name"
-                exit 1
-            fi
-        else
-            log_info "[DRY RUN] Would create ACR: $acr_name"
-        fi
-    fi
-    
-    echo "$acr_name"
-}
-
-# Copy images from GHCR to ACR
-copy_images_to_acr() {
-    local acr_name="$1"
-    local acr_server="${acr_name}.azurecr.io"
-    
-    log_info "Copying images from GHCR to ACR: $acr_server"
-    
-    if [[ "$DRY_RUN" == "true" ]]; then
-        log_info "[DRY RUN] Would copy images to ACR"
-        return 0
-    fi
-    
-    # Check if Docker is available
-    if ! command -v docker &> /dev/null; then
-        log_error "Docker is required to copy images to ACR but is not installed"
-        exit 1
-    fi
-    
-    # Get ACR credentials with retry logic
-    log_info "Retrieving ACR credentials..."
-    local acr_username=""
-    local acr_password=""
-    local max_retries=5
-    local retry=0
-    
-    while [[ $retry -lt $max_retries ]]; do
-        log_info "Credential retrieval attempt $((retry + 1))/$max_retries"
-        
-        acr_username=$(az acr credential show --name "$acr_name" --resource-group "$RESOURCE_GROUP" --query "username" -o tsv 2>/dev/null)
-        acr_password=$(az acr credential show --name "$acr_name" --resource-group "$RESOURCE_GROUP" --query "passwords[0].value" -o tsv 2>/dev/null)
-        
-        if [[ -n "$acr_username" ]] && [[ -n "$acr_password" ]]; then
-            log_success "Successfully retrieved ACR credentials"
-            break
-        else
-            log_warning "Credentials not ready yet, waiting 10 seconds..."
-            sleep 10
-            ((retry++))
-        fi
-    done
-    
-    if [[ -z "$acr_username" ]] || [[ -z "$acr_password" ]]; then
-        log_error "Failed to retrieve ACR credentials after $max_retries attempts"
-        log_error "ACR Username: '$acr_username'"
-        log_error "ACR Password length: ${#acr_password}"
-        exit 1
-    fi
-    
-    log_verbose "ACR Username: $acr_username"
-    log_verbose "ACR Password length: ${#acr_password}"
-    
-    # Login to ACR
-    log_info "Logging into ACR: $acr_server"
-    log_info "Using username: $acr_username"
-    
-    # Create a temporary file for Docker login (more reliable than stdin)
-    local temp_password_file=$(mktemp)
-    echo "$acr_password" > "$temp_password_file"
-    
-    if cat "$temp_password_file" | docker login "$acr_server" --username "$acr_username" --password-stdin; then
-        log_success "Successfully logged into ACR"
-    else
-        log_error "Failed to login to ACR: $acr_server"
-        log_error "Username: '$acr_username'"
-        log_error "Server: '$acr_server'"
-        rm -f "$temp_password_file"
-        exit 1
-    fi
-    
-    # Clean up temp file
-    rm -f "$temp_password_file"
-    
-    # List of images to copy
-    local images=("xregistry-bridge" "xregistry-npm-bridge" "xregistry-pypi-bridge" 
-                  "xregistry-maven-bridge" "xregistry-nuget-bridge" "xregistry-oci-bridge")
-    
-    for image in "${images[@]}"; do
-        local source_image="ghcr.io/$REPOSITORY_NAME/$image:$IMAGE_TAG"
-        local dest_image="$acr_server/$image:$IMAGE_TAG"
-        
-        log_info "Copying $source_image -> $dest_image"
-        
-        # Pull from GHCR
-        docker pull "$source_image"
-        
-        # Tag for ACR
-        docker tag "$source_image" "$dest_image"
-        
-        # Push to ACR
-        docker push "$dest_image"
-        
-        log_success "✓ Copied $image"
-    done
-    
-    log_success "All images copied to ACR successfully"
-}
+# ACR functions disabled - using GHCR only
 
 # Show container app status and logs
 show_container_status() {
@@ -782,18 +575,10 @@ main() {
     install_containerapp_extension
     check_resource_providers
     
-    # Determine if we need ACR for private repository
+    # Force GHCR usage - no ACR needed
+    log_info "Using GHCR for all container images"
     local use_acr="false"
     local acr_name=""
-    
-    if [[ "$FORCE_GHCR" == "true" ]]; then
-        log_info "Forcing use of GHCR (--force-ghcr specified)"
-        use_acr="false"
-    elif is_repo_private; then
-        use_acr="true"
-        acr_name=$(ensure_acr)
-        copy_images_to_acr "$acr_name"
-    fi
     
     # Create temporary files with substituted values
     local temp_params

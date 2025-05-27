@@ -31,13 +31,23 @@ const argv = yargs
   })
   .option('log', {
     alias: 'l',
-    description: 'Path to log file in W3C Extended Log File Format',
+    description: 'Path to trace log file (OpenTelemetry format)',
     type: 'string',
     default: process.env.XREGISTRY_NUGET_LOG || null
   })
+  .option('w3log', {
+    description: 'Enable W3C Extended Log Format and specify log file path',
+    type: 'string',
+    default: process.env.W3C_LOG_FILE
+  })
+  .option('w3log-stdout', {
+    description: 'Output W3C logs to stdout instead of file',
+    type: 'boolean',
+    default: process.env.W3C_LOG_STDOUT === 'true'
+  })
   .option('quiet', {
     alias: 'q',
-    description: 'Suppress logging to stdout',
+    description: 'Suppress trace logging to stderr',
     type: 'boolean',
     default: process.env.XREGISTRY_NUGET_QUIET === 'true' || false
   })
@@ -53,6 +63,12 @@ const argv = yargs
     type: 'string',
     default: process.env.XREGISTRY_NUGET_API_KEY || null
   })
+  .option('log-level', {
+    description: 'Log level',
+    type: 'string',
+    choices: ['debug', 'info', 'warn', 'error'],
+    default: process.env.LOG_LEVEL || 'info'
+  })
   .help()
   .argv;
 
@@ -62,14 +78,17 @@ const QUIET_MODE = argv.quiet;
 const BASE_URL = argv.baseurl;
 const API_KEY = argv.apiKey;
 
-// Initialize OpenTelemetry logger
+// Initialize enhanced logger with W3C support and OTel context
 const logger = createLogger({
   serviceName: process.env.SERVICE_NAME || 'xregistry-nuget',
   serviceVersion: process.env.SERVICE_VERSION || '1.0.0',
   environment: process.env.NODE_ENV || 'production',
   enableFile: !!LOG_FILE,
   logFile: LOG_FILE,
-  enableConsole: !QUIET_MODE
+  enableConsole: !QUIET_MODE,
+  enableW3CLog: !!(argv.w3log || argv['w3log-stdout']),
+  w3cLogFile: argv.w3log,
+  w3cLogToStdout: argv['w3log-stdout']
 });
 
 const REGISTRY_ID = "nuget-wrapper";
@@ -281,12 +300,40 @@ async function cachedGet(url, headers = {}) {
 }
 
 // Helper function to check if a package exists in NuGet
-async function packageExists(packageId) {
+async function packageExists(packageId, req = null) {
+  const { v4: uuidv4 } = require('uuid');
+  const checkId = uuidv4().substring(0, 8);
+  
   try {
+    logger.debug("Checking package existence in NuGet", { 
+      checkId,
+      packageId,
+      traceId: req?.traceId,
+      correlationId: req?.correlationId
+    });
+    
     const searchUrl = `${NUGET_SEARCH_QUERY_SERVICE_URL}?q=${encodeURIComponent(packageId)}&prerelease=false&take=1`;
     const response = await cachedGet(searchUrl);
-    return response.data.length > 0 && response.data[0].id.toLowerCase() === packageId.toLowerCase();
+    const exists = response.data.length > 0 && response.data[0].id.toLowerCase() === packageId.toLowerCase();
+    
+    logger.debug(exists ? "Package found in NuGet" : "Package not found in NuGet", { 
+      checkId,
+      packageId,
+      exists,
+      resultsCount: response.data.length,
+      traceId: req?.traceId,
+      correlationId: req?.correlationId
+    });
+    
+    return exists;
   } catch (error) {
+    logger.debug("Error checking package existence", { 
+      checkId,
+      packageId,
+      error: error.message,
+      traceId: req?.traceId,
+      correlationId: req?.correlationId
+    });
     return false;
   }
 }
@@ -1481,7 +1528,10 @@ module.exports = {
 if (require.main === module) {
   // Start the standalone server
   app.listen(PORT, () => {
-    console.log(`NuGet xRegistry wrapper listening on port ${PORT}`);
+    logger.logStartup(PORT, { 
+  baseUrl: BASE_URL,
+  apiKeyEnabled: !!API_KEY 
+});
     if (BASE_URL) {
       console.log(`Using base URL: ${BASE_URL}`);
     }
@@ -1490,16 +1540,17 @@ if (require.main === module) {
     }
   });
   
-  // Handle process termination for graceful shutdown
-  process.on('SIGTERM', () => {
-    console.log('SIGTERM received, shutting down gracefully');
-    process.exit(0);
-  });
+  // Graceful shutdown function
+  function gracefulShutdown() {
+    logger.info("Shutting down gracefully...");
+    logger.close().then(() => {
+      process.exit(0);
+    });
+  }
 
-  process.on('SIGINT', () => {
-    console.log('SIGINT received, shutting down gracefully');
-    process.exit(0);
-  });
+  // Handle process termination for graceful shutdown
+  process.on('SIGTERM', gracefulShutdown);
+  process.on('SIGINT', gracefulShutdown);
 }
 
 // Initialize logging
