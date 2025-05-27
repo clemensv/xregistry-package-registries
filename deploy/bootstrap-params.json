@@ -1,0 +1,42 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "baseName": {
+      "value": "xregistry-pkg-registries"
+    },
+    "environment": {
+      "value": "prod"
+    },
+    "containerRegistryServer": {
+      "value": "ghcr.io"
+    },
+    "containerRegistryUsername": {
+      "value": ""
+    },
+    "containerRegistryPassword": {
+      "value": ""
+    },
+    "imageTag": {
+      "value": "latest"
+    },
+    "repositoryName": {
+      "value": "clemensv/xregistry-package-registries/"
+    },
+    "alertEmailAddress": {
+      "value": "clemensv@microsoft.com"
+    },
+    "useCustomDomain": {
+      "value": false
+    },
+    "createManagedCertificate": {
+      "value": false
+    },
+    "existingCertificateId": {
+      "value": ""
+    },
+    "location": {
+      "value": "westeurope"
+    }
+  }
+} 

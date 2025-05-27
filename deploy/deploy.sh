@@ -376,16 +376,37 @@ create_parameters_file() {
         fi
     fi
     
-    # Read template and substitute values
+    # Read template and substitute values with error handling
     # Force useCustomDomain to false to avoid baseURL bootstrap issues
-    cat "$PARAMS_FILE" | \
+    log_verbose "Substituting parameters..."
+    log_verbose "Registry username: ${registry_username:-'(empty)'}"
+    log_verbose "Registry server: ${registry_server:-'(empty)'}"
+    log_verbose "Image tag: ${IMAGE_TAG:-'(empty)'}"
+    log_verbose "Repository: ${image_repository:-'(empty)'}"
+    
+    if cat "$PARAMS_FILE" | \
         sed "s|{{GITHUB_ACTOR}}|$registry_username|g" | \
         sed "s|{{GITHUB_TOKEN}}|$registry_password|g" | \
         sed "s|{{IMAGE_TAG}}|$IMAGE_TAG|g" | \
         sed "s|{{REPOSITORY_NAME}}|$image_repository|g" | \
         sed "s|ghcr.io|$registry_server|g" | \
         sed 's|"useCustomDomain": *{[^}]*}|"useCustomDomain": {"value": false}|g' \
-        > "$temp_params"
+        > "$temp_params"; then
+        log_verbose "Parameter substitution successful"
+    else
+        log_error "Parameter substitution failed"
+        log_warning "Falling back to bootstrap parameters file for minimal deployment"
+        
+        # Use bootstrap parameters as fallback
+        local bootstrap_params="$SCRIPT_DIR/bootstrap-params.json"
+        if [[ -f "$bootstrap_params" ]]; then
+            cp "$bootstrap_params" "$temp_params"
+            log_info "Using bootstrap parameters file: $bootstrap_params"
+        else
+            log_error "Bootstrap parameters file not found, using original with no substitution"
+            cp "$PARAMS_FILE" "$temp_params"
+        fi
+    fi
     
     echo "$temp_params"
 }
@@ -425,8 +446,24 @@ deploy_infrastructure() {
     fi
     
     # Show sanitized parameters for debugging (remove sensitive data)
+    log_info "=== DEPLOYMENT CONFIGURATION ==="
+    log_info "Parameters file: $temp_params"
+    log_info "Bicep template: $temp_bicep"
+    log_info "Resource Group: $RESOURCE_GROUP"
+    log_info "Location: $LOCATION"
+    log_info "Image Tag: $IMAGE_TAG"
+    log_info "Repository: $REPOSITORY_NAME"
+    log_info "Registry Server: ${registry_server:-'unknown'}"
+    log_info "====================================="
+    
     log_verbose "Deployment parameters (sanitized):"
-    jq '.parameters | to_entries | map(select(.key | test("password|secret|token") | not))' "$temp_params" 2>/dev/null || log_warning "Cannot parse parameters for display"
+    if jq '.parameters | to_entries | map(select(.key | test("password|secret|token") | not))' "$temp_params" 2>/dev/null; then
+        log_verbose "Parameters parsed successfully"
+    else
+        log_warning "Cannot parse parameters for display - checking file content"
+        log_warning "First few lines of parameters file:"
+        head -10 "$temp_params" 2>/dev/null || log_error "Cannot read parameters file"
+    fi
     
     if [[ "$DRY_RUN" == "true" ]]; then
         log_info "[DRY RUN] Would deploy with the following parameters:"
@@ -434,29 +471,38 @@ deploy_infrastructure() {
         return 0
     fi
 
-    # Check for existing managed certificates
-    log_info "Checking for existing managed certificates..."
-    local existing_cert_id=""
+    # Skip certificate management initially to avoid bootstrap issues
+    log_info "Skipping certificate management for initial deployment..."
+    log_info "Custom domain and certificates can be configured after successful deployment"
+    
+    # Force certificate creation to false to avoid dependencies
+    local updated_params=$(mktemp)
+    jq '.parameters.createManagedCertificate.value = false | .parameters.existingCertificateId.value = ""' \
+       "$temp_params" > "$updated_params"
+    temp_params="$updated_params"
+    log_info "Forced certificate creation to false for bootstrap deployment"
+
+    # Verify Container App Environment exists before deployment
+    log_info "Verifying Container App Environment exists..."
     local env_name="xregistry-pkg-registries-prod"
-    
-    # Query existing certificates for the domain
-    existing_cert_id=$(az containerapp env certificate list \
-        --name "$env_name" \
-        --resource-group "$RESOURCE_GROUP" \
-        --query "[?contains(properties.subjectName, 'packages.mcpxreg.com')].id" \
-        --output tsv 2>/dev/null | head -1)
-    
-    if [[ -n "$existing_cert_id" ]]; then
-        log_info "Found existing certificate: $existing_cert_id"
-        # Update parameters to use existing certificate
-        local updated_params=$(mktemp)
-        jq --arg certId "$existing_cert_id" \
-           '.parameters.createManagedCertificate.value = false | .parameters.existingCertificateId.value = $certId' \
-           "$temp_params" > "$updated_params"
-        temp_params="$updated_params"
-        log_info "Updated deployment to use existing certificate"
+    if ! az containerapp env show --name "$env_name" --resource-group "$RESOURCE_GROUP" >/dev/null 2>&1; then
+        log_error "Container App Environment '$env_name' not found in resource group '$RESOURCE_GROUP'"
+        log_error "Creating the environment first..."
+        
+        az containerapp env create \
+            --name "$env_name" \
+            --resource-group "$RESOURCE_GROUP" \
+            --location "$LOCATION" \
+            --logs-destination none \
+            --output none
+            
+        if [[ $? -ne 0 ]]; then
+            log_error "Failed to create Container App Environment"
+            exit 1
+        fi
+        log_success "Created Container App Environment: $env_name"
     else
-        log_info "No existing certificate found, will create new one"
+        log_success "Container App Environment verified: $env_name"
     fi
 
     # Enhanced validation with better error reporting
