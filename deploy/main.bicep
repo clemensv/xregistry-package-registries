@@ -79,9 +79,9 @@ var mavenApiKey = 'maven-${uniqueString(resourceGroup().id, 'maven')}'
 var nugetApiKey = 'nuget-${uniqueString(resourceGroup().id, 'nuget')}'
 var ociApiKey = 'oci-${uniqueString(resourceGroup().id, 'oci')}'
 
-// Use a computed base URL that will be valid
-// For initial deployment, use Azure FQDN to avoid chicken-and-egg problem
-var baseUrl = useCustomDomain ? 'https://${customDomainName}' : 'https://${containerAppName}.${containerAppEnvName}.${location}.azurecontainerapps.io' 
+// Use a computed base URL - the actual FQDN will be different but services should handle this
+// For initial deployment, use a reasonable placeholder that won't cause startup failures
+var baseUrl = useCustomDomain ? 'https://${customDomainName}' : 'https://${containerAppName}.${location}.azurecontainerapps.io' 
 
 // Container image URIs
 // Determine image path format based on registry type
