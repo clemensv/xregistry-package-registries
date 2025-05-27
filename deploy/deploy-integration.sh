@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-RESOURCE_GROUP="xregistry-package-registries"
+RESOURCE_GROUP="xregistry-package-registries-int"
 LOCATION="westeurope"
 GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-clemensv/xregistry-package-registries}"
@@ -23,6 +23,10 @@ echo "Location: $LOCATION"
 echo "Image Tag: $IMAGE_TAG"
 echo "Repository: $GITHUB_REPOSITORY"
 echo "Timestamp: $DEPLOYMENT_TIMESTAMP"
+
+# Create resource group if it doesn't exist
+echo "Checking/creating resource group..."
+az group create --name "$RESOURCE_GROUP" --location "$LOCATION" --output none
 
 # Deploy using Bicep with integration settings
 az deployment group create \
