@@ -1,4 +1,16 @@
-FROM node:23-alpine
+# Use official Node.js 18 Alpine image
+FROM node:18-alpine
+
+# Install diagnostic tools for troubleshooting
+RUN apk add --no-cache \
+    curl \
+    wget \
+    netstat-nat \
+    busybox-extras \
+    bind-tools \
+    jq \
+    htop \
+    procps
 
 # Add image identification
 LABEL org.xregistry.name="xregistry-npm-bridge"
@@ -7,45 +19,30 @@ LABEL org.xregistry.description="xRegistry API wrapper for NPM"
 # Create app directory
 WORKDIR /app
 
-# Copy package.json and package-lock.json
-COPY npm/package.json ./
+# Copy package files
+COPY npm/package*.json ./
 
-# Install app dependencies
-RUN npm install --production
+# Install dependencies
+RUN npm ci && npm cache clean --force
 
-# Copy shared logging module to parent directory so ../shared/logging/logger works
+# Copy application code
+COPY npm/src/ ./src/
 COPY shared/ ../shared/
 
-# Bundle app source
-COPY npm/ .
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S xregistry -u 1001
 
-# Create cache and all-packages directories
-RUN mkdir -p cache
-RUN mkdir -p all-packages
-RUN mkdir -p /logs
+# Change ownership of the app directory
+RUN chown -R xregistry:nodejs /app
+USER xregistry
 
-# Set environment variables
-ENV NODE_ENV=production
-ENV XREGISTRY_NPM_PORT=3100
-ENV PORT=3100
+# Expose port
+EXPOSE 3000
 
-# Document the available configuration options
-ENV XREGISTRY_NPM_LOG=
-ENV XREGISTRY_NPM_QUIET=false
-ENV XREGISTRY_NPM_BASEURL=
-ENV XREGISTRY_NPM_API_KEY=
+# Enhanced health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
+  CMD curl -f -s --max-time 5 http://localhost:3000/health || exit 1
 
-# Install all-the-package-names in the all-packages directory
-WORKDIR /app/all-packages
-RUN echo '{"name": "all-packages","version": "1.0.0","description": "Container for all-the-package-names"}' > package.json
-RUN npm install all-the-package-names
-WORKDIR /app
-
-# Expose the port the app runs on
-EXPOSE ${XREGISTRY_NPM_PORT}
-
-# Define volume for logs
-VOLUME ["/logs"]
-
-# Command to run the app
-CMD ["node", "server.js"] 
+# Start the application  
+CMD ["node", "src/server.js"] 

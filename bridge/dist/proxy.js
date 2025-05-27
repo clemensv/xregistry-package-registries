@@ -9,49 +9,104 @@ const http_proxy_middleware_1 = require("http-proxy-middleware");
 const fs_1 = __importDefault(require("fs"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const buffer_1 = require("buffer");
+const yargs_1 = __importDefault(require("yargs"));
+const helpers_1 = require("yargs/helpers");
 const logger_1 = require("../../shared/logging/logger");
 dotenv_1.default.config();
-// Initialize OpenTelemetry logger
+// Parse command line arguments
+const argv = (0, yargs_1.default)((0, helpers_1.hideBin)(process.argv))
+    .option('w3log', {
+    type: 'string',
+    description: 'Enable W3C Extended Log Format and specify log file path',
+    default: process.env.W3C_LOG_FILE
+})
+    .option('w3log-stdout', {
+    type: 'boolean',
+    description: 'Output W3C logs to stdout instead of file',
+    default: process.env.W3C_LOG_STDOUT === 'true'
+})
+    .option('port', {
+    type: 'number',
+    description: 'Port to listen on',
+    default: parseInt(process.env.PORT || '8080')
+})
+    .option('log-level', {
+    type: 'string',
+    choices: ['debug', 'info', 'warn', 'error'],
+    description: 'Log level',
+    default: process.env.LOG_LEVEL || 'info'
+})
+    .help()
+    .alias('help', 'h')
+    .parseSync();
+// Initialize enhanced logger with W3C support
 const logger = (0, logger_1.createLogger)({
     serviceName: process.env.SERVICE_NAME || 'xregistry-bridge',
     serviceVersion: process.env.SERVICE_VERSION || '1.0.0',
-    environment: process.env.NODE_ENV || 'production'
+    environment: process.env.NODE_ENV || 'production',
+    enableW3CLog: !!(argv.w3log || argv['w3log-stdout']),
+    w3cLogFile: argv.w3log,
+    w3cLogToStdout: argv['w3log-stdout']
 });
 const app = (0, express_1.default)();
-const PORT = process.env['PORT'] || '8080';
+const PORT = argv.port;
 const BASE_URL = process.env['BASE_URL'] || `http://localhost:${PORT}`;
 const BASE_URL_HEADER = process.env['BASE_URL_HEADER'] || 'x-base-url';
 const BRIDGE_API_KEY = process.env['BRIDGE_API_KEY'] || '';
 const REQUIRED_GROUPS = process.env['REQUIRED_GROUPS']?.split(',') || [];
-// New resilient startup configuration
-const STARTUP_WAIT_TIME = parseInt(process.env['STARTUP_WAIT_TIME'] || '15000'); // 15 seconds
-const RETRY_INTERVAL = parseInt(process.env['RETRY_INTERVAL'] || '60000'); // 1 minute
-const SERVER_HEALTH_TIMEOUT = parseInt(process.env['SERVER_HEALTH_TIMEOUT'] || '10000'); // 10 seconds
+// Enhanced resilient startup configuration
+const STARTUP_WAIT_TIME = parseInt(process.env['STARTUP_WAIT_TIME'] || '60000'); // Increased default
+const RETRY_INTERVAL = parseInt(process.env['RETRY_INTERVAL'] || '60000');
+const SERVER_HEALTH_TIMEOUT = parseInt(process.env['SERVER_HEALTH_TIMEOUT'] || '10000');
 // Load downstream configuration from file or environment variable
 function loadDownstreamConfig() {
     // First try to read from environment variable (useful for container deployments)
     const downstreamsEnv = process.env['DOWNSTREAMS_JSON'];
     if (downstreamsEnv) {
-        logger.info('Loading downstream configuration from DOWNSTREAMS_JSON environment variable');
+        logger.info('Loading downstream configuration from DOWNSTREAMS_JSON environment variable', {
+            configLength: downstreamsEnv.length,
+            source: 'environment'
+        });
         try {
             const config = JSON.parse(downstreamsEnv);
-            return config.servers || [];
+            const servers = config.servers || [];
+            logger.info('Parsed downstream configuration', {
+                serverCount: servers.length,
+                servers: servers.map((s) => ({ url: s.url, hasApiKey: !!s.apiKey }))
+            });
+            return servers;
         }
         catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
-            logger.error('Failed to parse DOWNSTREAMS_JSON environment variable', { error: errorMessage });
+            logger.error('Failed to parse DOWNSTREAMS_JSON environment variable', {
+                error: errorMessage,
+                configPreview: downstreamsEnv.substring(0, 100) + '...'
+            });
             throw new Error('Invalid DOWNSTREAMS_JSON format');
         }
     }
     // Fallback to file-based configuration
     const configFile = process.env['BRIDGE_CONFIG_FILE'] || 'downstreams.json';
-    logger.info('Loading downstream configuration from file', { configFile });
+    logger.info('Loading downstream configuration from file', { configFile, source: 'file' });
     try {
-        return JSON.parse(fs_1.default.readFileSync(configFile, 'utf-8')).servers;
+        const fileContent = fs_1.default.readFileSync(configFile, 'utf-8');
+        const config = JSON.parse(fileContent);
+        const servers = config.servers || [];
+        logger.info('Loaded configuration from file', {
+            configFile,
+            serverCount: servers.length,
+            servers: servers.map((s) => ({ url: s.url, hasApiKey: !!s.apiKey }))
+        });
+        return servers;
     }
     catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        logger.error('Failed to read configuration file', { configFile, error: errorMessage });
+        logger.error('Failed to read configuration file', {
+            configFile,
+            error: errorMessage,
+            cwd: process.cwd(),
+            configExists: fs_1.default.existsSync(configFile)
+        });
         throw new Error(`Configuration file ${configFile} not found or invalid`);
     }
 }
@@ -60,20 +115,43 @@ const downstreams = loadDownstreamConfig();
 let serverStates = new Map();
 let httpServer = null;
 let isServerRunning = false;
-// Replace morgan with OpenTelemetry middleware
+// Enhanced request logging middleware
 app.use(logger.middleware());
 // User extraction from ACA headers
 function extractUser(req) {
     const encoded = req.headers['x-ms-client-principal'];
     if (!encoded)
         return null;
-    const decoded = buffer_1.Buffer.from(encoded, 'base64').toString('utf8');
-    return JSON.parse(decoded);
+    try {
+        const decoded = buffer_1.Buffer.from(encoded, 'base64').toString('utf8');
+        return JSON.parse(decoded);
+    }
+    catch (error) {
+        logger.warn('Failed to decode user principal', {
+            error: error instanceof Error ? error.message : String(error),
+            headerPresent: !!encoded
+        });
+        return null;
+    }
 }
-// Security middleware (API key OR ACA Entra group claim)
+// Enhanced security middleware with detailed logging
 app.use((req, res, next) => {
-    if (!BRIDGE_API_KEY && REQUIRED_GROUPS.length === 0)
+    // Skip authentication for health endpoints and localhost requests
+    if (req.path === '/health' || req.path === '/status' || req.hostname === 'localhost') {
+        logger.debug('Skipping authentication for endpoint', {
+            path: req.path,
+            hostname: req.hostname,
+            ip: req.ip
+        });
         return next();
+    }
+    if (!BRIDGE_API_KEY && REQUIRED_GROUPS.length === 0) {
+        logger.debug('No authentication configured, allowing request', {
+            method: req.method,
+            url: req.url
+        });
+        return next();
+    }
     const apiKeyOk = BRIDGE_API_KEY && req.headers.authorization?.includes(BRIDGE_API_KEY);
     const user = extractUser(req);
     const groupOk = REQUIRED_GROUPS.length === 0 || (user &&
@@ -83,18 +161,28 @@ app.use((req, res, next) => {
         logger.debug('Request authorized', {
             method: req.method,
             url: req.url,
+            path: req.path,
             authMethod: apiKeyOk ? 'api-key' : 'group-claim',
-            userId: user?.userId
+            userId: user?.userId,
+            userGroups: user?.claims?.filter((c) => c.typ === 'groups').map((c) => c.val) || []
         });
         return next();
     }
-    logger.warn('Unauthorized request', {
+    logger.warn('Unauthorized request blocked', {
         method: req.method,
         url: req.url,
+        path: req.path,
+        ip: req.ip,
+        userAgent: req.get('User-Agent'),
         hasApiKey: !!req.headers.authorization,
-        userGroups: user?.claims?.filter((c) => c.typ === 'groups').map((c) => c.val) || []
+        hasUserPrincipal: !!req.headers['x-ms-client-principal'],
+        userGroups: user?.claims?.filter((c) => c.typ === 'groups').map((c) => c.val) || [],
+        requiredGroups: REQUIRED_GROUPS
     });
-    return res.status(401).send('Unauthorized');
+    return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'Valid API key or group membership required'
+    });
 });
 // Consolidation logic
 let consolidatedModel = {};

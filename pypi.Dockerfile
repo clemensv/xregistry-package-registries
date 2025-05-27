@@ -1,40 +1,44 @@
-FROM node:23-alpine
+# Use official Python 3.11 Alpine image
+FROM python:3.11-alpine
 
-# Create app directory
+# Install diagnostic tools for troubleshooting
+RUN apk add --no-cache \
+    curl \
+    wget \
+    netstat-nat \
+    busybox-extras \
+    bind-tools \
+    jq \
+    htop \
+    procps
+
+# Set working directory
 WORKDIR /app
 
-# Copy package.json and package-lock.json
-COPY pypi/package.json ./
+# Copy requirements file
+COPY pypi/requirements.txt .
 
-# Install app dependencies
-RUN npm install --production
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy shared logging module to parent directory so ../shared/logging/logger works
+# Copy application code
+COPY pypi/src/ ./src/
 COPY shared/ ../shared/
 
-# Bundle app source
-COPY pypi/ .
+# Create non-root user
+RUN addgroup -g 1001 -S python && \
+    adduser -S xregistry -u 1001 -G python
 
-# Create cache and logs directories
-RUN mkdir -p cache
-RUN mkdir -p /logs
+# Change ownership of the app directory
+RUN chown -R xregistry:python /app
+USER xregistry
 
-# Set environment variables
-ENV NODE_ENV=production
-ENV XREGISTRY_PYPI_PORT=3000
-ENV PORT=3000
+# Expose port
+EXPOSE 3100
 
-# Document the available configuration options
-ENV XREGISTRY_PYPI_LOG=
-ENV XREGISTRY_PYPI_QUIET=false
-ENV XREGISTRY_PYPI_BASEURL=
-ENV XREGISTRY_PYPI_API_KEY=
+# Enhanced health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
+  CMD curl -f -s --max-time 5 http://localhost:3100/health || exit 1
 
-# Expose the port the app runs on
-EXPOSE ${XREGISTRY_PYPI_PORT}
-
-# Define volume for logs
-VOLUME ["/logs"]
-
-# Command to run the app
-CMD ["node", "server.js"] 
+# Start the application
+CMD ["python", "src/server.py"] 

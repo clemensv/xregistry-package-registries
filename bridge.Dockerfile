@@ -23,6 +23,17 @@ RUN npm run build
 # Production stage
 FROM node:18-alpine AS production
 
+# Install diagnostic tools for troubleshooting
+RUN apk add --no-cache \
+    curl \
+    wget \
+    netstat-nat \
+    busybox-extras \
+    bind-tools \
+    jq \
+    htop \
+    procps
+
 # Create app directory
 WORKDIR /app
 
@@ -49,9 +60,9 @@ USER xregistry
 # Expose port
 EXPOSE 8080
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node -e "const http=require('http');const options={hostname:'localhost',port:8080,path:'/health',timeout:2000};const req=http.request(options,(res)=>{if(res.statusCode===200){process.exit(0)}else{process.exit(1)}});req.on('error',()=>process.exit(1));req.end();"
+# Enhanced health check with better diagnostics
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
+  CMD curl -f -s --max-time 5 http://localhost:8080/health || exit 1
 
 # Start the application
 CMD ["node", "dist/proxy.js"] 

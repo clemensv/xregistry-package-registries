@@ -1,5 +1,5 @@
 /**
- * TypeScript declarations for OpenTelemetry-Conformant xRegistry Logging Library
+ * TypeScript declarations for Enhanced xRegistry Logging Library
  */
 
 export interface LoggerOptions {
@@ -9,6 +9,10 @@ export interface LoggerOptions {
   enableConsole?: boolean;
   enableFile?: boolean;
   logFile?: string;
+  enableW3CLog?: boolean;
+  w3cLogFile?: string;
+  w3cLogToStdout?: boolean;
+  context?: LogData;
 }
 
 export interface LogData {
@@ -32,6 +36,13 @@ export interface XRegistryLogger {
   setRequestContext(req: any, res: any, next: any): void;
   child(additionalContext?: LogData): XRegistryLogger;
   close(): Promise<void>;
+  
+  // Enhanced logging methods
+  sanitizeHeaders(headers: any): any;
+  writeW3CLogEntry(req: any, res: any, duration: number): void;
+  writeW3CHeader(toStdout?: boolean): void;
+  initializeW3CLogging(): void;
+  initializeFileLogging(): void;
 }
 
 export declare const LOG_LEVELS: {
