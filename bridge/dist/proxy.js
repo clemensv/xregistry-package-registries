@@ -11,6 +11,7 @@ const dotenv_1 = __importDefault(require("dotenv"));
 const buffer_1 = require("buffer");
 const yargs_1 = __importDefault(require("yargs"));
 const helpers_1 = require("yargs/helpers");
+const uuid_1 = require("uuid");
 const logger_1 = require("../../shared/logging/logger");
 dotenv_1.default.config();
 // Parse command line arguments
@@ -196,13 +197,29 @@ function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 // Test server connectivity and fetch model
-async function testServer(server) {
+async function testServer(server, req) {
     const startTime = Date.now();
+    const headers = {};
     try {
-        const headers = {};
         if (server.apiKey)
             headers['Authorization'] = `Bearer ${server.apiKey}`;
-        logger.debug('Testing server connectivity', { serverUrl: server.url });
+        // Add distributed tracing headers if we have a request context
+        if (req && req.logger) {
+            const traceHeaders = req.logger.createDownstreamHeaders ?
+                req.logger.createDownstreamHeaders(req) : {};
+            Object.assign(headers, traceHeaders);
+        }
+        else {
+            // Generate trace context for internal calls
+            const traceId = (0, uuid_1.v4)().replace(/-/g, '');
+            const spanId = (0, uuid_1.v4)().replace(/-/g, '').substring(0, 16);
+            headers['x-correlation-id'] = (0, uuid_1.v4)();
+            headers['traceparent'] = `00-${traceId}-${spanId}-01`;
+        }
+        logger.debug('Testing server connectivity', {
+            serverUrl: server.url,
+            traceHeaders: Object.keys(headers).filter(h => h.startsWith('x-') || h === 'traceparent')
+        });
         // Test /model endpoint specifically
         const modelResponse = await axios_1.default.get(`${server.url}/model`, {
             headers,
@@ -217,7 +234,9 @@ async function testServer(server) {
         logger.info('Server connectivity test successful', {
             serverUrl: server.url,
             duration,
-            modelGroups: Object.keys(modelResponse.data.groups || {}).length
+            modelGroups: Object.keys(modelResponse.data.groups || {}).length,
+            traceId: headers['x-trace-id'] || 'generated',
+            correlationId: headers['x-correlation-id']
         });
         return {
             model: modelResponse.data,
@@ -229,7 +248,9 @@ async function testServer(server) {
         logger.error('Server connectivity test failed', {
             serverUrl: server.url,
             duration,
-            error: error instanceof Error ? error.message : String(error)
+            error: error instanceof Error ? error.message : String(error),
+            traceId: headers['x-trace-id'] || 'generated',
+            correlationId: headers['x-correlation-id']
         });
         return null;
     }
@@ -412,6 +433,11 @@ async function checkServerHealth(server) {
         const headers = {};
         if (server.apiKey)
             headers['Authorization'] = `Bearer ${server.apiKey}`;
+        // Add trace context for health checks
+        const traceId = (0, uuid_1.v4)().replace(/-/g, '');
+        const spanId = (0, uuid_1.v4)().replace(/-/g, '').substring(0, 16);
+        headers['x-correlation-id'] = (0, uuid_1.v4)();
+        headers['traceparent'] = `00-${traceId}-${spanId}-01`;
         await axios_1.default.get(`${server.url}/model`, {
             headers,
             timeout: 5000 // 5 second timeout for health checks
@@ -442,17 +468,37 @@ function setupDynamicRoutes() {
                 if (backend.apiKey) {
                     proxyReq.setHeader('Authorization', `Bearer ${backend.apiKey}`);
                 }
+                // Inject distributed tracing headers
+                if (req.logger && req.logger.createDownstreamHeaders) {
+                    const traceHeaders = req.logger.createDownstreamHeaders(req);
+                    Object.entries(traceHeaders).forEach(([key, value]) => {
+                        proxyReq.setHeader(key, value);
+                    });
+                    logger.debug('Injected trace headers into proxy request', {
+                        groupType,
+                        targetUrl,
+                        traceId: req.traceId,
+                        correlationId: req.correlationId,
+                        requestId: req.requestId,
+                        injectedHeaders: Object.keys(traceHeaders)
+                    });
+                }
             },
             onError: (err, req, res) => {
                 logger.error('Proxy error', {
                     groupType,
                     targetUrl,
-                    error: err instanceof Error ? err.message : String(err)
+                    error: err instanceof Error ? err.message : String(err),
+                    traceId: req.traceId,
+                    correlationId: req.correlationId,
+                    requestId: req.requestId
                 });
                 res.status(502).json({
                     error: 'Bad Gateway',
                     message: `Upstream server ${targetUrl} is not available`,
-                    groupType
+                    groupType,
+                    traceId: req.traceId,
+                    correlationId: req.correlationId
                 });
             }
         }));

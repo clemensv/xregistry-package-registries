@@ -43,6 +43,14 @@ export interface XRegistryLogger {
   writeW3CHeader(toStdout?: boolean): void;
   initializeW3CLogging(): void;
   initializeFileLogging(): void;
+  
+  // OpenTelemetry context methods
+  extractOrGenerateTraceContext(req: any): any;
+  isValidTraceparent(traceparent: string): boolean;
+  generateTraceId(): string;
+  generateSpanId(): string;
+  generateCorrelationId(): string;
+  createDownstreamHeaders(req: any, additionalHeaders?: any): any;
 }
 
 export declare const LOG_LEVELS: {

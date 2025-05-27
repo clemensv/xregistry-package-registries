@@ -3,6 +3,7 @@ const axios = require("axios");
 const fs = require("fs");
 const path = require("path");
 const yargs = require("yargs");
+const { v4: uuidv4 } = require("uuid");
 const { createLogger } = require("../shared/logging/logger");
 const app = express();
 
@@ -16,13 +17,23 @@ const argv = yargs
   })
   .option('log', {
     alias: 'l',
-    description: 'Path to log file in W3C Extended Log File Format',
+    description: 'Path to trace log file (OpenTelemetry format)',
     type: 'string',
     default: process.env.XREGISTRY_PYPI_LOG || null
   })
+  .option('w3log', {
+    description: 'Enable W3C Extended Log Format and specify log file path',
+    type: 'string',
+    default: process.env.W3C_LOG_FILE
+  })
+  .option('w3log-stdout', {
+    description: 'Output W3C logs to stdout instead of file',
+    type: 'boolean',
+    default: process.env.W3C_LOG_STDOUT === 'true'
+  })
   .option('quiet', {
     alias: 'q',
-    description: 'Suppress logging to stdout',
+    description: 'Suppress trace logging to stderr',
     type: 'boolean',
     default: process.env.XREGISTRY_PYPI_QUIET === 'true' || false
   })
@@ -38,6 +49,12 @@ const argv = yargs
     type: 'string',
     default: process.env.XREGISTRY_PYPI_API_KEY || null
   })
+  .option('log-level', {
+    description: 'Log level',
+    type: 'string',
+    choices: ['debug', 'info', 'warn', 'error'],
+    default: process.env.LOG_LEVEL || 'info'
+  })
   .help()
   .argv;
 
@@ -47,14 +64,17 @@ const QUIET_MODE = argv.quiet;
 const BASE_URL = argv.baseurl;
 const API_KEY = argv.apiKey;
 
-// Initialize OpenTelemetry logger
+// Initialize enhanced logger with W3C support and OTel context
 const logger = createLogger({
   serviceName: process.env.SERVICE_NAME || 'xregistry-pypi',
   serviceVersion: process.env.SERVICE_VERSION || '1.0.0',
   environment: process.env.NODE_ENV || 'production',
   enableFile: !!LOG_FILE,
   logFile: LOG_FILE,
-  enableConsole: !QUIET_MODE
+  enableConsole: !QUIET_MODE,
+  enableW3CLog: !!(argv.w3log || argv['w3log-stdout']),
+  w3cLogFile: argv.w3log,
+  w3cLogToStdout: argv['w3log-stdout']
 });
 
 const REGISTRY_ID = "pypi-wrapper";
@@ -220,11 +240,39 @@ if (!fs.existsSync(cacheDir)) {
 }
 
 // Helper function to check if a package exists in PyPI
-async function packageExists(packageName) {
+async function packageExists(packageName, req = null) {
+  const checkId = uuidv4().substring(0, 8);
+  const startTime = Date.now();
+  
   try {
+    logger.debug("Checking PyPI package existence", { 
+      checkId,
+      packageName,
+      registryUrl: `https://pypi.org/pypi/${packageName}/json`,
+      traceId: req?.traceId,
+      correlationId: req?.correlationId
+    });
+    
     await cachedGet(`https://pypi.org/pypi/${packageName}/json`);
+    
+    logger.debug("Package exists in PyPI", { 
+      checkId,
+      packageName,
+      duration: Date.now() - startTime,
+      traceId: req?.traceId,
+      correlationId: req?.correlationId
+    });
+    
     return true;
   } catch (error) {
+    logger.debug("Package does not exist in PyPI", { 
+      checkId,
+      packageName,
+      error: error.message,
+      duration: Date.now() - startTime,
+      traceId: req?.traceId,
+      correlationId: req?.correlationId
+    });
     return false;
   }
 }

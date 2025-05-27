@@ -12,6 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const url = require('url');
+const crypto = require('crypto');
 
 class XRegistryLogger {
   constructor(options = {}) {
@@ -137,16 +138,28 @@ class XRegistryLogger {
   }
 
   /**
-   * Enhanced Express middleware for request logging with detailed parameters
+   * Enhanced Express middleware for request logging with detailed parameters and OTel context
    */
   middleware() {
     return (req, res, next) => {
       const startTime = Date.now();
       const startHrTime = process.hrtime();
       
+      // Extract or generate trace context for distributed tracing
+      const traceContext = this.extractOrGenerateTraceContext(req);
+      
       // Store request ID and detailed context for correlation
-      req.requestId = this.generateRequestId();
-      req.logger = this.child({ requestId: req.requestId });
+      req.requestId = traceContext.requestId;
+      req.traceId = traceContext.traceId;
+      req.spanId = traceContext.spanId;
+      req.traceFlags = traceContext.traceFlags;
+      req.correlationId = traceContext.correlationId;
+      req.logger = this.child({ 
+        requestId: req.requestId,
+        traceId: req.traceId,
+        spanId: req.spanId,
+        correlationId: req.correlationId
+      });
       req.startTime = startTime;
 
       // Enhanced request logging with detailed parameters
@@ -448,10 +461,124 @@ class XRegistryLogger {
   }
 
   /**
+   * Extract or generate OpenTelemetry trace context for distributed tracing
+   */
+  extractOrGenerateTraceContext(req) {
+    let traceId, spanId, traceFlags = '01';
+    let correlationId = req.headers['x-correlation-id'];
+    let requestId;
+
+    // Extract W3C trace context from traceparent header
+    const traceparent = req.headers['traceparent'];
+    if (traceparent && this.isValidTraceparent(traceparent)) {
+      const parts = traceparent.split('-');
+      traceId = parts[1];
+      const parentSpanId = parts[2];
+      traceFlags = parts[3];
+      
+      // Generate new span ID for this service
+      spanId = this.generateSpanId();
+      requestId = req.headers['x-request-id'] || this.generateRequestId();
+      
+      this.debug('Extracted trace context from upstream', {
+        traceId,
+        parentSpanId,
+        spanId,
+        traceFlags,
+        requestId,
+        correlationId
+      });
+    } else {
+      // Generate new trace context
+      traceId = this.generateTraceId();
+      spanId = this.generateSpanId();
+      requestId = req.headers['x-request-id'] || this.generateRequestId();
+      correlationId = correlationId || this.generateCorrelationId();
+      
+      this.debug('Generated new trace context', {
+        traceId,
+        spanId,
+        traceFlags,
+        requestId,
+        correlationId
+      });
+    }
+
+    // Set response headers for downstream propagation
+    if (req.res) {
+      req.res.setHeader('x-request-id', requestId);
+      req.res.setHeader('x-correlation-id', correlationId);
+      req.res.setHeader('x-trace-id', traceId);
+    }
+
+    return {
+      traceId,
+      spanId,
+      traceFlags,
+      requestId,
+      correlationId
+    };
+  }
+
+  /**
+   * Validate W3C traceparent header format
+   */
+  isValidTraceparent(traceparent) {
+    // W3C format: 00-<trace-id>-<parent-id>-<trace-flags>
+    const regex = /^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$/;
+    return regex.test(traceparent);
+  }
+
+  /**
+   * Generate W3C trace ID (32 hex characters)
+   */
+  generateTraceId() {
+    return crypto.randomBytes(16).toString('hex');
+  }
+
+  /**
+   * Generate W3C span ID (16 hex characters)
+   */
+  generateSpanId() {
+    return crypto.randomBytes(8).toString('hex');
+  }
+
+  /**
+   * Generate correlation ID
+   */
+  generateCorrelationId() {
+    return crypto.randomBytes(16).toString('hex');
+  }
+
+  /**
    * Generate unique request ID
    */
   generateRequestId() {
     return Math.random().toString(36).substr(2, 9);
+  }
+
+  /**
+   * Create headers for downstream service calls with trace context
+   */
+  createDownstreamHeaders(req, additionalHeaders = {}) {
+    const headers = {
+      'x-request-id': req.requestId,
+      'x-correlation-id': req.correlationId,
+      'x-trace-id': req.traceId,
+      ...additionalHeaders
+    };
+
+    // Add W3C traceparent header for standards compliance
+    if (req.traceId && req.spanId) {
+      headers['traceparent'] = `00-${req.traceId}-${req.spanId}-${req.traceFlags || '01'}`;
+    }
+
+    // Propagate tracestate if present
+    if (req.headers['tracestate']) {
+      headers['tracestate'] = req.headers['tracestate'];
+    }
+
+    return headers;
   }
 
   /**
