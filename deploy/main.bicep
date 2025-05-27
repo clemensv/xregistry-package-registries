@@ -411,41 +411,8 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
               value: 'xregistry-npm'
             }
           ]
-          probes: [
-            {
-              type: 'startup'
-              httpGet: {
-                path: '/health'
-                port: 3100
-              }
-              initialDelaySeconds: 30
-              periodSeconds: 5
-              timeoutSeconds: 5
-              failureThreshold: 24
-            }
-            {
-              type: 'liveness'
-              httpGet: {
-                path: '/health'
-                port: 3100
-              }
-              initialDelaySeconds: 60
-              periodSeconds: 10
-              timeoutSeconds: 5
-              failureThreshold: 3
-            }
-            {
-              type: 'readiness'
-              httpGet: {
-                path: '/health'
-                port: 3100
-              }
-              initialDelaySeconds: 5
-              periodSeconds: 5
-              timeoutSeconds: 5
-              failureThreshold: 3
-            }
-          ]
+          // Temporarily disable probes to test if they're causing restarts
+          probes: []
         }
         // PyPI Container
         {
@@ -497,41 +464,8 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
               value: 'xregistry-pypi'
             }
           ]
-          probes: [
-            {
-              type: 'startup'
-              httpGet: {
-                path: '/health'
-                port: 3000
-              }
-              initialDelaySeconds: 30
-              periodSeconds: 5
-              timeoutSeconds: 5
-              failureThreshold: 24
-            }
-            {
-              type: 'liveness'
-              httpGet: {
-                path: '/health'
-                port: 3000
-              }
-              initialDelaySeconds: 60
-              periodSeconds: 10
-              timeoutSeconds: 5
-              failureThreshold: 3
-            }
-            {
-              type: 'readiness'
-              httpGet: {
-                path: '/health'
-                port: 3000
-              }
-              initialDelaySeconds: 5
-              periodSeconds: 5
-              timeoutSeconds: 5
-              failureThreshold: 3
-            }
-          ]
+          // Temporarily disable probes to test if they're causing restarts
+          probes: []
         }
         // Maven Container
         {
@@ -583,41 +517,8 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
               value: 'xregistry-maven'
             }
           ]
-          probes: [
-            {
-              type: 'startup'
-              httpGet: {
-                path: '/health'
-                port: 3300
-              }
-              initialDelaySeconds: 30
-              periodSeconds: 5
-              timeoutSeconds: 5
-              failureThreshold: 24
-            }
-            {
-              type: 'liveness'
-              httpGet: {
-                path: '/health'
-                port: 3300
-              }
-              initialDelaySeconds: 60
-              periodSeconds: 10
-              timeoutSeconds: 5
-              failureThreshold: 3
-            }
-            {
-              type: 'readiness'
-              httpGet: {
-                path: '/health'
-                port: 3300
-              }
-              initialDelaySeconds: 5
-              periodSeconds: 5
-              timeoutSeconds: 5
-              failureThreshold: 3
-            }
-          ]
+          // Temporarily disable probes to test if they're causing restarts
+          probes: []
         }
         // NuGet Container
         {
@@ -669,41 +570,8 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
               value: 'xregistry-nuget'
             }
           ]
-          probes: [
-            {
-              type: 'startup'
-              httpGet: {
-                path: '/health'
-                port: 3200
-              }
-              initialDelaySeconds: 30
-              periodSeconds: 5
-              timeoutSeconds: 5
-              failureThreshold: 24
-            }
-            {
-              type: 'liveness'
-              httpGet: {
-                path: '/health'
-                port: 3200
-              }
-              initialDelaySeconds: 60
-              periodSeconds: 10
-              timeoutSeconds: 5
-              failureThreshold: 3
-            }
-            {
-              type: 'readiness'
-              httpGet: {
-                path: '/health'
-                port: 3200
-              }
-              initialDelaySeconds: 5
-              periodSeconds: 5
-              timeoutSeconds: 5
-              failureThreshold: 3
-            }
-          ]
+          // Temporarily disable probes to test if they're causing restarts
+          probes: []
         }
         // OCI Container
         {
@@ -755,41 +623,8 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
               value: 'xregistry-oci'
             }
           ]
-          probes: [
-            {
-              type: 'startup'
-              httpGet: {
-                path: '/health'
-                port: 3400
-              }
-              initialDelaySeconds: 30
-              periodSeconds: 5
-              timeoutSeconds: 5
-              failureThreshold: 24
-            }
-            {
-              type: 'liveness'
-              httpGet: {
-                path: '/health'
-                port: 3400
-              }
-              initialDelaySeconds: 60
-              periodSeconds: 10
-              timeoutSeconds: 5
-              failureThreshold: 3
-            }
-            {
-              type: 'readiness'
-              httpGet: {
-                path: '/health'
-                port: 3400
-              }
-              initialDelaySeconds: 5
-              periodSeconds: 5
-              timeoutSeconds: 5
-              failureThreshold: 3
-            }
-          ]
+          // Temporarily disable probes to test if they're causing restarts
+          probes: []
         }
       ]
       scale: {
