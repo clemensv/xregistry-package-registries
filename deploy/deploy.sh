@@ -460,7 +460,6 @@ deploy_infrastructure() {
     log_info "Location: $LOCATION"
     log_info "Image Tag: $IMAGE_TAG"
     log_info "Repository: $REPOSITORY_NAME"
-    log_info "Registry Server: $registry_server"
     log_info "====================================="
     
     log_verbose "Deployment parameters (sanitized):"
