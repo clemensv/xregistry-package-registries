@@ -572,10 +572,13 @@ jobs:
         id: tag
         run: |
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            echo "IMAGE_TAG=${{ github.ref_name }}" >> $GITHUB_ENV
+            # Strip 'v' prefix from tag (git tags use v1.0.0, containers use 1.0.0)
+            TAG="${{ github.ref_name }}"
+            echo "IMAGE_TAG=${TAG#v}" >> $GITHUB_ENV
           else
             echo "IMAGE_TAG=latest" >> $GITHUB_ENV
           fi
+          echo "Selected image tag: $IMAGE_TAG"
 
       - name: Ensure Resource Group
         run: |

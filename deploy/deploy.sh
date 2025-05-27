@@ -377,12 +377,14 @@ create_parameters_file() {
     fi
     
     # Read template and substitute values
+    # Force useCustomDomain to false to avoid baseURL bootstrap issues
     cat "$PARAMS_FILE" | \
         sed "s|{{GITHUB_ACTOR}}|$registry_username|g" | \
         sed "s|{{GITHUB_TOKEN}}|$registry_password|g" | \
         sed "s|{{IMAGE_TAG}}|$IMAGE_TAG|g" | \
         sed "s|{{REPOSITORY_NAME}}|$image_repository|g" | \
-        sed "s|ghcr.io|$registry_server|g" \
+        sed "s|ghcr.io|$registry_server|g" | \
+        sed 's|"useCustomDomain": *{[^}]*}|"useCustomDomain": {"value": false}|g' \
         > "$temp_params"
     
     echo "$temp_params"
@@ -412,6 +414,19 @@ deploy_infrastructure() {
     log_info "Image Tag: $IMAGE_TAG"
     log_info "Note: For new container builds, ensure GitHub Actions have completed for tag: v$IMAGE_TAG"
     log_info "Repository: $REPOSITORY_NAME"
+    
+    # Validate parameters file before deployment
+    log_info "Validating parameters file..."
+    if ! jq empty "$temp_params" 2>/dev/null; then
+        log_error "Invalid JSON in parameters file"
+        log_error "Parameters file content:"
+        cat "$temp_params" || log_error "Cannot read parameters file"
+        exit 1
+    fi
+    
+    # Show sanitized parameters for debugging (remove sensitive data)
+    log_verbose "Deployment parameters (sanitized):"
+    jq '.parameters | to_entries | map(select(.key | test("password|secret|token") | not))' "$temp_params" 2>/dev/null || log_warning "Cannot parse parameters for display"
     
     if [[ "$DRY_RUN" == "true" ]]; then
         log_info "[DRY RUN] Would deploy with the following parameters:"
@@ -444,47 +459,88 @@ deploy_infrastructure() {
         log_info "No existing certificate found, will create new one"
     fi
 
-    # Validate the deployment
-    log_info "Validating deployment..."
-    az deployment group validate \
+    # Enhanced validation with better error reporting
+    log_info "Validating deployment template and parameters..."
+    local validation_output
+    validation_output=$(az deployment group validate \
         --resource-group "$RESOURCE_GROUP" \
         --template-file "$temp_bicep" \
         --parameters "@$temp_params" \
-        --verbose
+        --output json 2>&1)
+    
+    local validation_result=$?
+    if [[ $validation_result -ne 0 ]]; then
+        log_error "Deployment validation failed"
+        log_error "Validation output:"
+        echo "$validation_output" | jq -r '.error.message // .' 2>/dev/null || echo "$validation_output"
+        
+        # Check for common issues
+        if echo "$validation_output" | grep -q "unauthorized"; then
+            log_error "Authentication issue detected. Check Azure credentials and permissions."
+        elif echo "$validation_output" | grep -q "InvalidTemplate"; then
+            log_error "Template validation issue. Check Bicep template syntax."
+        elif echo "$validation_output" | grep -q "InvalidParameter"; then
+            log_error "Parameter validation issue. Check parameter values and types."
+        fi
+        exit 1
+    fi
 
     log_success "Deployment validation passed"
 
-    # Execute the deployment
+    # Execute the deployment with enhanced error handling
     log_info "Executing deployment (this may take several minutes)..."
     local deployment_output
+    local deployment_start=$(date +%s)
+    
     deployment_output=$(az deployment group create \
         --resource-group "$RESOURCE_GROUP" \
         --name "$deployment_name" \
         --template-file "$temp_bicep" \
         --parameters "@$temp_params" \
-        --output json)
-
-    if [[ $? -eq 0 ]]; then
-        log_success "Deployment completed successfully"
+        --output json 2>&1)
+    
+    local deployment_result=$?
+    local deployment_end=$(date +%s)
+    local deployment_duration=$((deployment_end - deployment_start))
+    
+    if [[ $deployment_result -eq 0 ]]; then
+        log_success "Deployment completed successfully in ${deployment_duration}s"
         
-        # Extract outputs
-        local fqdn=$(echo "$deployment_output" | jq -r '.properties.outputs.containerAppFqdn.value')
-        local app_name=$(echo "$deployment_output" | jq -r '.properties.outputs.containerAppName.value')
-        local app_insights_key=$(echo "$deployment_output" | jq -r '.properties.outputs.appInsightsInstrumentationKey.value')
+        # Extract outputs with error handling
+        local fqdn app_name app_insights_key
+        fqdn=$(echo "$deployment_output" | jq -r '.properties.outputs.containerAppFqdn.value // "unknown"' 2>/dev/null)
+        app_name=$(echo "$deployment_output" | jq -r '.properties.outputs.containerAppName.value // "unknown"' 2>/dev/null)
+        app_insights_key=$(echo "$deployment_output" | jq -r '.properties.outputs.appInsightsInstrumentationKey.value // "unknown"' 2>/dev/null)
         
-        log_success "Container App FQDN: https://$fqdn"
-        log_success "Application Insights Key: $app_insights_key"
+        if [[ "$fqdn" != "unknown" && "$fqdn" != "null" ]]; then
+            log_success "Container App FQDN: https://$fqdn"
+        else
+            log_warning "Could not extract FQDN from deployment output"
+        fi
         
-        # Test the deployment
-        test_deployment "$fqdn"
+        if [[ "$app_insights_key" != "unknown" && "$app_insights_key" != "null" ]]; then
+            log_success "Application Insights Key: $app_insights_key"
+        else
+            log_warning "Could not extract Application Insights key from deployment output"
+        fi
+        
+        # Test the deployment if FQDN is available
+        if [[ "$fqdn" != "unknown" && "$fqdn" != "null" ]]; then
+            test_deployment "$fqdn"
+        else
+            log_warning "Skipping deployment test due to missing FQDN"
+        fi
         
     else
-        log_error "Deployment failed"
+        log_error "Deployment failed after ${deployment_duration}s"
+        log_error "Deployment output:"
+        echo "$deployment_output" | jq -r '.error.message // .' 2>/dev/null || echo "$deployment_output"
+        
+        # Show container app status for debugging
+        show_container_status
         exit 1
     fi
 }
-
-
 
 # Test the deployment
 test_deployment() {

@@ -2,11 +2,38 @@
   "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
   "contentVersion": "1.0.0.0",
   "parameters": {
+    "baseName": {
+      "value": "xregistry-pkg-registries"
+    },
+    "environment": {
+      "value": "prod"
+    },
+    "containerRegistryServer": {
+      "value": "ghcr.io"
+    },
+    "containerRegistryUsername": {
+      "value": "{{GITHUB_ACTOR}}"
+    },
+    "containerRegistryPassword": {
+      "value": "{{GITHUB_TOKEN}}"
+    },
+    "imageTag": {
+      "value": "{{IMAGE_TAG}}"
+    },
+    "repositoryName": {
+      "value": "{{REPOSITORY_NAME}}"
+    },
     "alertEmailAddress": {
       "value": "clemensv@microsoft.com"
     },
-    "baseName": {
-      "value": "xregistry-pkg-registries"
+    "useCustomDomain": {
+      "value": false
+    },
+    "createManagedCertificate": {
+      "value": false
+    },
+    "existingCertificateId": {
+      "value": ""
     },
     "bridgeCpu": {
       "value": "0.5"
@@ -14,32 +41,12 @@
     "bridgeMemory": {
       "value": "1.0Gi"
     },
-    "containerRegistryServer": {
-      "value": "ghcr.io"
-    },
-    "containerRegistryUsername": {
-      "value": ""
-    },
-    "containerRegistryPassword": {
-      "value": ""
-    },
-    "createManagedCertificate": {
-      "value": false
-    },
     "customDomainName": {
       "value": "packages.mcpxreg.com"
     },
     "domainVerificationKey": {
-      "value": "4DB3F9C0627FBAE988A42C7C3870CE028A6C0CA15ED27DD32926EDC26EDD5B38"
-    },
-    "environment": {
-      "value": "prod"
-    },
-    "existingCertificateId": {
-      "value": "/subscriptions/87dc3419-ee4f-4833-8e15-d25cc10df733/resourceGroups/xregistry-package-registries/providers/Microsoft.App/managedEnvironments/xregistry-pkg-registries-prod/managedCertificates/packages.mcpxreg.com-xregistr-250526135004"
-    },
-    "imageTag": {
-      "value": "0.5.0"
+      "value": "4DB3F9C0627FBAE988A42C7C3870CE028A6C0CA15ED27DD32926EDC26EDD5B38",
+      "type": "SecureString"
     },
     "location": {
       "value": "westeurope"
@@ -49,9 +56,6 @@
     },
     "minReplicas": {
       "value": 1
-    },
-    "repositoryName": {
-      "value": "clemensv/xregistry-package-registries"
     },
     "serviceCpu": {
       "value": "0.3"
