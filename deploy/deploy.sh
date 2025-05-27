@@ -378,12 +378,14 @@ create_parameters_file() {
     
     # Read template and substitute values with error handling
     # Force useCustomDomain to false to avoid baseURL bootstrap issues
-    log_verbose "Substituting parameters..."
+    log_info "🔍 Checkpoint: Starting parameter substitution..."
     log_verbose "Registry username: ${registry_username:-'(empty)'}"
     log_verbose "Registry server: ${registry_server:-'(empty)'}"
     log_verbose "Image tag: ${IMAGE_TAG:-'(empty)'}"
     log_verbose "Repository: ${image_repository:-'(empty)'}"
     
+    # Use explicit error handling for parameter substitution
+    set +e
     if cat "$PARAMS_FILE" | \
         sed "s|{{GITHUB_ACTOR}}|$registry_username|g" | \
         sed "s|{{GITHUB_TOKEN}}|$registry_password|g" | \
@@ -392,9 +394,12 @@ create_parameters_file() {
         sed "s|ghcr.io|$registry_server|g" | \
         sed 's|"useCustomDomain": *{[^}]*}|"useCustomDomain": {"value": false}|g' \
         > "$temp_params"; then
-        log_verbose "Parameter substitution successful"
+        log_info "✅ Parameter substitution successful"
+        set -e
     else
-        log_error "Parameter substitution failed"
+        local subst_result=$?
+        set -e
+        log_error "Parameter substitution failed with exit code: $subst_result"
         log_warning "Falling back to bootstrap parameters file for minimal deployment"
         
         # Use bootstrap parameters as fallback
@@ -407,6 +412,8 @@ create_parameters_file() {
             cp "$PARAMS_FILE" "$temp_params"
         fi
     fi
+    
+    log_info "🔍 Checkpoint: Parameter substitution completed"
     
     echo "$temp_params"
 }
@@ -539,15 +546,25 @@ deploy_infrastructure() {
     log_info "Running Azure deployment validation..."
     
     # Show current Azure context for debugging
+    log_info "🔍 Checkpoint: Showing Azure context..."
     log_verbose "Current Azure context:"
-    az account show --query '{subscriptionId:id,tenantId:tenantId,name:name}' --output table 2>/dev/null || log_warning "Cannot show Azure context"
-    log_verbose "✅ Azure context displayed"
+    if az account show --query '{subscriptionId:id,tenantId:tenantId,name:name}' --output table 2>/dev/null; then
+        log_info "✅ Azure context displayed successfully"
+    else
+        log_warning "Cannot show Azure context"
+    fi
     
     # Verify resource group exists with detailed error handling
-    log_verbose "Verifying resource group access: $RESOURCE_GROUP"
+    log_info "🔍 Checkpoint: Verifying resource group access: $RESOURCE_GROUP"
     local rg_check_output rg_check_result
+    
+    # Use explicit error handling to avoid pipefail issues
+    set +e  # Temporarily disable exit on error
     rg_check_output=$(az group show --name "$RESOURCE_GROUP" --output json 2>&1)
     rg_check_result=$?
+    set -e  # Re-enable exit on error
+    
+    log_info "🔍 Resource group check exit code: $rg_check_result"
     
     if [[ $rg_check_result -ne 0 ]]; then
         log_error "Resource group verification failed"
@@ -567,14 +584,33 @@ deploy_infrastructure() {
         az group list --query '[].name' --output table 2>/dev/null || log_error "Cannot list any resource groups"
         exit 1
     else
-        log_verbose "✅ Resource group access verified"
-        local rg_location=$(echo "$rg_check_output" | jq -r '.location // "unknown"' 2>/dev/null)
-        log_verbose "Resource group location: $rg_location"
+        log_info "✅ Resource group access verified"
+        
+        # Safely parse location with explicit error handling
+        local rg_location="unknown"
+        if command -v jq >/dev/null 2>&1; then
+            set +e
+            rg_location=$(echo "$rg_check_output" | jq -r '.location // "unknown"' 2>/dev/null)
+            local jq_result=$?
+            set -e
+            if [[ $jq_result -ne 0 ]]; then
+                log_warning "Failed to parse resource group location with jq"
+                rg_location="parse-failed"
+            fi
+        else
+            log_warning "jq not available, cannot parse resource group location"
+            rg_location="jq-unavailable"
+        fi
+        log_info "Resource group location: $rg_location"
     fi
     
+    log_info "🔍 Checkpoint: Resource group verification completed"
+    
+    log_info "🔍 Checkpoint: Starting Azure deployment validation..."
     local validation_output validation_result
     
-    # Run validation with detailed output capture
+    # Run validation with detailed output capture and explicit error handling
+    set +e  # Temporarily disable exit on error
     validation_output=$(az deployment group validate \
         --resource-group "$RESOURCE_GROUP" \
         --template-file "$temp_bicep" \
@@ -582,8 +618,9 @@ deploy_infrastructure() {
         --verbose \
         --output json 2>&1)
     validation_result=$?
+    set -e  # Re-enable exit on error
     
-    log_verbose "Azure CLI validation exit code: $validation_result"
+    log_info "🔍 Azure CLI validation exit code: $validation_result"
     
     if [[ $validation_result -ne 0 ]]; then
         log_error "=== DEPLOYMENT VALIDATION FAILED ==="
@@ -621,12 +658,16 @@ deploy_infrastructure() {
     fi
 
     log_success "Deployment validation passed"
+    log_info "🔍 Checkpoint: Validation completed successfully, proceeding to deployment..."
 
     # Execute the deployment with enhanced error handling
     log_info "Executing deployment (this may take several minutes)..."
+    log_info "🔍 Checkpoint: Starting az deployment group create command..."
     local deployment_output
     local deployment_start=$(date +%s)
     
+    # Use explicit error handling for deployment as well
+    set +e
     deployment_output=$(az deployment group create \
         --resource-group "$RESOURCE_GROUP" \
         --name "$deployment_name" \
@@ -635,6 +676,9 @@ deploy_infrastructure() {
         --output json 2>&1)
     
     local deployment_result=$?
+    set -e
+    
+    log_info "🔍 Checkpoint: Deployment command completed with exit code: $deployment_result"
     local deployment_end=$(date +%s)
     local deployment_duration=$((deployment_end - deployment_start))
     
@@ -751,7 +795,9 @@ test_deployment() {
 # Cleanup temporary files
 cleanup() {
     log_verbose "Cleaning up temporary files..."
-    rm -f "$SCRIPT_DIR"/*.tmp.json "$SCRIPT_DIR"/*.tmp.bicep
+    # Use explicit error handling to prevent cleanup from causing exit code 1
+    rm -f "$SCRIPT_DIR"/*.tmp.json "$SCRIPT_DIR"/*.tmp.bicep 2>/dev/null || true
+    log_verbose "Cleanup completed"
 }
 
 # Main execution
@@ -759,12 +805,29 @@ main() {
     log_info "xRegistry Azure Container Apps Deployment"
     log_info "=========================================="
     
+    log_info "🔍 Checkpoint: Starting argument parsing..."
     parse_args "$@"
+    log_info "🔍 Checkpoint: Argument parsing completed"
+    
+    log_info "🔍 Checkpoint: Starting parameter validation..."
     validate_params
+    log_info "🔍 Checkpoint: Parameter validation completed"
+    
+    log_info "🔍 Checkpoint: Checking Azure CLI..."
     check_azure_cli
+    log_info "🔍 Checkpoint: Azure CLI check completed"
+    
+    log_info "🔍 Checkpoint: Ensuring resource group exists..."
     ensure_resource_group
+    log_info "🔍 Checkpoint: Resource group check completed"
+    
+    log_info "🔍 Checkpoint: Installing Container Apps extension..."
     install_containerapp_extension
+    log_info "🔍 Checkpoint: Container Apps extension ready"
+    
+    log_info "🔍 Checkpoint: Checking resource providers..."
     check_resource_providers
+    log_info "🔍 Checkpoint: Resource providers check completed"
     
     # Force GHCR usage - no ACR needed
     log_info "Using GHCR for all container images"
@@ -772,16 +835,23 @@ main() {
     local acr_name=""
     
     # Create temporary files with substituted values
+    log_info "🔍 Checkpoint: Creating parameters file..."
     local temp_params
     local temp_bicep
     temp_params=$(create_parameters_file "$use_acr" "$acr_name")
+    log_info "🔍 Checkpoint: Parameters file created: $temp_params"
+    
+    log_info "🔍 Checkpoint: Creating Bicep file..."
     temp_bicep=$(create_bicep_file)
+    log_info "🔍 Checkpoint: Bicep file created: $temp_bicep"
     
     # Ensure cleanup on exit
     trap cleanup EXIT
     
     # Deploy the infrastructure
+    log_info "🔍 Checkpoint: Starting infrastructure deployment..."
     deploy_infrastructure "$temp_params" "$temp_bicep"
+    log_info "🔍 Checkpoint: Infrastructure deployment completed"
     
     log_success "Deployment script completed successfully!"
 }
