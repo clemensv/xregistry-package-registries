@@ -17,6 +17,7 @@ AZURE_SUBSCRIPTION=""
 DRY_RUN="false"
 VERBOSE="false"
 FORCE_GHCR="true"
+ENABLE_CUSTOM_DOMAIN="false"
 
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -72,6 +73,7 @@ OPTIONS:
     -d, --dry-run                   Show what would be deployed without executing
     -v, --verbose                   Enable verbose output
     --force-ghcr                    Force use of GHCR even for private repos (requires valid token)
+    --enable-custom-domain          Enable custom domain and certificate creation
     -h, --help                      Show this help message
 
 EXAMPLES:
@@ -139,6 +141,10 @@ parse_args() {
                 ;;
             --force-ghcr)
                 FORCE_GHCR="true"
+                shift
+                ;;
+            --enable-custom-domain)
+                ENABLE_CUSTOM_DOMAIN="true"
                 shift
                 ;;
             -h|--help)
@@ -409,7 +415,7 @@ create_parameters_file() {
             log_info "Using bootstrap parameters file: $bootstrap_params"
         else
             log_error "Bootstrap parameters file not found, using original with no substitution"
-            cp "$PARAMS_FILE" "$temp_params"
+            cp "$PARAMS_FILE" "$temp_params"    
         fi
     fi
     
@@ -477,16 +483,22 @@ deploy_infrastructure() {
         return 0
     fi
 
-    # Skip certificate management initially to avoid bootstrap issues
-    log_info "Skipping certificate management for initial deployment..."
-    log_info "Custom domain and certificates can be configured after successful deployment"
-    
-    # Force certificate creation and custom domain to false to avoid dependencies
-    local updated_params=$(mktemp)
-    jq '.parameters.createManagedCertificate.value = false | .parameters.existingCertificateId.value = "" | .parameters.useCustomDomain.value = false' \
-       "$temp_params" > "$updated_params"
-    temp_params="$updated_params"
-    log_info "Forced certificate creation and custom domain to false for bootstrap deployment"
+    # Handle custom domain and certificate configuration
+    if [[ "$ENABLE_CUSTOM_DOMAIN" == "true" ]]; then
+        log_info "Custom domain deployment enabled - will create managed certificate"
+        log_info "Ensure DNS TXT record is configured: asuid.packages.mcpxreg.com"
+        # Keep the original parameters for custom domain deployment
+    else
+        log_info "Custom domain disabled - using Azure-provided FQDN for stable deployment"
+        log_info "Use --enable-custom-domain flag to enable custom domain deployment"
+        
+        # Force certificate creation and custom domain to false to avoid dependencies
+        local updated_params=$(mktemp)
+        jq '.parameters.createManagedCertificate.value = false | .parameters.existingCertificateId.value = "" | .parameters.useCustomDomain.value = false' \
+           "$temp_params" > "$updated_params"
+        temp_params="$updated_params"
+        log_info "Forced certificate creation and custom domain to false for bootstrap deployment"
+    fi
 
     # Verify Container App Environment exists before deployment
     log_info "Verifying Container App Environment exists..."
