@@ -6,14 +6,62 @@ This directory contains comprehensive testing infrastructure for the xRegistry p
 
 ```
 test/
+├── npm/                  # NPM wrapper-specific tests
+│   ├── basic-server.test.js         # Core server functionality tests
+│   ├── integration-angular.test.js  # Real Angular packages integration test
+│   └── README.md                    # NPM test documentation
 ├── integration/           # Integration test files and configurations
 ├── unit/                 # Unit test files
 ├── regression/           # Regression test files
+├── package.json          # Centralized test dependencies and scripts
 ├── run-docker-integration-tests.ps1      # PowerShell Docker tests
 ├── run-docker-integration-tests.sh       # Bash Docker tests
 ├── run-bridge-integration-tests.ps1      # PowerShell bridge tests
 ├── run-bridge-integration-tests.sh       # Bash bridge tests
 └── README.md             # This file
+```
+
+## Centralized Test Management
+
+All test dependencies and scripts are now managed centrally through `/test/package.json`. This provides:
+
+- **Unified Dependencies**: All test packages (mocha, chai, axios, supertest, sinon) in one location
+- **Consistent Scripts**: Standardized test commands across all package registry types
+- **Easy Maintenance**: Single location for updating test tooling and versions
+
+### Available Test Scripts
+
+From the project root, you can run:
+
+```bash
+# Install test dependencies
+npm run test:install
+
+# Run all npm tests
+npm run test:npm
+
+# Run specific npm tests
+npm run test:npm:basic
+npm run test:npm:angular
+
+# From the test directory directly
+cd test
+
+# Run all tests
+npm test
+
+# Run tests by category
+npm run test:npm
+npm run test:pypi
+npm run test:maven
+npm run test:nuget
+npm run test:oci
+
+# Run with verbose output
+npm run test:verbose
+
+# Run in watch mode
+npm run test:watch
 ```
 
 ## Test Scripts
@@ -193,6 +241,37 @@ docker volume ls --filter "name=*test*" -q | xargs docker volume rm
 - Automatic cleanup prevents resource accumulation
 - Configurable timeouts accommodate different environments
 - Parallel execution available for faster CI runs
+
+## NPM Wrapper Tests
+
+The `npm/` directory contains specialized tests for the NPM package registry wrapper.
+
+### Running NPM Tests
+
+```bash
+# Navigate to npm test directory
+cd test/npm
+
+# Install test dependencies
+npm install
+
+# Run all tests
+npm test
+
+# Run specific test file
+npm test basic-server.test.js
+npm test integration-angular.test.js
+
+# Run with verbose output
+npm run test:verbose
+```
+
+### Test Files
+
+- **`basic-server.test.js`**: Tests core server functionality including endpoints, error handling, and HTTP compliance
+- **`integration-angular.test.js`**: Comprehensive integration test using real Angular packages from npm registry
+
+For detailed NPM test documentation, see [`test/npm/README.md`](npm/README.md).
 
 ## Contributing
 

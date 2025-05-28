@@ -1,0 +1,44 @@
+{
+  "name": "xregistry-tests",
+  "version": "1.0.0",
+  "description": "Centralized test suite for xRegistry package registries",
+  "private": true,
+  "scripts": {
+    "test": "mocha --recursive --timeout 120000",
+    "test:all": "mocha --recursive **/*.test.js --timeout 120000",
+    "test:npm": "mocha npm/*.test.js --timeout 120000",
+    "test:npm:angular": "mocha npm/integration-angular.test.js --timeout 120000",
+    "test:npm:basic": "mocha npm/basic-server.test.js --timeout 120000",
+    "test:pypi": "mocha pypi/*.test.js --timeout 120000",
+    "test:maven": "mocha maven/*.test.js --timeout 120000",
+    "test:nuget": "mocha nuget/*.test.js --timeout 120000",
+    "test:oci": "mocha oci/*.test.js --timeout 120000",
+    "test:unit": "mocha unit/**/*.test.js --timeout 30000",
+    "test:integration": "mocha integration/**/*.test.js --timeout 120000",
+    "test:regression": "mocha regression/**/*.test.js --timeout 60000",
+    "test:verbose": "mocha --recursive --timeout 120000 --reporter spec",
+    "test:watch": "mocha --recursive --timeout 120000 --watch"
+  },
+  "devDependencies": {
+    "axios": "^1.6.0",
+    "chai": "^4.3.10",
+    "mocha": "^10.2.0",
+    "sinon": "^17.0.1",
+    "supertest": "^6.3.3"
+  },
+  "keywords": [
+    "xregistry",
+    "test",
+    "npm",
+    "pypi",
+    "maven",
+    "nuget",
+    "oci",
+    "integration"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "semver": "^7.7.2"
+  }
+}

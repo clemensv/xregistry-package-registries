@@ -1,160 +1,151 @@
 {
-  "specversion": "1.0-rc1",
-  "registryid": "npm-wrapper",
-  "model": {
-    "description": "The xRegistry model for the NPM wrapper, describing the structure and metadata for Node.js package registries and packages.",
-    "groups": {
-      "noderegistries": {
-        "description": "A group representing a Node.js package registry provider (e.g., npmjs.org). Contains all available Node.js package registries.",
-        "plural": "noderegistries",
-        "singular": "noderegistry",
-        "resources": {
-          "packages": {
-            "description": "A resource representing a Node.js package in the registry, including its metadata and available versions.",
-            "plural": "packages",
-            "singular": "package",
-            "hasdocument": false,
-            "attributes": {
-              "name": {   
-                "type": "string",
-                "description": "The canonical name of the Node.js package."
-              },
-              "description": {
-                "type": "string",
-                "description": "A short description of the package."
-              },
-              "license": {
-                "type": "string",
-                "description": "The license under which the package is distributed."
-              },
-              "author": {
-                "type": "string",
-                "description": "The author or maintainer of the package."
-              },
-              "homepage": {
-                "type": "string",
-                "description": "The main homepage URL for the package."
-              },
-              "repository": {
+  "groups": {
+    "noderegistries": {
+      "description": "Node.js package registry provider (e.g., npmjs.org).",
+      "plural": "noderegistries",
+      "singular": "noderegistry",
+      "resources": {
+        "packages": {
+          "description": "A Node.js package in the registry, including its metadata and available versions.",
+          "plural": "packages",
+          "singular": "package",
+          "hasdocument": false,
+          "attributes": {
+            "name": {
+              "type": "string",
+              "description": "The canonical name of the Node.js package."
+            },
+            "license": {
+              "type": "string",
+              "description": "The license under which the package is distributed."
+            },
+            "author": {
+              "type": "string",
+              "description": "The author or maintainer of the package."
+            },
+            "homepage": {
+              "type": "string",
+              "description": "The main homepage URL for the package."
+            },
+            "repository": {
+              "type": "object",
+              "description": "The repository information for the package."
+            },
+            "dependencies": {
+              "type": "array",
+              "description": "The dependencies required by the package.",
+              "item": {
                 "type": "object",
-                "description": "The repository information for the package."
-              },
-              "dependencies": {
-                "type": "array",
-                "description": "The dependencies required by the package.",
-                "item": {
-                  "type": "object",
-                  "attributes": {
-                    "name": {
-                      "type": "string",
-                      "description": "The name of the dependency package."
-                    },
-                    "version": {
-                      "type": "string",
-                      "description": "The version specifier for the dependency (e.g., ^1.0.0, ~2.1.0)."
-                    },
-                    "package": {
-                      "type": "xid",
-                      "description": "Cross-reference to the dependency package in the registry.",
-                      "target": "/noderegistries/package"
-                    }
+                "attributes": {
+                  "name": {
+                    "type": "string",
+                    "description": "The name of the dependency package."
+                  },
+                  "version": {
+                    "type": "string",
+                    "description": "The version specifier for the dependency (e.g., ^1.0.0, ~2.1.0)."
+                  },
+                  "package": {
+                    "type": "xid",
+                    "description": "Cross-reference to the dependency package in the registry.",
+                    "target": "/noderegistries/package"
                   }
                 }
-              },
-              "keywords": {
-                "type": "array",
-                "item": {
-                  "type": "string"
-                },
-                "description": "Keywords that describe the package."
-              },
-              "maintainers": {
-                "type": "array",
-                "item": {
-                  "type": "object"
-                },
-                "description": "A list of maintainers for the package."
-              },
-              "version": {
-                "type": "string",
-                "description": "Current version of the package."
-              },
-              "dist-tags": {
-                "type": "object",
-                "description": "Distribution tags for the package (latest, next, etc)."
-              },
-              "bugs": {
-                "type": "object",
-                "description": "Bug tracking information for the package."
-              },
-              "contributors": {
-                "type": "array",
-                "item": {
-                  "type": "object"
-                },
-                "description": "List of contributors to the package."
-              },
-              "engines": {
-                "type": "object",
-                "description": "Node.js engine requirements."
-              },
-              "deprecated": {
-                "type": "string",
-                "description": "Deprecation notice if the package is deprecated."
-              },
-              "devDependencies": {
-                "type": "array",
-                "description": "Development dependencies for the package.",
-                "item": {
-                  "type": "object",
-                  "attributes": {
-                    "name": {
-                      "type": "string",
-                      "description": "The name of the development dependency package."
-                    },
-                    "version": {
-                      "type": "string",
-                      "description": "The version specifier for the development dependency (e.g., ^1.0.0, ~2.1.0)."
-                    },
-                    "package": {
-                      "type": "xid",
-                      "description": "Cross-reference to the development dependency package in the registry.",
-                      "target": "/noderegistries/package"
-                    }
-                  }
-                }
-              },
-              "peerDependencies": {
-                "type": "array",
-                "description": "Peer dependencies for the package.",
-                "item": {
-                  "type": "object",
-                  "attributes": {
-                    "name": {
-                      "type": "string",
-                      "description": "The name of the peer dependency package."
-                    },
-                    "version": {
-                      "type": "string",
-                      "description": "The version specifier for the peer dependency (e.g., ^1.0.0, ~2.1.0)."
-                    },
-                    "package": {
-                      "type": "xid",
-                      "description": "Cross-reference to the peer dependency package in the registry.",
-                      "target": "/noderegistries/package"
-                    }
-                  }
-                }
-              },
-              "optionalDependencies": {
-                "type": "object",
-                "description": "Optional dependencies for the package."
-              },
-              "package": {
-                "type": "xid",
-                "description": "Cross-reference to another package resource when applicable.",
-                "target": "/noderegistries/package"
               }
+            },
+            "keywords": {
+              "type": "array",
+              "item": {
+                "type": "string"
+              },
+              "description": "Keywords that describe the package."
+            },
+            "maintainers": {
+              "type": "array",
+              "item": {
+                "type": "object"
+              },
+              "description": "A list of maintainers for the package."
+            },
+            "version": {
+              "type": "string",
+              "description": "Current version of the package."
+            },
+            "dist-tags": {
+              "type": "object",
+              "description": "Distribution tags for the package (latest, next, etc)."
+            },
+            "bugs": {
+              "type": "object",
+              "description": "Bug tracking information for the package."
+            },
+            "contributors": {
+              "type": "array",
+              "item": {
+                "type": "object"
+              },
+              "description": "List of contributors to the package."
+            },
+            "engines": {
+              "type": "object",
+              "description": "Node.js engine requirements."
+            },
+            "deprecated": {
+              "type": "string",
+              "description": "Deprecation notice if the package is deprecated."
+            },
+            "devDependencies": {
+              "type": "array",
+              "description": "Development dependencies for the package.",
+              "item": {
+                "type": "object",
+                "attributes": {
+                  "name": {
+                    "type": "string",
+                    "description": "The name of the development dependency package."
+                  },
+                  "version": {
+                    "type": "string",
+                    "description": "The version specifier for the development dependency (e.g., ^1.0.0, ~2.1.0)."
+                  },
+                  "package": {
+                    "type": "xid",
+                    "description": "Cross-reference to the development dependency package in the registry.",
+                    "target": "/noderegistries/package"
+                  }
+                }
+              }
+            },
+            "peerDependencies": {
+              "type": "array",
+              "description": "Peer dependencies for the package.",
+              "item": {
+                "type": "object",
+                "attributes": {
+                  "name": {
+                    "type": "string",
+                    "description": "The name of the peer dependency package."
+                  },
+                  "version": {
+                    "type": "string",
+                    "description": "The version specifier for the peer dependency (e.g., ^1.0.0, ~2.1.0)."
+                  },
+                  "package": {
+                    "type": "xid",
+                    "description": "Cross-reference to the peer dependency package in the registry.",
+                    "target": "/noderegistries/package"
+                  }
+                }
+              }
+            },
+            "optionalDependencies": {
+              "type": "object",
+              "description": "Optional dependencies for the package."
+            },
+            "package": {
+              "type": "xid",
+              "description": "Cross-reference to another package resource when applicable.",
+              "target": "/noderegistries/package"
             }
           }
         }

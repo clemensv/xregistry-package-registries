@@ -7,6 +7,11 @@ const { exec } = require("child_process");
 const util = require("util");
 const { v4: uuidv4 } = require("uuid");
 const { createLogger } = require("../shared/logging/logger");
+const { parseFilterExpression, getNestedValue: getFilterValue, compareValues, applyXRegistryFilterWithNameConstraint } = require('../shared/filter');
+const { parseInlineParams, handleInlineFlag } = require('../shared/inline');
+const { parseSortParam, applySortFlag } = require('../shared/sort');
+
+console.log('Loaded shared utilities:', ['filter', 'inline', 'sort']);
 
 const app = express();
 
@@ -78,9 +83,9 @@ const logger = createLogger({
   enableFile: !!LOG_FILE,
   logFile: LOG_FILE,
   enableConsole: !QUIET_MODE,
-  enableW3CLog: !!(argv.w3log || argv['w3log-stdout']),
+  enableW3CLog: true, // Always enable W3C logging for HTTP requests
   w3cLogFile: argv.w3log,
-  w3cLogToStdout: argv['w3log-stdout']
+  w3cLogToStdout: true // W3C logs go to stdout
 });
 
 const REGISTRY_ID = "npm-wrapper";
@@ -148,18 +153,15 @@ async function refreshPackageNames() {
         duration: installDuration 
       });
     }
-    
-    // Load the package list
+      // Load the package list
     logger.debug("Loading package names from all-the-package-names...", { operationId });
     
-    // Load the module
-    const packageNamesPath = path.join(ALL_PACKAGES_DIR, 'node_modules', 'all-the-package-names');
+    // Load the names from the JSON file
+    const packageNamesPath = path.join(ALL_PACKAGES_DIR, 'node_modules', 'all-the-package-names', 'names.json');
     
-    // Clear require cache to ensure we get fresh data
-    delete require.cache[require.resolve(packageNamesPath)];
-    
-    // Load package names
-    const allPackageNames = require(packageNamesPath);
+    // Load package names from JSON file
+    const namesContent = fs.readFileSync(packageNamesPath, 'utf8');
+    const allPackageNames = JSON.parse(namesContent);
     
     if (Array.isArray(allPackageNames)) {
       // Sort the package names alphabetically
@@ -277,19 +279,137 @@ app.enable('strict routing');
 app.enable('case sensitive routing');
 app.disable('x-powered-by');
 
+// Global error handling for unhandled rejections and exceptions
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('Unhandled Rejection', { 
+    reason: reason instanceof Error ? reason.message : reason,
+    stack: reason instanceof Error ? reason.stack : undefined,
+    promise: promise.toString()
+  });
+  // Don't exit the process, just log the error
+});
+
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught Exception', { 
+    error: error.message,
+    stack: error.stack
+  });
+  // Don't exit the process for most errors, but do exit for critical ones
+  if (error.code === 'EADDRINUSE' || error.code === 'EACCES') {
+    process.exit(1);
+  }
+});
+
 // Add OpenTelemetry middleware for request tracing and logging
 app.use(logger.middleware());
 
+// Global error handling middleware (must be after logger middleware)
+app.use((err, req, res, next) => {
+  logger.error('Express error handler', {
+    error: err.message,
+    stack: err.stack,
+    url: req.url,
+    method: req.method,
+    headers: req.headers,
+    query: req.query,
+    params: req.params
+  });
+
+  // Check if response was already sent
+  if (res.headersSent) {
+    return next(err);
+  }
+
+  // Determine error type and status code
+  let statusCode = 500;
+  let errorType = 'internal_server_error';
+  let title = 'Internal Server Error';
+  let detail = 'An unexpected error occurred';
+
+  if (err.name === 'SyntaxError' && err.type === 'entity.parse.failed') {
+    statusCode = 400;
+    errorType = 'invalid_request';
+    title = 'Invalid JSON';
+    detail = 'Request body contains invalid JSON';
+  } else if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND') {
+    statusCode = 502;
+    errorType = 'bad_gateway';
+    title = 'External Service Unavailable';
+    detail = 'Unable to connect to external service';
+  } else if (err.code === 'ETIMEDOUT') {
+    statusCode = 504;
+    errorType = 'gateway_timeout';
+    title = 'External Service Timeout';
+    detail = 'External service request timed out';
+  } else if (err.status && err.status >= 400 && err.status < 600) {
+    statusCode = err.status;
+  }
+
+  // Send error response
+  res.status(statusCode).json(
+    createErrorResponse(
+      errorType,
+      title,
+      statusCode,
+      req.originalUrl,
+      detail
+    )
+  );
+});
+
+// Async wrapper function to catch errors in async route handlers
+function asyncHandler(fn) {
+  return (req, res, next) => {
+    Promise.resolve(fn(req, res, next)).catch(next);
+  };
+}
+
+// Enhanced HTTP client with retry logic and error handling
+async function safeHttpRequest(url, options = {}, maxRetries = 3) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await axios({
+        url,
+        timeout: 30000, // 30 second timeout
+        ...options
+      });
+      return response;
+    } catch (error) {
+      logger.warn(`HTTP request attempt ${attempt} failed`, {
+        url,
+        attempt,
+        maxRetries,
+        error: error.message,
+        code: error.code,
+        status: error.response?.status
+      });
+
+      if (attempt === maxRetries) {
+        throw error;
+      }
+
+      // Exponential backoff: wait 1s, 2s, 4s
+      await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt - 1)));
+    }
+  }
+}
+
 // Add CORS middleware
 app.use((req, res, next) => {
-  res.set('Access-Control-Allow-Origin', '*');
-  res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.set('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  res.set('Access-Control-Expose-Headers', 'Link');
-  if (req.method === 'OPTIONS') {
-    return res.status(204).end();
+  try {
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.set('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    // Also expose the 'allow' header so Axios can see it in browser/test
+    res.set('Access-Control-Expose-Headers', 'allow, Link');
+    if (req.method === 'OPTIONS') {
+      return res.status(204).end();
+    }
+    next();
+  } catch (error) {
+    logger.error('CORS middleware error', { error: error.message, stack: error.stack });
+    next(error);
   }
-  next();
 });
 
 // Add middleware for API key authentication (if configured)
@@ -509,7 +629,8 @@ app.use((req, res, next) => {
   res.set('Access-Control-Allow-Origin', '*');
   res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.set('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, If-None-Match, If-Modified-Since');
-  res.set('Access-Control-Expose-Headers', 'Link');
+  // Also expose the 'allow' header so Axios can see it in browser/test
+  res.set('Access-Control-Expose-Headers', 'allow, Link');
   if (req.method === 'OPTIONS') {
     return res.status(204).end();
   }
@@ -643,8 +764,120 @@ function validateAgainstSchema(data, entityType) {
       }
     }
   }
+    return errors;
+}
+
+// Utility function to handle epoch flag
+function handleEpochFlag(req, data) {
+  if (req.query.noepoch === 'true') {
+    // Remove epoch from response when noepoch=true
+    const result = {...data};
+    if ('epoch' in result) {
+      delete result.epoch;
+    }
+    return result;
+  }
   
-  return errors;
+  // Handle epoch query parameter for specific epoch request
+  if (req.query.epoch && !isNaN(parseInt(req.query.epoch, 10))) {
+    const requestedEpoch = parseInt(req.query.epoch, 10);
+    if (data.epoch !== requestedEpoch) {
+      // In a real implementation, this would fetch the correct epoch version
+      // For now, we just add a warning header
+      req.res.set('Warning', `299 - "Requested epoch ${requestedEpoch} not available, returning current epoch ${data.epoch}"`);
+    }
+  }
+  
+  return data;
+}
+
+// Utility function to handle specversion flag
+function handleSpecVersionFlag(req, data) {
+  if (req.query.specversion) {
+    if (req.query.specversion !== SPEC_VERSION) {
+      // If requested version is not supported, return a warning
+      req.res.set('Warning', `299 - "Requested spec version ${req.query.specversion} not supported, using ${SPEC_VERSION}"`);
+    }
+  }
+  return data;
+}
+
+// Utility function to handle noreadonly flag
+function handleNoReadonlyFlag(req, data) {
+  if (req.query.noreadonly === 'true') {
+    // Remove readonly properties when noreadonly=true
+    const result = {...data};
+    if ('readonly' in result) {
+      delete result.readonly;
+    }
+    return result;
+  }
+  return data;
+}
+
+// Utility function to handle collections flag
+function handleCollectionsFlag(req, data) {
+  if (req.query.collections === 'false') {
+    // Remove collection URLs from the response when collections=false
+    const result = {...data};
+    Object.keys(result).forEach(key => {
+      if (key.endsWith('url') && !key.startsWith('self')) {
+        delete result[key];
+      }
+    });
+    return result;
+  }  return data;
+}
+
+// Utility function to generate pagination Link headers
+function generatePaginationLinks(req, totalCount, offset, limit) {
+  const links = [];
+  const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}${req.path}`;
+  
+  // Add base query parameters from original request (except pagination ones)
+  const queryParams = {...req.query};
+  delete queryParams.limit;
+  delete queryParams.offset;
+  
+  // Build the base query string
+  let queryString = Object.keys(queryParams).length > 0 ? 
+    '?' + Object.entries(queryParams).map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`).join('&') : 
+    '';
+  
+  // If we have any params already, use & to add more, otherwise start with ?
+  const paramPrefix = queryString ? '&' : '?';
+  
+  // Calculate totalPages (ceiling division)
+  const totalPages = Math.ceil(totalCount / limit);
+  const currentPage = Math.floor(offset / limit) + 1;
+  
+  // First link
+  const firstUrl = `${baseUrl}${queryString}${paramPrefix}limit=${limit}&offset=0`;
+  links.push(`<${firstUrl}>; rel="first"`);
+  
+  // Previous link (if not on the first page)
+  if (offset > 0) {
+    const prevOffset = Math.max(0, offset - limit);
+    const prevUrl = `${baseUrl}${queryString}${paramPrefix}limit=${limit}&offset=${prevOffset}`;
+    links.push(`<${prevUrl}>; rel="prev"`);
+  }
+  
+  // Next link (if not on the last page)
+  if (offset + limit < totalCount) {
+    const nextUrl = `${baseUrl}${queryString}${paramPrefix}limit=${limit}&offset=${offset + limit}`;
+    links.push(`<${nextUrl}>; rel="next"`);
+  }
+  
+  // Last link
+  const lastOffset = Math.max(0, (totalPages - 1) * limit);
+  const lastUrl = `${baseUrl}${queryString}${paramPrefix}limit=${limit}&offset=${lastOffset}`;
+  links.push(`<${lastUrl}>; rel="last"`);
+  
+  // Add count and total-count as per RFC5988
+  links.push(`count="${totalCount}"`);
+  links.push(`per-page="${limit}"`);
+  
+  return links.join(', ');
 }
 
 // Add OPTIONS handlers for each route to improve compliance with HTTP standards
@@ -652,6 +885,7 @@ function validateAgainstSchema(data, entityType) {
 function handleOptionsRequest(req, res, allowedMethods) {
   const allowHeader = `OPTIONS, ${allowedMethods}`;
   res.set('Allow', allowHeader);
+  res.set('allow', allowHeader);
   res.set('Access-Control-Allow-Methods', allowHeader);
   res.set('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, If-None-Match, If-Modified-Since');
   res.set('Access-Control-Max-Age', '86400'); // 24 hours
@@ -734,49 +968,188 @@ if (!fs.existsSync(cacheDir)) {
   fs.mkdirSync(cacheDir);
 }
 
-// Helper function to check if a package exists in NPM
+// Helper function to check if a package exists in NPM with comprehensive error handling
 async function cachedGet(url, headers = {}) {
-  const cacheFile = path.join(cacheDir, Buffer.from(url).toString("base64"));
+  const requestId = uuidv4().substring(0, 8);
+  let cacheFile;
   let etag = null;
   let cachedData = null;
-  if (fs.existsSync(cacheFile)) {
-    const {
-      etag: cachedEtag,
-      data,
-      timestamp,
-    } = JSON.parse(fs.readFileSync(cacheFile, "utf8"));
-    etag = cachedEtag;
-    cachedData = data;
-    // Optionally, implement cache expiration here
+  
+  try {
+    // Create a safe cache file name
+    const urlHash = Buffer.from(url).toString("base64").replace(/[^a-zA-Z0-9]/g, '_');
+    cacheFile = path.join(cacheDir, urlHash);
+    
+    // Try to read cached data
+    if (fs.existsSync(cacheFile)) {
+      try {
+        const cachedContent = JSON.parse(fs.readFileSync(cacheFile, "utf8"));
+        etag = cachedContent.etag;
+        cachedData = cachedContent.data;
+        
+        // Check if cache is too old (older than 24 hours)
+        const cacheAge = Date.now() - (cachedContent.timestamp || 0);
+        const maxCacheAge = 24 * 60 * 60 * 1000; // 24 hours
+        
+        if (cacheAge > maxCacheAge) {
+          logger.debug("Cache expired, will refresh", { 
+            requestId, 
+            url, 
+            cacheAge: Math.floor(cacheAge / 1000 / 60), // minutes
+            maxAge: Math.floor(maxCacheAge / 1000 / 60) // minutes
+          });
+          etag = null; // Force refresh
+        }
+      } catch (cacheReadError) {
+        logger.warn("Error parsing cache file", { 
+          requestId, 
+          url, 
+          cacheFile, 
+          error: cacheReadError.message 
+        });
+        // Continue without cache
+      }
+    }
+  } catch (cacheError) {
+    logger.warn("Error accessing cache directory", { 
+      requestId, 
+      url, 
+      error: cacheError.message 
+    });
+    // Continue without cache
   }
-  const axiosConfig = { url, method: "get", headers: { ...headers } };
+  
+  // Prepare HTTP request configuration with defensive settings
+  const axiosConfig = { 
+    url, 
+    method: "get", 
+    headers: { 
+      'User-Agent': 'xRegistry-NPM-Wrapper/1.0',
+      'Accept': 'application/json',
+      ...headers 
+    },
+    timeout: 15000, // 15 second timeout
+    maxRedirects: 5,
+    validateStatus: function (status) {
+      // Accept 200-299 and 304 (Not Modified)
+      return (status >= 200 && status < 300) || status === 304;
+    },
+    // Axios retry configuration
+    retry: 3,
+    retryDelay: (retryCount) => {
+      return Math.min(1000 * Math.pow(2, retryCount), 10000); // Exponential backoff, max 10s
+    }
+  };
+  
   if (etag) {
     axiosConfig.headers["If-None-Match"] = etag;
   }
+  
   try {
     const response = await axios(axiosConfig);
-    if (response.status === 200) {
-      const newEtag = response.headers["etag"] || null;
-      fs.writeFileSync(
-        cacheFile,
-        JSON.stringify({
-          etag: newEtag,
-          data: response.data,
-          timestamp: Date.now(),
-        })
-      );
-      return response.data;
-    }
-  } catch (err) {
-    if (err.response && err.response.status === 304 && cachedData) {
-      // Not modified, return cached data
+    
+    // Handle 304 Not Modified
+    if (response.status === 304 && cachedData) {
+      logger.debug("Using cached data (304 Not Modified)", { requestId, url });
       return cachedData;
     }
+    
+    // Cache the new response
+    try {
+      if (cacheFile && response.data) {
+        const newData = { 
+          etag: response.headers.etag, 
+          data: response.data,
+          timestamp: Date.now(),
+          url: url,
+          status: response.status
+        };
+        fs.writeFileSync(cacheFile, JSON.stringify(newData), 'utf8');
+        logger.debug("Cached response data", { requestId, url, cacheFile });
+      }
+    } catch (cacheWriteError) {
+      logger.warn("Error writing to cache", { 
+        requestId, 
+        url, 
+        cacheFile, 
+        error: cacheWriteError.message 
+      });
+      // Continue without caching - don't fail the request
+    }
+    
+    return response.data;
+    
+  } catch (err) {
+    // Handle different types of errors gracefully
+    
+    // Network errors - try to use cached data if available
+    if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || 
+        err.code === 'ETIMEDOUT' || err.code === 'ECONNRESET' ||
+        err.code === 'EHOSTUNREACH' || err.code === 'ENETUNREACH') {
+      
+      if (cachedData) {
+        logger.warn("Network error, using stale cached data", { 
+          requestId, 
+          url, 
+          error: err.message,
+          code: err.code
+        });
+        return cachedData;
+      }
+    }
+    
+    // HTTP errors
+    if (err.response) {
+      const status = err.response.status;
+      
+      // For 404, use cached data if available, otherwise throw
+      if (status === 404) {
+        if (cachedData) {
+          logger.warn("Package not found, using cached data", { 
+            requestId, 
+            url, 
+            status
+          });
+          return cachedData;
+        }
+      }
+      
+      // For 5xx errors, use cached data if available
+      if (status >= 500 && cachedData) {
+        logger.warn("Server error, using cached data", { 
+          requestId, 
+          url, 
+          status,
+          error: err.message
+        });
+        return cachedData;
+      }
+      
+      // For rate limiting (429), use cached data if available
+      if (status === 429 && cachedData) {
+        logger.warn("Rate limited, using cached data", { 
+          requestId, 
+          url, 
+          status
+        });
+        return cachedData;
+      }
+    }
+    
+    // Log the error with appropriate level
+    const logLevel = (err.response?.status === 404) ? 'debug' : 'error';
+    logger[logLevel]("HTTP request failed", { 
+      requestId, 
+      url, 
+      error: err.message,
+      code: err.code,
+      status: err.response?.status,
+      hasCachedData: !!cachedData
+    });
+    
+    // Re-throw the error for handling by calling code
     throw err;
   }
-  // fallback
-  if (cachedData) return cachedData;
-  throw new Error("Failed to fetch and no cache available");
 }
 
 // Utility function to normalize paths by removing double slashes
@@ -794,64 +1167,55 @@ function encodePackageName(packageName) {
 
 // Utility function to properly encode package names for use in paths (including xid and shortself)
 function encodePackageNameForPath(packageName) {
-  // For scoped packages, encode the slash to prevent it from being treated as a path separator
-  // but preserve the @ symbol
-  if (packageName && packageName.startsWith('@') && packageName.includes('/')) {
-    return packageName.replace('/', '~');
-  }
-  return packageName;
+  return encodeURIComponent(packageName);
 }
 
-// Utility function to convert tilde-separated package names back to slash format for NPM registry
+// Utility function to convert tilde-separated package names back to slash format
 function convertTildeToSlash(packageName) {
-  // Convert @namespace~package to @namespace/package
-  if (packageName && packageName.startsWith('@') && packageName.includes('~')) {
-    return packageName.replace('~', '/');
+  if (!packageName || typeof packageName !== 'string') {
+    return packageName;
   }
-  return packageName;
+  
+  // Convert tildes back to slashes for scoped packages
+  // This reverses the process done in normalizePackageId
+  return packageName.replace(/~/g, '/');
 }
 
-// Utility function to normalize package IDs according to xRegistry specifications:
-// - Must be a non-empty string
-// - Must consist of RFC3986 unreserved characters (ALPHA / DIGIT / - / . / _ / ~) and @
-// - Must start with ALPHA, DIGIT or _
-// - Must be between 1 and 128 characters in length
+// Updated utility function to normalize package IDs with URI encoding
 function normalizePackageId(packageId) {
   if (!packageId || typeof packageId !== 'string') {
     return '_invalid';
   }
   
-  // First handle scoped packages (@namespace/package-name)
+  // First URI encode the entire package name to handle special characters
+  let encodedPackageId = encodeURIComponent(packageId);
+  
+  // Handle scoped packages (@namespace/package-name) - preserve @ and convert %2F back to ~
   if (packageId.startsWith('@') && packageId.includes('/')) {
-    const [scope, name] = packageId.split('/', 2);
-    
-    // Normalize scope (remove @ for validation, add it back later)
-    let normalizedScope = scope.substring(1)
-      // Replace invalid characters with underscore
-      .replace(/[^a-zA-Z0-9\-\._~]/g, '_')
-      // Ensure first character is valid
-      .replace(/^[^a-zA-Z0-9_]/, '_');
-    
-    // Normalize package name
-    let normalizedName = name
-      // Replace invalid characters with underscore
-      .replace(/[^a-zA-Z0-9\-\._~]/g, '_')
-      // Ensure first character is valid
-      .replace(/^[^a-zA-Z0-9_]/, '_');
-    
-    // Combine with tilde separator and check length
-    let result = `@${normalizedScope}~${normalizedName}`;
-    return result.length > 128 ? result.substring(0, 128) : result;
+    // For scoped packages, we want @namespace~package format after encoding
+    encodedPackageId = encodedPackageId.replace('%40', '@').replace('%2F', '~');
   }
   
-  // Handle regular packages
-  let result = packageId
-    // Replace invalid characters with underscore
-    .replace(/[^a-zA-Z0-9\-\._~@]/g, '_')
-    // Ensure first character is valid
-    .replace(/^[^a-zA-Z0-9_]/, '_');
+  // Replace any remaining percent-encoded characters that aren't xRegistry compliant
+  // Convert %XX sequences to underscore-based format to maintain readability
+  encodedPackageId = encodedPackageId.replace(/%([0-9A-Fa-f]{2})/g, '_$1');
   
-  // Check length
+  // Ensure the result only contains valid xRegistry ID characters
+  let result = encodedPackageId
+    // Keep only valid characters: alphanumeric, hyphen, dot, underscore, tilde, and @
+    .replace(/[^a-zA-Z0-9\-\._~@]/g, '_');
+
+  // For scoped packages, ensure leading @ is preserved (do not replace with _)
+  if (packageId.startsWith('@') && result[0] !== '@') {
+    result = '@' + result.replace(/^_+/, '');
+  }
+
+  // Ensure first character is valid (must be alphanumeric, underscore, or @ for scoped)
+  if (!/^[a-zA-Z0-9_@]/.test(result[0])) {
+    result = '_' + result;
+  }
+
+  // Check length constraint
   return result.length > 128 ? result.substring(0, 128) : result;
 }
 
@@ -863,11 +1227,11 @@ function xregistryCommonAttrs({ id, name, description, parentUrl, type, labels =
   // Use the normalize function to ensure ID conforms to xRegistry specifications
   const safeId = normalizePackageId(id);
   
-  // For paths, we need to encode the slash in scoped package names to prevent it from being treated
+  // For paths, we need to encode the slash in scoped packages to prevent it from being treated
   // as a path separator in xid and shortself
   const pathSafeId = encodePackageNameForPath(safeId);
   
-  // Generate XID based on type - Always use path format
+  // Generate XID based on type - Always use path to normalizePath
   let xid;
   
   if (type === "registry") {
@@ -925,9 +1289,17 @@ function xregistryCommonAttrs({ id, name, description, parentUrl, type, labels =
     createdat: now,
     modifiedat: now,
     labels: labels,
-    docs: docUrl, // Changed from 'documentation' to 'docs' and using a single URL
+    documentation: docUrl, 
     shortself: parentUrl ? normalizePath(`${parentUrl}/${pathSafeId}`) : undefined,
   };
+}
+
+// Helper function to append filter parameter to URL
+function appendFilterToUrl(url, filterValue) {
+  if (!filterValue) return url;
+  
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}filter=${encodeURIComponent(filterValue)}`;
 }
 
 // Helper function to make all URLs in an object absolute
@@ -996,62 +1368,94 @@ try {
   throw error;
 }
 
-// Root endpoint
-app.get("/", (req, res) => {
-  const now = new Date().toISOString();
-  const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
-  
-  let rootResponse = {
+// Helper function to get the base URL
+function getBaseUrl(req) {
+  // Use the BASE_URL parameter if provided, otherwise construct from request
+  return BASE_URL || `${req.protocol}://${req.get('host')}`;
+}
+
+// Root endpoint - provides basic registry information
+app.get('/', asyncHandler(async (req, res) => {
+  const now = new Date().toISOString();  const registryInfo = {
     specversion: SPEC_VERSION,
     registryid: REGISTRY_ID,
-        name: "NPM xRegistry Wrapper",
-    description: "xRegistry API wrapper for NPM",
-    xid: "/",
-    epoch: 1,
-    createdat: now,
-    modifiedat: now,
-    labels: {},
-    docs: `${baseUrl}/docs`, // Absolute URL for docs
-    self: `${baseUrl}/`,
-    modelurl: `${baseUrl}/model`,
-    capabilitiesurl: `${baseUrl}/capabilities`,
-    [`${GROUP_TYPE}url`]: `${baseUrl}/${GROUP_TYPE}`,
-    [`${GROUP_TYPE}count`]: 1,
-    [GROUP_TYPE]: {
+    xid: '/',
+    self: `${getBaseUrl(req)}/`,
+    epoch: Math.floor(Date.now() / 1000), // Current epoch in seconds
+    createdat: now, // For simplicity, using current time
+    modifiedat: now, // For simplicity, using current time
+    description: 'xRegistry wrapper for npmjs.org',
+    capabilities: `${getBaseUrl(req)}/capabilities`,
+    capabilitiesurl: `${getBaseUrl(req)}/capabilities`, // Required property for tests
+    model: `${getBaseUrl(req)}/model`, // Added model link
+    modelurl: `${getBaseUrl(req)}/model`, // Required property for tests
+    groups: `${getBaseUrl(req)}/${GROUP_TYPE}`,
+    noderegistriesurl: `${getBaseUrl(req)}/${GROUP_TYPE}`, // Required property for tests
+    noderegistriescount: 1, // We have one node registry (npmjs.org)
+    noderegistries: `${getBaseUrl(req)}/${GROUP_TYPE}`  };
+    // Custom inline handling for root endpoint
+  let processedRegistry = { ...registryInfo };
+  
+  // Handle inline=model - replace model URL with actual model object
+  if (req.query.inline && req.query.inline.includes('model')) {
+    try {
+      const modelPath = path.join(__dirname, 'model.json');
+      const modelFileContent = fs.readFileSync(modelPath, 'utf8');
+      const modelData = JSON.parse(modelFileContent);
+      processedRegistry.model = modelData;
+    } catch (error) {
+      logger.error("Error loading model for inline", { error: error.message });
+    }
+  }
+  
+  // Handle inline=endpoints - add endpoints property with noderegistries data
+  if (req.query.inline && req.query.inline.includes('endpoints')) {
+    const baseUrl = getBaseUrl(req);
+    processedRegistry.endpoints = {
       [GROUP_ID]: {
-      ...xregistryCommonAttrs({
-          id: GROUP_ID,
-          name: GROUP_ID,
-          description: "NPM registry group",
-          parentUrl: `/${GROUP_TYPE}`,
-          type: GROUP_TYPE_SINGULAR,
-        }),
+        xid: `/${GROUP_TYPE}/${GROUP_ID}`,
+        name: GROUP_ID,
+        description: `NPM packages from ${GROUP_ID}`,
+        epoch: 1,
+        createdat: processedRegistry.createdat,
+        modifiedat: processedRegistry.modifiedat,
         self: `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}`,
-        [`${RESOURCE_TYPE}url`]: `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`,
-      },
-    },
-  };
+        packages: `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`,
+        packagescount: packageNamesCache.length,
+        packagesurl: `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`
+      }
+    };
+  }
   
-  // Make all URLs in the docs field absolute
-  convertDocsToAbsoluteUrl(req, rootResponse);
-  
-  // Apply flag handlers
-  rootResponse = handleCollectionsFlag(req, rootResponse);
-  rootResponse = handleDocFlag(req, rootResponse);
-  rootResponse = handleInlineFlag(req, rootResponse, GROUP_TYPE);
-  rootResponse = handleEpochFlag(req, rootResponse);
-  rootResponse = handleSpecVersionFlag(req, rootResponse);
-  rootResponse = handleNoReadonlyFlag(req, rootResponse);
-  rootResponse = handleSchemaFlag(req, rootResponse, 'registry');
-  
-  // Apply response headers
-  setXRegistryHeaders(res, rootResponse);
-  
-  res.json(rootResponse);
-});
+  setXRegistryHeaders(res, processedRegistry);
+  res.json(handleSchemaFlag(req, processedRegistry, 'registry'));
+}));
 
-// Capabilities endpoint
-app.get("/capabilities", (req, res) => {
+// Model endpoint - describes the registry's data model
+app.get('/model', asyncHandler(async (req, res) => {
+  // Load model from model.json
+  const modelPath = path.join(__dirname, 'model.json');
+  let modelData;
+  
+  try {
+    const modelFileContent = fs.readFileSync(modelPath, 'utf8');
+    modelData = JSON.parse(modelFileContent);
+  } catch (error) {
+    logger.error("Error reading or parsing model.json", { error: error.message, path: modelPath });
+    return res.status(500).json(createErrorResponse('internal_server_error', 'Model Not Found', 500, req.originalUrl, 'The registry model definition could not be loaded.'));
+  }
+  
+  // Add self-referencing URL to the response
+  modelData.self = `${getBaseUrl(req)}/model`;
+  
+  setXRegistryHeaders(res, modelData);
+  // Return the model data as-is, which already has the 'model' property
+  const responseData = handleInlineFlag(req, modelData);
+  res.json(responseData);
+}));
+
+// Capabilities endpoint - describes the registry's capabilities
+app.get("/capabilities", asyncHandler((req, res) => {
   const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
   
   const response = {
@@ -1093,10 +1497,10 @@ app.get("/capabilities", (req, res) => {
   setXRegistryHeaders(res, validatedResponse);
   
   res.json(validatedResponse);
-});
+}));
 
 // Model endpoint
-app.get("/model", (req, res) => {
+app.get("/model", asyncHandler((req, res) => {
   const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
   
   // Create a copy of the model to modify URLs
@@ -1110,11 +1514,12 @@ app.get("/model", (req, res) => {
   // Apply response headers
   setXRegistryHeaders(res, modelWithAbsoluteUrls);
   
-  res.json(modelWithAbsoluteUrls);
-});
+  const responseData = handleInlineFlag(req, modelWithAbsoluteUrls);
+  res.json(responseData);
+}));
 
 // Group collection
-app.get(`/${GROUP_TYPE}`, (req, res) => {
+app.get(`/${GROUP_TYPE}`, asyncHandler((req, res) => {
   const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
   
   // For this example, we only have one group, but implementing pagination for consistency
@@ -1145,7 +1550,7 @@ app.get(`/${GROUP_TYPE}`, (req, res) => {
     };
     
     // Apply flag handlers to each group
-    groups[GROUP_ID] = handleDocFlag(req, groups[GROUP_ID]);
+    groups[GROUP_ID] = handleInlineFlag(req, groups[GROUP_ID]);
     groups[GROUP_ID] = handleEpochFlag(req, groups[GROUP_ID]);
     groups[GROUP_ID] = handleNoReadonlyFlag(req, groups[GROUP_ID]);
     groups[GROUP_ID] = handleSchemaFlag(req, groups[GROUP_ID], 'group');
@@ -1159,16 +1564,24 @@ app.get(`/${GROUP_TYPE}`, (req, res) => {
   setXRegistryHeaders(res, { epoch: 1 });
   
   res.json(groups);
-});
+}));
 
 // Group details
-app.get(`/${GROUP_TYPE}/${GROUP_ID}`, async (req, res) => {
+app.get(`/${GROUP_TYPE}/:groupId`, asyncHandler(async (req, res) => {
   const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
+  
+  // Decode the URL-encoded group ID
+  const groupId = decodeURIComponent(req.params.groupId);
+    // Validate that this is the expected group
+  if (groupId !== GROUP_ID) {
+    return res.status(404).json(
+      createErrorResponse("not_found", "Group not found", 404, req.originalUrl, `Group '${groupId}' does not exist`)
+    );
+  }
   
   // Use the count of packages from our cache
   const packagescount = packageNamesCache.length > 0 ? packageNamesCache.length : 1000000;
-  
-  let groupResponse = {
+    let groupResponse = {
     ...xregistryCommonAttrs({
       id: GROUP_ID,
       name: GROUP_ID,
@@ -1177,13 +1590,13 @@ app.get(`/${GROUP_TYPE}/${GROUP_ID}`, async (req, res) => {
       type: GROUP_TYPE_SINGULAR,
     }),
     self: `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}`,
-    [`${RESOURCE_TYPE}url`]: `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`,
+    [`${RESOURCE_TYPE}url`]: appendFilterToUrl(`${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`, req.query.filter),
     [`${RESOURCE_TYPE}count`]: packagescount,
   };
   
   // Apply flag handlers
   groupResponse = handleCollectionsFlag(req, groupResponse);
-  groupResponse = handleDocFlag(req, groupResponse);
+  groupResponse = handleInlineFlag(req, groupResponse);
   groupResponse = handleInlineFlag(req, groupResponse, RESOURCE_TYPE);
   groupResponse = handleEpochFlag(req, groupResponse);
   groupResponse = handleSpecVersionFlag(req, groupResponse);
@@ -1196,32 +1609,42 @@ app.get(`/${GROUP_TYPE}/${GROUP_ID}`, async (req, res) => {
   // Apply response headers
   setXRegistryHeaders(res, groupResponse);
   
-  res.json(groupResponse);
-});
+  const responseData = handleInlineFlag(req, groupResponse);
+  res.json(responseData);
+}));
 
 // All packages with filtering
-app.get(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`, async (req, res) => {
+app.get(`/${GROUP_TYPE}/:groupId/${RESOURCE_TYPE}`, asyncHandler(async (req, res) => {
   const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
+  
+  // Decode URL-encoded parameters
+  const groupId = decodeURIComponent(req.params.groupId);
+  
+  // Validate group
+  if (groupId !== GROUP_ID) {
+    return res.status(404).json(
+      createErrorResponse("not_found", "Group not found", 404, req.originalUrl, `Group '${groupId}' does not exist`)
+    );
+  }
   
   try {
     // Use our package names cache instead of hardcoded list
     let packageNames = [...packageNamesCache]; // Already sorted alphabetically from refreshPackageNames
-    
-    // Filtering support: ?filter=substring (case-insensitive substring match)
+      // xRegistry-compliant filtering support
     if (req.query.filter) {
-      const filter = req.query.filter.toLowerCase();
-      
-      // First try to get the specific package if it exists
-      if (await packageExists(req.query.filter)) {
-        packageNames = [req.query.filter];
+      // Check if it's a simple text search (no equals sign) or structured filter
+      if (req.query.filter.includes('=')) {
+        // Structured filter (e.g., name=express, packageid=lodash)
+        packageNames = await applyXRegistryFilterWithNameConstraint(req.query.filter, packageNames, req);
       } else {
-        // Otherwise filter by substring match
-        packageNames = packageNames.filter(name => 
-          name.toLowerCase().includes(filter)
-        );
+        // Simple text search (e.g., filter=express)
+        const searchTerm = req.query.filter.toLowerCase();
+        packageNames = packageNames.filter(name => name.toLowerCase().includes(searchTerm));
       }
     }
-    
+    // Apply sort flag (default asc on name)
+    packageNames = applySortFlag(req.query.sort, packageNames);
+
     // Pagination parameters
     const totalCount = packageNames.length;
     const limit = req.query.limit ? parseInt(req.query.limit, 10) : DEFAULT_PAGE_LIMIT;
@@ -1266,7 +1689,7 @@ app.get(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`, async (req, res) => {
     
     // Apply flag handlers for each resource
     for (const packageId in resources) {
-      resources[packageId] = handleDocFlag(req, resources[packageId]);
+      resources[packageId] = handleInlineFlag(req, resources[packageId]);
       resources[packageId] = handleEpochFlag(req, resources[packageId]);
       resources[packageId] = handleNoReadonlyFlag(req, resources[packageId]);
       resources[packageId] = handleSchemaFlag(req, resources[packageId], 'resource');
@@ -1284,533 +1707,314 @@ app.get(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`, async (req, res) => {
     
     res.json(resources);
   } catch (error) {
+    logger.error("Error fetching package list", {
+      error: error.message,
+      stack: error.stack,
+      query: req.query,
+      cacheSize: packageNamesCache.length
+    });
+    
     res
       .status(500)
       .json(
         createErrorResponse("server_error", "Failed to fetch package list", 500, req.originalUrl, error.message)
     );
   }
-});
+}));
 
-// Utility function to process dependencies into structured objects with package references
-async function processDependencies(dependencies) {
-  if (!dependencies || typeof dependencies !== 'object') {
-    return [];
-  }
-
-  // Create a structured array of dependency objects
-  const result = [];
-  for (const [packageName, versionSpec] of Object.entries(dependencies)) {
-    // Check if the package exists in our registry
-    const packageExists = await packageExistsInCache(packageName);
-
-    // Normalize the package ID for xRegistry
-    const normalizedPackageId = normalizePackageId(packageName);
-    
-    // Create a dependency object
-    const dependencyObj = {
-      name: packageName,
-      version: versionSpec
-    };
-
-    // Add package reference if the package exists in our registry
-    if (packageExists) {
-      // For package reference, use the path to the package in xRegistry format
-      const packagePath = `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${normalizedPackageId}`;
-      
-      try {
-        // Fetch package data to get available versions for resolution
-        const packageData = await cachedGet(`https://registry.npmjs.org/${packageName}`);
-        const availableVersions = Object.keys(packageData.versions || {});
-        
-        if (availableVersions.length > 0) {
-          let resolvedVersion = null;
-          
-          // Handle wildcard version (*) - point to default version
-          if (versionSpec === '*') {
-            dependencyObj.package = packagePath;
-          }
-          // Handle x-notation versions (e.g., 16.x, 16.x.x)
-          else if (versionSpec.includes('.x')) {
-            resolvedVersion = resolveXNotationVersion(versionSpec, availableVersions);
-            if (resolvedVersion) {
-              dependencyObj.package = `${packagePath}/versions/${resolvedVersion}`;
-              dependencyObj.resolved_version = resolvedVersion;
-            } else {
-              dependencyObj.package = packagePath;
-            }
-          }
-          // Extract version specifier from prefixed versions (^1.2.3, ~1.2.3, etc.)
-          else {
-            const versionMatch = versionSpec.match(/([~^>=<]+)?(.+)/);
-            const versionPrefix = versionMatch ? versionMatch[1] || '' : '';
-            const version = versionMatch ? versionMatch[2] || '' : '';
-            
-            // For prefixed versions, try to resolve to closest actual version
-            if (versionPrefix && version) {
-              resolvedVersion = findClosestVersion(version, versionPrefix, availableVersions);
-              if (resolvedVersion) {
-                dependencyObj.package = `${packagePath}/versions/${resolvedVersion}`;
-                dependencyObj.resolved_version = resolvedVersion;
-              } else {
-                dependencyObj.package = packagePath;
-              }
-            }
-            // For simple versions (not wildcards or prefixed), use exact version if specified
-            else if (version) {
-              dependencyObj.package = `${packagePath}/versions/${version}`;
-            } else {
-              // Default to package path if no version specified
-              dependencyObj.package = packagePath;
-            }
-          }
-        } else {
-          // No versions available, use the package path without version
-          dependencyObj.package = packagePath;
-        }
-      } catch (error) {
-        // If there's an error fetching versions, use the package path without version
-        dependencyObj.package = packagePath;
-      }
-    }
-
-    result.push(dependencyObj);
-  }
-
-  return result;
-}
-
-// Helper function to resolve x-notation versions (e.g., 16.x, 16.x.x, 1.x.x)
-function resolveXNotationVersion(xVersionSpec, availableVersions) {
-  // Parse the x-notation version to extract the concrete parts
-  const parts = xVersionSpec.split('.');
-  const concreteValues = [];
+// Package details - return individual package information
+app.get(`/${GROUP_TYPE}/:groupId/${RESOURCE_TYPE}/:packageName`, asyncHandler(async (req, res) => {
+  // Decode URL-encoded parameters
+  const groupId = decodeURIComponent(req.params.groupId);
+  const packageName = convertTildeToSlash(decodeURIComponent(req.params.packageName));
   
-  // Extract concrete numeric values (before any 'x')
-  for (const part of parts) {
-    if (part === 'x' || part === 'X') {
-      break;
-    }
-    concreteValues.push(parseInt(part, 10));
+  const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
+  
+  // Validate group
+  if (groupId !== GROUP_ID) {
+    return res.status(404).json(
+      createErrorResponse("not_found", "Group not found", 404, req.originalUrl, `Group '${groupId}' does not exist`)
+    );
   }
   
-  // Sort the available versions for proper comparison
-  const sortedVersions = [...availableVersions].sort(compareVersions);
-  
-  // Filter versions that match the concrete parts
-  const matchingVersions = sortedVersions.filter(version => {
-    const versionParts = version.split('.').map(p => parseInt(p.replace(/[^0-9]/g, ''), 10) || 0);
-    
-    // Ensure all concrete values match
-    for (let i = 0; i < concreteValues.length; i++) {
-      if (versionParts[i] !== concreteValues[i]) {
-        return false;
-      }
-    }
-    return true;
-  });
-  
-  // Return the highest matching version
-  return matchingVersions.length > 0 ? matchingVersions.pop() : null;
-}
-
-// Helper function to find the closest matching version based on prefix
-function findClosestVersion(version, prefix, availableVersions) {
-  // Sort versions to find the best match
-  const sortedVersions = [...availableVersions].sort(compareVersions);
-  
-  if (prefix === '^') {
-    // Caret range: compatible with version, matching major version
-    // Allow minor and patch level changes but not major version changes
-    const parts = version.split('.');
-    const major = parseInt(parts[0], 10);
-    
-    // Find highest version with same major version
-    return sortedVersions.filter(v => {
-      const vParts = v.split('.');
-      return parseInt(vParts[0], 10) === major;
-    }).pop();
-  } 
-  else if (prefix === '~') {
-    // Tilde range: compatible with version, matching minor version
-    // Allow patch level changes but not minor or major version changes
-    const parts = version.split('.');
-    const major = parseInt(parts[0], 10);
-    const minor = parts.length > 1 ? parseInt(parts[1], 10) : 0;
-    
-    // Find highest version with same major and minor version
-    return sortedVersions.filter(v => {
-      const vParts = v.split('.');
-      return parseInt(vParts[0], 10) === major && 
-             (vParts.length > 1 ? parseInt(vParts[1], 10) : 0) === minor;
-    }).pop();
-  }
-  else if (prefix.includes('>=')) {
-    // Greater than or equal: any version greater than or equal to specified version
-    return sortedVersions.filter(v => compareVersions(v, version) >= 0).shift();
-  }
-  else if (prefix.includes('>')) {
-    // Greater than: any version greater than specified version
-    return sortedVersions.filter(v => compareVersions(v, version) > 0).shift();
-  }
-  else if (prefix.includes('<=')) {
-    // Less than or equal: any version less than or equal to specified version
-    return sortedVersions.filter(v => compareVersions(v, version) <= 0).pop();
-  }
-  else if (prefix.includes('<')) {
-    // Less than: any version less than specified version
-    return sortedVersions.filter(v => compareVersions(v, version) < 0).pop();
-  }
-  
-  // For other prefixes or if no match found, return null
-  return null;
-}
-
-// Helper function to compare semver versions
-function compareVersions(a, b) {
-  const aParts = a.split('.').map(p => parseInt(p.replace(/[^0-9]/g, ''), 10) || 0);
-  const bParts = b.split('.').map(p => parseInt(p.replace(/[^0-9]/g, ''), 10) || 0);
-  
-  // Pad arrays to ensure equal length
-  while (aParts.length < 3) aParts.push(0);
-  while (bParts.length < 3) bParts.push(0);
-  
-  // Compare major version
-  if (aParts[0] !== bParts[0]) return aParts[0] - bParts[0];
-  // Compare minor version
-  if (aParts[1] !== bParts[1]) return aParts[1] - bParts[1];
-  // Compare patch version
-  return aParts[2] - bParts[2];
-}
-
-// Helper function to check if a package exists in our cache
-async function packageExistsInCache(packageName) {
-  // First check in our cache
-  if (packageNamesCache.includes(packageName)) {
-    return true;
-  }
-  
-  // If not in cache, check the registry directly
   try {
-    const exists = await packageExists(packageName);
-    return exists;
-  } catch (error) {
-    return false;
-  }
-}
-
-// Utility function to convert NPM package data to xRegistry format
-function convertPackageData(packageData, packageName) {
-  // Extract the latest version
-  const latestVersion = packageData['dist-tags']?.latest || 'latest';
-  const versionData = packageData.versions?.[latestVersion] || {};
-  
-  // Extract maintainers
-  const maintainers = packageData.maintainers || [];
-  const maintainerNames = maintainers.map(m => m.name).join(", ");
-  const maintainerEmails = maintainers.map(m => m.email).join(", ");
-  
-  // Extract keywords as labels
-  const keywords = versionData.keywords || [];
-  const labels = {};
-  if (keywords.length > 0) {
-    labels["keywords"] = keywords.join(", ");
-  }
-  
-  // Add license info if available
-  if (versionData.license) {
-    labels["license"] = versionData.license;
-  }
-  
-  // Check for documentation URL
-  let docsUrl = null;
-  if (versionData.homepage) {
-    docsUrl = versionData.homepage;
-  } else if (versionData.repository?.url) {
-    docsUrl = versionData.repository.url
-      .replace('git+', '')
-      .replace('.git', '');
-  }
-  
-  // The dependencies, devDependencies, and peerDependencies will be processed 
-  // by the processDependencies function later
-  
-  return {
-    name: packageData.name || packageName,
-    description: packageData.description || "",
-    author: versionData.author?.name || "",
-    author_email: versionData.author?.email || "",
-    maintainer: maintainerNames,
-    maintainer_email: maintainerEmails,
-    home_page: versionData.homepage || "",
-    repository: versionData.repository?.url || "",
-    license: versionData.license || "",
-    keywords: keywords,
-    // Remove versions array as it conflicts with xRegistry versioning model
-    versionscount: Object.keys(packageData.versions || {}).length,
-    // Store raw dependencies to be processed later
-    _dependencies: versionData.dependencies || {},
-    _devDependencies: versionData.devDependencies || {},
-    _peerDependencies: versionData.peerDependencies || {},
-    deprecated: versionData.deprecated || false,
-    labels: labels,
-    docsUrl: docsUrl, // Keep this as docsUrl to pass to xregistryCommonAttrs which will map it to 'docs'
-  };
-}
-
-// Package metadata
-app.get(
-  `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName`,
-  async (req, res) => {
-    // Convert tilde-separated package name back to slash format for NPM registry
-    const packageName = convertTildeToSlash(req.params.packageName);
-    const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
-    
-    try {
-      const packageData = await cachedGet(
-        `https://registry.npmjs.org/${packageName}`
-      );
-      
-      // Extract the latest version info
-      const latestVersion = packageData['dist-tags']?.latest || Object.keys(packageData.versions)[0];
-      
-      // Convert NPM data to our format
-      const npmPackageData = convertPackageData(packageData, packageName);
-      
-      // Process dependencies to structured format with package references
-      const dependencies = await processDependencies(npmPackageData._dependencies);
-      const devDependencies = await processDependencies(npmPackageData._devDependencies);
-      const peerDependencies = await processDependencies(npmPackageData._peerDependencies);
-      
-      // Remove the raw dependency objects
-      delete npmPackageData._dependencies;
-      delete npmPackageData._devDependencies;
-      delete npmPackageData._peerDependencies;
-      
-      // Build resource URL paths - make sure to encode package names in URLs
-      const encodedPackageName = encodePackageName(packageName);
-      const resourceBasePath = `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${encodedPackageName}`;
-      const metaUrl = `${resourceBasePath}/meta`;
-      const versionsUrl = `${resourceBasePath}/versions`;
-      const defaultVersionUrl = `${resourceBasePath}/versions/${encodeURIComponent(latestVersion)}`;
-      
-      // Get creation and modification timestamps
-      const createdAt = packageData.time?.created ? new Date(packageData.time.created).toISOString() : new Date().toISOString();
-      const modifiedAt = packageData.time?.modified ? new Date(packageData.time.modified).toISOString() : new Date().toISOString();
-      
-      // Normalize package ID according to xRegistry specifications
-      const normalizedPackageId = normalizePackageId(packageName);
-      // For paths, encode the slash in scoped packages
-      const pathSafePackageId = encodePackageNameForPath(normalizedPackageId);
-      
-      // Create meta subobject according to spec
-      const metaObject = {
-        [`${RESOURCE_TYPE_SINGULAR}id`]: normalizedPackageId,
-        self: metaUrl,
-        xid: `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${pathSafePackageId}/meta`,
-        epoch: 1,
-        createdat: createdAt,
-        modifiedat: modifiedAt,
-        readonly: true, // NPM wrapper is read-only
-        compatibility: "none",
-        // Include version related information in meta
-        defaultversionid: latestVersion,
-        defaultversionurl: defaultVersionUrl,
-        defaultversionsticky: true, // Make default version sticky by default
-      };
-      
-      // Extract documentation URL from package data
-      const docsUrl = npmPackageData.docsUrl;
-      
-      // Remove docsUrl from npmPackageData to avoid duplication with docs
-      delete npmPackageData.docsUrl;
-      
-      let packageResponse = {
-        ...xregistryCommonAttrs({
-          id: packageName, // Will be normalized inside xregistryCommonAttrs
-          name: npmPackageData.name,
-          description: npmPackageData.description,
-          parentUrl: `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`,
-          type: RESOURCE_TYPE_SINGULAR,
-          labels: npmPackageData.labels,
-          docsUrl: docsUrl, // Pass the extracted docsUrl to be mapped to 'docs'
-        }),
-        [`${RESOURCE_TYPE_SINGULAR}id`]: normalizedPackageId,
-        versionid: latestVersion,
-        self: `${baseUrl}${req.path}`,
-        // Include NPM-specific fields
-        ...npmPackageData,
-        // Add structured dependency information
-        dependencies: dependencies,
-        devDependencies: devDependencies,
-        peerDependencies: peerDependencies,
-        // Resource level navigation attributes
-        metaurl: metaUrl,
-        versionsurl: versionsUrl,
-      };
-      
-      // Make the docs URL absolute if it's not already
-      convertDocsToAbsoluteUrl(req, packageResponse);
-      
-      // Apply flag handlers
-      packageResponse = handleCollectionsFlag(req, packageResponse);
-      packageResponse = handleDocFlag(req, packageResponse);
-      packageResponse = handleInlineFlag(req, packageResponse, "versions", metaObject);
-      packageResponse = handleEpochFlag(req, packageResponse);
-      packageResponse = handleSpecVersionFlag(req, packageResponse);
-      packageResponse = handleNoReadonlyFlag(req, packageResponse);
-      
-      res.json(packageResponse);
-    } catch (error) {
-      res.status(404).json(
+    // Check if package exists first
+    if (!(await packageExists(packageName, req))) {
+      return res.status(404).json(
         createErrorResponse("not_found", "Package not found", 404, req.originalUrl, `The package '${packageName}' could not be found`, packageName)
       );
     }
-  }
-);
-
-// Specific version
-app.get(
-  `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName/versions/:version`,
-  async (req, res) => {
-    // Convert tilde-separated package name back to slash format for NPM registry
-    const packageName = convertTildeToSlash(req.params.packageName);
-    const { version } = req.params;
-    const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
     
-    try {
-      // Get package data
-      const packageData = await cachedGet(
-        `https://registry.npmjs.org/${packageName}`
-      );
+    // Fetch package data from NPM registry
+    const packageData = await cachedGet(`https://registry.npmjs.org/${packageName}`);
+    
+    // Extract basic package information
+    const latestVersion = packageData['dist-tags']?.latest || Object.keys(packageData.versions)[0];
+    const versionData = packageData.versions[latestVersion];
+    
+    // Normalize package ID for xRegistry compliance
+    const normalizedPackageId = normalizePackageId(packageName);
+    
+    // Build package response with required fields
+    const packageResponse = {
+      ...xregistryCommonAttrs({
+        id: packageName,
+        name: packageName,
+        description: packageData.description || versionData?.description || '',
+        parentUrl: `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`,
+        type: RESOURCE_TYPE_SINGULAR,
+      }),
+      // Required fields for individual package
+      name: packageName,
+      [`${RESOURCE_TYPE_SINGULAR}id`]: normalizedPackageId,
+      self: `${baseUrl}${req.path}`,
       
-      // Check if the requested version exists
-      if (!packageData.versions || !packageData.versions[version]) {
-        return res.status(404).json(
-          createErrorResponse("not_found", "Version not found", 404, req.originalUrl, `The version '${version}' of package '${packageName}' could not be found`, { packageName, version })
-        );
-      }
+      // Package metadata
+      description: packageData.description || versionData?.description || '',
+      author: packageData.author?.name || versionData?.author?.name || packageData.author || versionData?.author,
+      license: packageData.license || versionData?.license,
+      homepage: packageData.homepage || versionData?.homepage,
+      repository: packageData.repository?.url || versionData?.repository?.url,
+      keywords: packageData.keywords || versionData?.keywords,
       
-      // Get the version-specific data
-      const versionData = packageData.versions[version];
+      // Version information
+      versionid: latestVersion,
+      versionsurl: `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${encodePackageName(packageName)}/versions`,
       
-      // Get the latest version for comparison
-      const latestVersion = packageData['dist-tags']?.latest || Object.keys(packageData.versions)[0];
+      // URLs for related resources
+      metaurl: `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${encodePackageName(packageName)}/meta`,
+      docsurl: `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${encodePackageName(packageName)}/doc`,
       
-      // Extract maintainers
-      const maintainers = packageData.maintainers || [];
-      const maintainerNames = maintainers.map(m => m.name).join(", ");
-      const maintainerEmails = maintainers.map(m => m.email).join(", ");
-      
-      // Extract keywords as labels
-      const keywords = versionData.keywords || [];
-      const labels = {};
-      if (keywords.length > 0) {
-        labels["keywords"] = keywords.join(", ");
-      }
-      
-      // Add license info if available
-      if (versionData.license) {
-        labels["license"] = versionData.license;
-      }
-      
-      // Check for documentation URL
-      let docsUrl = null;
-      if (versionData.homepage) {
-        docsUrl = versionData.homepage;
-      } else if (versionData.repository?.url) {
-        docsUrl = versionData.repository.url
-          .replace('git+', '')
-          .replace('.git', '');
-      }
-      
-      // Process dependencies to structured format with package references
-      const dependencies = await processDependencies(versionData.dependencies || {});
-      const devDependencies = await processDependencies(versionData.devDependencies || {});
-      const peerDependencies = await processDependencies(versionData.peerDependencies || {});
-      
-      // Get version-specific timestamps
-      const versionCreated = packageData.time?.[version] ? new Date(packageData.time[version]).toISOString() : null;
-      
-      // Encode package name and version for URLs
-      const encodedPackageName = encodePackageName(packageName);
-      const encodedVersion = encodeURIComponent(version);
-      
-      // Normalize IDs for data model
-      const normalizedPackageId = normalizePackageId(packageName);
-      const normalizedVersionId = normalizePackageId(version);
-      
-      // Start with the version-specific attributes
-      let versionResponse = {
-        ...xregistryCommonAttrs({
-          id: version, // Will be normalized inside xregistryCommonAttrs
-          name: versionData.name || packageName,
-          description: versionData.description || "",
-          parentUrl: `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${normalizedPackageId}/versions`,
-          type: "version",
-          labels: labels,
-          docsUrl: docsUrl,
-        }),
-        // Basic version attributes
-        [`${RESOURCE_TYPE_SINGULAR}id`]: normalizedPackageId,
-        versionid: version,
-        self: `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${encodedPackageName}/versions/${encodedVersion}`,
-        resourceurl: `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${encodedPackageName}`,
-        // Resource details (package information)
-        name: versionData.name || packageName,
-        description: versionData.description || "",
-        author: versionData.author?.name || "",
-        author_email: versionData.author?.email || "",
-        maintainer: maintainerNames,
-        maintainer_email: maintainerEmails,
-        home_page: versionData.homepage || "",
-        repository: versionData.repository?.url || "",
-        license: versionData.license || "",
-        // Version-specific details
-        version_created: versionCreated,
-        // Add structured dependency information
-        dependencies: dependencies,
-        devDependencies: devDependencies,
-        peerDependencies: peerDependencies,
-        // Additional package metadata
-        package_version_count: Object.keys(packageData.versions || {}).length,
-        package_latest_version: latestVersion,
-        is_latest: version === latestVersion,
-        deprecated: versionData.deprecated || false,
-        dist: versionData.dist || {},
-        keywords: keywords,
-      };
-      
-      // Make the docs URL absolute if it's not already
-      convertDocsToAbsoluteUrl(req, versionResponse);
-      
-      // Apply flag handlers
-      versionResponse = handleDocFlag(req, versionResponse);
-      versionResponse = handleEpochFlag(req, versionResponse);
-      versionResponse = handleSpecVersionFlag(req, versionResponse);
-      versionResponse = handleNoReadonlyFlag(req, versionResponse);
-      
-      // Remove any docsUrl field to avoid duplication with docs field
-      if (versionResponse.docsUrl) {
-        delete versionResponse.docsUrl;
-      }
-      
-      res.json(versionResponse);
-    } catch (error) {
-      res.status(404).json(
-        createErrorResponse("not_found", "Version not found", 404, req.originalUrl, `The version '${version}' of package '${packageName}' could not be found`, { packageName, version })
+      // Add packageid property for xRegistry spec compliance
+      packageid: normalizedPackageId,
+    };
+    
+    // Apply flag handlers
+    let processedResponse = handleInlineFlag(req, packageResponse);
+    processedResponse = handleEpochFlag(req, processedResponse);
+    processedResponse = handleNoReadonlyFlag(req, processedResponse);
+    processedResponse = handleSchemaFlag(req, processedResponse, 'resource');
+    
+    // Make all URLs absolute
+    makeAllUrlsAbsolute(req, processedResponse);
+    
+    // Apply response headers
+    setXRegistryHeaders(res, processedResponse);
+    
+    const responseData = handleInlineFlag(req, processedResponse);
+    res.json(responseData);
+  } catch (error) {
+    logger.error("Error fetching individual package", {
+      error: error.message,
+      stack: error.stack,
+      packageName: packageName,
+      groupId: groupId
+    });
+    
+    res.status(404).json(
+      createErrorResponse("not_found", "Package not found", 404, req.originalUrl, `The package '${packageName}' could not be found`, packageName)
+    );
+  }
+}));
+
+// All versions
+app.get(`/${GROUP_TYPE}/:groupId/${RESOURCE_TYPE}/:packageName/versions`, asyncHandler(async (req, res) => {
+  // Decode URL-encoded parameters
+  const groupId = decodeURIComponent(req.params.groupId);
+  const packageName = decodeURIComponent(req.params.packageName);
+  
+  // Validate group
+  if (groupId !== GROUP_ID) {
+    return res.status(404).json(
+      createErrorResponse("not_found", "Group not found", 404, req.originalUrl, `Group '${groupId}' does not exist`)
+    );
+  }
+  
+  try {
+    // Check if package exists first
+    if (!(await packageExists(packageName, req))) {
+      return res.status(404).json(
+        createErrorResponse("not_found", "Package not found", 404, req.originalUrl, `The package '${packageName}' could not be found`, packageName)
       );
     }
+    
+    // Fetch package data from NPM registry
+    const packageData = await cachedGet(`https://registry.npmjs.org/${packageName}`);
+    
+    // Extract all version information
+    const versions = packageData.versions;
+    
+    // Normalize version IDs for xRegistry compliance
+    const normalizedVersions = {};
+    for (const versionId in versions) {
+      if (Object.hasOwnProperty.call(versions, versionId)) {
+        const versionData = versions[versionId];
+        normalizedVersions[versionId] = {
+          ...xregistryCommonAttrs({
+            id: versionId,
+            name: versionId,
+            parentUrl: `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${normalizePackageId(packageName)}/versions`,
+            type: "version",
+          }),
+          versionid: versionId,
+          self: `${req.protocol}://${req.get('host')}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${encodePackageName(packageName)}/versions/${encodeURIComponent(versionId)}`,
+        };
+      }
+    }
+    
+    // Sort version IDs
+    let versionIds = Object.keys(versions);
+    versionIds = applySortFlag(req.query.sort, versionIds);
+
+    // Build normalized versions map in sorted order
+    const sortedNormalizedVersions = {};
+    for (const versionId of versionIds) {
+      const versionData = versions[versionId];
+      sortedNormalizedVersions[versionId] = {
+        ...xregistryCommonAttrs({
+          id: versionId,
+          name: versionId,
+          parentUrl: `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${normalizePackageId(packageName)}/versions`,
+          type: "version",
+        }),
+        versionid: versionId,
+        self: `${req.protocol}://${req.get('host')}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${encodePackageName(packageName)}/versions/${encodeURIComponent(versionId)}`,
+      };
+    }
+    
+    // Apply flag handlers for each version
+    for (const versionId in sortedNormalizedVersions) {
+      sortedNormalizedVersions[versionId] = handleInlineFlag(req, sortedNormalizedVersions[versionId]);
+      sortedNormalizedVersions[versionId] = handleEpochFlag(req, sortedNormalizedVersions[versionId]);
+      sortedNormalizedVersions[versionId] = handleNoReadonlyFlag(req, sortedNormalizedVersions[versionId]);
+    }
+    
+    // Add pagination support
+    const totalCount = Object.keys(sortedNormalizedVersions).length;
+    const limit = req.query.limit ? parseInt(req.query.limit, 10) : DEFAULT_PAGE_LIMIT;
+    const offset = req.query.offset ? parseInt(req.query.offset, 10) : 0;
+    
+    if (limit <= 0) {
+      return res.status(400).json(
+        createErrorResponse("invalid_data", "Limit must be greater than 0", 400, req.originalUrl, "The limit parameter must be a positive integer", limit)
+      );
+    }
+    
+    // Apply pagination to the versions
+    const paginatedVersionIds = Object.keys(sortedNormalizedVersions).slice(offset, offset + limit);
+    const paginatedVersions = {};
+    paginatedVersionIds.forEach((v) => {
+      paginatedVersions[v] = sortedNormalizedVersions[v];
+    });
+    
+    // Add pagination links
+    const links = generatePaginationLinks(req, totalCount, offset, limit);
+    res.set('Link', links);
+    
+    // Apply schema headers
+    setXRegistryHeaders(res, { epoch: 1 });
+    
+    res.json(paginatedVersions);
+  } catch (error) {
+    res.status(404).json(
+      createErrorResponse("not_found", "Package not found", 404, req.originalUrl, `The package '${packageName}' could not be found`, packageName)
+    );
   }
-);
+}));
+
+// Specific version
+app.get(`/${GROUP_TYPE}/:groupId/${RESOURCE_TYPE}/:packageName/versions/:version`, asyncHandler(async (req, res) => {
+  // Decode URL-encoded parameters
+  const groupId = decodeURIComponent(req.params.groupId);
+  const packageName = decodeURIComponent(req.params.packageName);
+  const version = decodeURIComponent(req.params.version);
+  
+  // Validate group
+  if (groupId !== GROUP_ID) {
+    return res.status(404).json(
+      createErrorResponse("not_found", "Group not found", 404, req.originalUrl, `Group '${groupId}' does not exist`)
+    );
+  }
+  
+  try {
+    // Check if package exists first
+    if (!(await packageExists(packageName, req))) {
+      return res.status(404).json(
+        createErrorResponse("not_found", "Package not found", 404, req.originalUrl, `The package '${packageName}' could not be found`, packageName)
+      );
+    }
+    
+    // Fetch package data from NPM registry
+    const packageData = await cachedGet(`https://registry.npmjs.org/${packageName}`);
+    
+    // Extract version information
+    const versionData = packageData.versions[version];
+    
+    if (!versionData) {
+      return res.status(404).json(
+        createErrorResponse("not_found", "Version not found", 404, req.originalUrl, `The version '${version}' of package '${packageName}' could not be found`)
+      );
+    }
+    
+    // Normalize package ID for xRegistry compliance
+    const normalizedPackageId = normalizePackageId(packageName);
+    
+    // Build version response with required fields
+    const versionResponse = {
+      ...xregistryCommonAttrs({
+        id: version,
+        name: version,
+        parentUrl: `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${normalizedPackageId}/versions`,
+        type: "version",
+      }),
+      versionid: version,
+      self: `${req.protocol}://${req.get('host')}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${encodePackageName(packageName)}/versions/${encodeURIComponent(version)}`,
+      // Version metadata
+      description: versionData.description || '',
+      author: versionData.author?.name || versionData.author,
+      license: versionData.license,
+      homepage: versionData.homepage,
+      repository: versionData.repository?.url,
+      keywords: versionData.keywords,
+      dependencies // <-- Add structured dependencies here
+    };
+    
+    // Apply flag handlers
+    let processedResponse = handleInlineFlag(req, versionResponse);
+    processedResponse = handleEpochFlag(req, processedResponse);
+    processedResponse = handleNoReadonlyFlag(req, processedResponse);
+    processedResponse = handleSchemaFlag(req, processedResponse, 'resource');
+    
+    // Make all URLs absolute
+    makeAllUrlsAbsolute(req, processedResponse);
+    
+    // Apply response headers
+    setXRegistryHeaders(res, processedResponse);
+    
+    const responseData = handleInlineFlag(req, processedResponse);
+    res.json(responseData);
+  } catch (error) {
+    res.status(404).json(
+      createErrorResponse("not_found", "Package not found", 404, req.originalUrl, `The package '${packageName}' could not be found`, packageName)
+    );
+  }
+}));
 
 // Package description endpoint - serves the full description with the appropriate content type
 app.get(
-  `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName/doc`,
-  async (req, res) => {
-    // Convert tilde-separated package name back to slash format for NPM registry
-    const packageName = convertTildeToSlash(req.params.packageName);
-
+  `/${GROUP_TYPE}/:groupId/${RESOURCE_TYPE}/:packageName/doc`,
+  asyncHandler(async (req, res) => {
+    // Decode URL-encoded parameters
+    const groupId = decodeURIComponent(req.params.groupId);
+    const packageName = decodeURIComponent(req.params.packageName);
+    
+    // Validate group
+    if (groupId !== GROUP_ID) {
+      return res.status(404).json(
+        createErrorResponse("not_found", "Group not found", 404, req.originalUrl, `Group '${groupId}' does not exist`)
+      );
+    }
+    
     try {
       const packageData = await cachedGet(
         `https://registry.npmjs.org/${packageName}`
@@ -1834,16 +2038,23 @@ app.get(
         createErrorResponse("not_found", "Package not found", 404, req.originalUrl, `The package '${packageName}' could not be found`, packageName)
       );
     }
-  }
+  })
 );
 
 // Resource meta endpoint
 app.get(
-  `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName/meta`,
-  async (req, res) => {
-    // Convert tilde-separated package name back to slash format for NPM registry
-    const packageName = convertTildeToSlash(req.params.packageName);
-    const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
+  `/${GROUP_TYPE}/:groupId/${RESOURCE_TYPE}/:packageName/meta`,
+  asyncHandler(async (req, res) => {
+    // Decode URL-encoded parameters
+    const groupId = decodeURIComponent(req.params.groupId);
+    const packageName = decodeURIComponent(req.params.packageName);
+    
+    // Validate group
+    if (groupId !== GROUP_ID) {
+      return res.status(404).json(
+        createErrorResponse("not_found", "Group not found", 404, req.originalUrl, `Group '${groupId}' does not exist`)
+      );
+    }
     
     try {
       const packageData = await cachedGet(
@@ -1894,13 +2105,13 @@ app.get(
         createErrorResponse("not_found", "Package not found", 404, req.originalUrl, `The package '${packageName}' could not be found`, packageName)
       );
     }
-  }
+  })
 );
 
 // All versions
 app.get(
-  `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName/versions`,
-  async (req, res) => {
+  `/${GROUP_TYPE}/:groupId/${RESOURCE_TYPE}/:packageName/versions`,
+  asyncHandler(async (req, res) => {
     // Convert tilde-separated package name back to slash format for NPM registry
     const packageName = convertTildeToSlash(req.params.packageName);
     const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
@@ -1924,13 +2135,16 @@ app.get(
         );
       }
       
+      
       // Apply pagination to the versions
-      const paginatedVersions = versions.slice(offset, offset + limit);
+           const paginatedVersions = versions.slice(offset, offset + limit);
       
       // Encode package name for URLs
       const encodedPackageName = encodePackageName(packageName);
       
+           
       // Normalize package ID for data model
+
       const normalizedPackageId = normalizePackageId(packageName);
       
       const versionMap = {};
@@ -1952,284 +2166,42 @@ app.get(
       
       // Apply flag handlers for each version
       for (const v in versionMap) {
-        versionMap[v] = handleDocFlag(req, versionMap[v]);
+        versionMap[v] = handleInlineFlag(req, versionMap[v]);
         versionMap[v] = handleEpochFlag(req, versionMap[v]);
         versionMap[v] = handleNoReadonlyFlag(req, versionMap[v]);
       }
       
-      // Add pagination links
-      const links = generatePaginationLinks(req, totalCount, offset, limit);
+      // Add pagination links      const links = generatePaginationLinks(req, totalCount, offset, limit);
       res.set('Link', links);
       
       res.json(versionMap);
     } catch (error) {
-      res.status(404).json(
-        createErrorResponse("not_found", "Package not found", 404, req.originalUrl, `The package '${packageName}' could not be found`, packageName)
+      res.status(404).json(        createErrorResponse("not_found", "Package not found", 404, req.originalUrl, `The package '${packageName}' could not be found`, packageName)
       );
     }
-  }
+  })
 );
 
-// Utility function to generate pagination Link headers
-function generatePaginationLinks(req, totalCount, offset, limit) {
-  const links = [];
-  const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}${req.path}`;
-  
-  // Add base query parameters from original request (except pagination ones)
-  const queryParams = {...req.query};
-  delete queryParams.limit;
-  delete queryParams.offset;
-  
-  // Build the base query string
-  let queryString = Object.keys(queryParams).length > 0 ? 
-    '?' + Object.entries(queryParams).map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`).join('&') : 
-    '';
-  
-  // If we have any params already, use & to add more, otherwise start with ?
-  const paramPrefix = queryString ? '&' : '?';
-  
-  // Calculate totalPages (ceiling division)
-  const totalPages = Math.ceil(totalCount / limit);
-  const currentPage = Math.floor(offset / limit) + 1;
-  
-  // First link
-  const firstUrl = `${baseUrl}${queryString}${paramPrefix}limit=${limit}&offset=0`;
-  links.push(`<${firstUrl}>; rel="first"`);
-  
-  // Previous link (if not on the first page)
-  if (offset > 0) {
-    const prevOffset = Math.max(0, offset - limit);
-    const prevUrl = `${baseUrl}${queryString}${paramPrefix}limit=${limit}&offset=${prevOffset}`;
-    links.push(`<${prevUrl}>; rel="prev"`);
-  }
-  
-  // Next link (if not on the last page)
-  if (offset + limit < totalCount) {
-    const nextUrl = `${baseUrl}${queryString}${paramPrefix}limit=${limit}&offset=${offset + limit}`;
-    links.push(`<${nextUrl}>; rel="next"`);
-  }
-  
-  // Last link
-  const lastOffset = Math.max(0, (totalPages - 1) * limit);
-  const lastUrl = `${baseUrl}${queryString}${paramPrefix}limit=${limit}&offset=${lastOffset}`;
-  links.push(`<${lastUrl}>; rel="last"`);
-  
-  // Add count and total-count as per RFC5988
-  links.push(`count="${totalCount}"`);
-  links.push(`per-page="${limit}"`);
-  
-  return links.join(', ');
-}
-
-// Utility function to handle the collections flag
-function handleCollectionsFlag(req, data) {
-  if (req.query.collections === 'false') {
-    // Remove collection URLs from the response when collections=false
-    const result = {...data};
-    Object.keys(result).forEach(key => {
-      if (key.endsWith('url') && !key.startsWith('self')) {
-        delete result[key];
-      }
-    });
-    return result;
-  }
-  return data;
-}
-
-// Utility function to handle doc flag
-function handleDocFlag(req, data) {
-  if (req.query.doc === 'false') {
-    // Remove documentation links
-    const result = {...data};
-    if (result.docs) {
-      delete result.docs;
-    }
-    return result;
-  }
-  return data;
-}
-
-// Utility function to handle inline flag
-function handleInlineFlag(req, data, resourceType, metaObject = null) {
-  const inlineParam = req.query.inline;
-  
-  // Handle inline=true for versions collection
-  if (inlineParam === 'true' && data[`${resourceType}url`]) {
-    // Currently not implemented - would fetch and include the referenced resource
-    // For now, we add a header to indicate this isn't fully supported
-    req.res.set('Warning', '299 - "Inline flag partially supported"');
-  }
-  
-  // Handle meta inlining for resources
-  if (inlineParam === 'true' || inlineParam === 'meta') {
-    if (metaObject && data.metaurl) {
-      // Include meta object
-      data.meta = metaObject;
-    }
-  }
-  
-  return data;
-}
-
-// Utility function to handle epoch flag
-function handleEpochFlag(req, data) {
-  if (req.query.noepoch === 'true') {
-    // Remove epoch from response when noepoch=true
-    const result = {...data};
-    if ('epoch' in result) {
-      delete result.epoch;
-    }
-    return result;
-  }
-  
-  // Handle epoch query parameter for specific epoch request
-  if (req.query.epoch && !isNaN(parseInt(req.query.epoch, 10))) {
-    const requestedEpoch = parseInt(req.query.epoch, 10);
-    if (data.epoch !== requestedEpoch) {
-      // In a real implementation, this would fetch the correct epoch version
-      // For now, we just add a warning header
-      req.res.set('Warning', `299 - "Requested epoch ${requestedEpoch} not available, returning current epoch ${data.epoch}"`);
-    }
-  }
-  
-  return data;
-}
-
-// Utility function to handle specversion flag
-function handleSpecVersionFlag(req, data) {
-  if (req.query.specversion) {
-    if (req.query.specversion !== SPEC_VERSION) {
-      // If requested version is not supported, return a warning
-      req.res.set('Warning', `299 - "Requested spec version ${req.query.specversion} not supported, using ${SPEC_VERSION}"`);
-    }
-  }
-  return data;
-}
-
-// Utility function to handle noreadonly flag
-function handleNoReadonlyFlag(req, data) {
-  if (req.query.noreadonly === 'true') {
-    // In a real implementation with read-only attributes, this would filter them
-    // Since our implementation doesn't specifically mark attributes as read-only,
-    // this is just a placeholder
-    return data;
-  }
-  return data;
-}
-
-// Graceful shutdown function
-function gracefulShutdown() {
-  logger.info("Shutting down gracefully...");
-  logger.close().then(() => {
-    process.exit(0);
-  });
-}
-
-// Listen for process termination signals
-process.on('SIGINT', gracefulShutdown);
-process.on('SIGTERM', gracefulShutdown);
-
-// Check if this module is being run directly or imported
-const isRunningStandalone = require.main === module;
-
-// Export the attachToApp function for use as a module
-module.exports = {
-  attachToApp: function(sharedApp, options = {}) {
-    const pathPrefix = options.pathPrefix || '';
-    const baseUrl = options.baseUrl || '';
-    const quiet = options.quiet || false;
+// Launch HTTP server
+async function startServer() {
+  try {
+    // Initialize package cache before starting server
+    console.log(`Loading package cache before starting server on port ${PORT}...`);
+    await refreshPackageNames();
+    console.log(`Package cache loaded successfully with ${packageNamesCache.length} packages`);
     
-    if (!quiet) {
-      logger.info("NPM: Attaching routes", { pathPrefix });
-    }
-
-    // Mount all the existing routes from this server at the path prefix
-    // We need to create a new router and copy all existing routes
-    const router = express.Router();
-    
-    // Copy all routes from the main app to the router, adjusting paths
-    if (app._router && app._router.stack) {
-      app._router.stack.forEach(layer => {
-        if (layer.route) {
-          // Copy route handlers
-          const methods = Object.keys(layer.route.methods);
-          methods.forEach(method => {
-            if (layer.route.path) {
-              let routePath = layer.route.path;
-              
-              // Skip the root route when mounting as a sub-server
-              if (routePath === '/') {
-                return;
-              }
-              
-              // Adjust route paths for proper mounting
-              if (routePath === `/${GROUP_TYPE}`) {
-                // The group collection endpoint should be at the root of the path prefix
-                routePath = '/';
-              } else if (routePath.startsWith(`/${GROUP_TYPE}/`)) {
-                // Remove the GROUP_TYPE prefix from other routes
-                routePath = routePath.substring(GROUP_TYPE.length + 1);
-              }
-              
-              router[method](routePath, ...layer.route.stack.map(l => l.handle));
-            }
-          });
-        } else if (layer.name === 'router') {
-          // Copy middleware
-          router.use(layer.handle);
-        }
-      });
-    }
-
-    // Mount the router at the path prefix
-    sharedApp.use(pathPrefix, router);
-
-    // Return server information for the unified server
-    return {
-      name: "NPM",
-      groupType: GROUP_TYPE,
-      resourceType: RESOURCE_TYPE,
-      pathPrefix: pathPrefix,
-      getModel: () => registryModel
-    };
-  }
-};
-
-// If running as standalone, start the server - ONLY if this file is run directly
-if (require.main === module) {
-// Initialize package names cache and start the server
-(async () => {
-  // Initial load of package names
-  await refreshPackageNames();
-  
-  // Schedule periodic refresh
-  scheduleRefresh();
-
-    // Create a new Express app only for standalone mode
-    const standaloneApp = express();
-    
-    // Add CORS
-    standaloneApp.use((req, res, next) => {
-      res.set('Access-Control-Allow-Origin', '*');
-      res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
-      res.set('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
-      res.set('Access-Control-Expose-Headers', 'Link');
-      if (req.method === 'OPTIONS') {
-        return res.status(204).end();
-      }
+    // Start the server
+    app.listen(PORT, () => {
+      console.log(`Server listening on port ${PORT}`);
       
-      next();
+      // Start periodic refresh
+      scheduleRefresh();
     });
-    
-    // Use all the existing app routes by copying them to the standalone app
-    standaloneApp._router = app._router;
+  } catch (error) {
+    logger.error("Failed to start server", { error: error.message });
+    process.exit(1);
+  }
+}
 
-    // Start the standalone server
-    standaloneApp.listen(PORT, () => {
-    logger.logStartup(PORT, {
-      baseUrl: BASE_URL,
-      packageCount: packageNamesCache.length
-    });
-  });
-})(); 
-} 
+// Start the server
+startServer();

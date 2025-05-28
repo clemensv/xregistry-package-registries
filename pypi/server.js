@@ -386,7 +386,7 @@ function xregistryCommonAttrs({ id, name, description, parentUrl, type, labels =
     createdat: now,
     modifiedat: now,
     labels: labels,
-    docs: docUrl, // Changed from 'documentation' to 'docs' and using a single URL
+    documentation: docUrl, 
     shortself: parentUrl ? normalizePath(`${parentUrl}/${safeId}`) : undefined,
   };
 }
