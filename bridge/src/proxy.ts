@@ -12,6 +12,31 @@ import { createLogger } from '../../shared/logging/logger';
 
 dotenv.config();
 
+// Global exception handlers to prevent unplanned exits
+process.on('uncaughtException', (error) => {
+  console.error('FATAL: Uncaught Exception', error);
+  if (logger) {
+    logger.error('Uncaught Exception - Server will exit', { 
+      error: error.message, 
+      stack: error.stack,
+      pid: process.pid 
+    });
+  }
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('FATAL: Unhandled Promise Rejection at:', promise, 'reason:', reason);
+  if (logger) {
+    logger.error('Unhandled Promise Rejection - Server will exit', { 
+      reason: reason instanceof Error ? reason.message : String(reason),
+      stack: reason instanceof Error ? reason.stack : undefined,
+      pid: process.pid 
+    });
+  }
+  process.exit(1);
+});
+
 // Parse command line arguments
 const argv = yargs(hideBin(process.argv))
   .option('w3log', {
@@ -137,6 +162,51 @@ let isServerRunning = false;
 
 // Enhanced request logging middleware
 app.use(logger.middleware());
+
+// CORS middleware - Allow all origins for all requests
+app.use((req: any, res: any, next: any) => {
+  // Set CORS headers
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-MS-Client-Principal, X-Base-Url, X-Correlation-Id, X-Trace-Id');
+  res.header('Access-Control-Expose-Headers', 'X-Correlation-Id, X-Trace-Id, X-Request-Id, Location, ETag');
+  res.header('Access-Control-Max-Age', '86400'); // Cache preflight for 24 hours
+  
+  // Handle preflight OPTIONS requests
+  if (req.method === 'OPTIONS') {
+    logger.debug('Handling CORS preflight request', {
+      method: req.method,
+      url: req.url,
+      origin: req.get('Origin'),
+      accessControlRequestMethod: req.get('Access-Control-Request-Method'),
+      accessControlRequestHeaders: req.get('Access-Control-Request-Headers')
+    });
+    return res.status(200).end();
+  }
+  
+  next();
+});
+
+// Global Express error handler
+app.use((error: any, req: any, res: any, next: any) => {
+  logger.error('Express application error', {
+    error: error.message,
+    stack: error.stack,
+    method: req.method,
+    url: req.url,
+    ip: req.ip,
+    userAgent: req.get('User-Agent')
+  });
+  
+  if (res.headersSent) {
+    return next(error);
+  }
+  
+  res.status(500).json({
+    error: 'Internal Server Error',
+    message: 'An unexpected error occurred'
+  });
+});
 
 // User extraction from ACA headers
 function extractUser(req: any) {
@@ -388,44 +458,79 @@ function startHttpServer(): void {
     // Set up dynamic routes after server starts
     setupDynamicRoutes();
   });
+
+  // Handle server startup errors
+  httpServer.on('error', (error: any) => {
+    logger.error('HTTP Server error', { 
+      error: error.message, 
+      code: error.code,
+      port: PORT 
+    });
+    if (error.code === 'EADDRINUSE') {
+      logger.error(`Port ${PORT} is already in use`);
+    }
+    process.exit(1);
+  });
 }
 
 // Periodic retry of sidelined servers
 async function retryInactiveServers(): Promise<void> {
-  const inactiveServers = Array.from(serverStates.values()).filter(state => !state.isActive);
-  
-  if (inactiveServers.length === 0) {
-    return;
-  }
-  
-  logger.info('Retrying', { 
-    inactiveServers: inactiveServers.length,
-    serverUrls: inactiveServers.map(s => s.server.url)
-  });
-  
-  let hasNewServers = false;
-  
-  for (const state of inactiveServers) {
-    const result = await testServer(state.server);
-    state.lastAttempt = Date.now();
+  try {
+    const inactiveServers = Array.from(serverStates.values()).filter(state => !state.isActive);
     
-    if (result) {
-      logger.info('✓ Server', { serverUrl: state.server.url });
-      state.isActive = true;
-      state.model = result.model;
-      state.capabilities = result.capabilities;
-      state.error = undefined;
-      hasNewServers = true;
-    } else {
-      state.error = 'Connection failed';
+    if (inactiveServers.length === 0) {
+      return;
     }
-  }
-  
-  if (hasNewServers) {
-    const modelChanged = rebuildConsolidatedModel();
-    if (modelChanged) {
-      await restartHttpServer();
+    
+    logger.info('Retrying', { 
+      inactiveServers: inactiveServers.length,
+      serverUrls: inactiveServers.map(s => s.server.url)
+    });
+    
+    let hasNewServers = false;
+    
+    for (const state of inactiveServers) {
+      try {
+        const result = await testServer(state.server);
+        state.lastAttempt = Date.now();
+        
+        if (result) {
+          logger.info('✓ Server', { serverUrl: state.server.url });
+          state.isActive = true;
+          state.model = result.model;
+          state.capabilities = result.capabilities;
+          state.error = undefined;
+          hasNewServers = true;
+        } else {
+          state.error = 'Connection failed';
+        }
+      } catch (error) {
+        logger.error('Error testing server in retry cycle', {
+          serverUrl: state.server.url,
+          error: error instanceof Error ? error.message : String(error)
+        });
+        state.error = error instanceof Error ? error.message : 'Unknown error';
+        state.lastAttempt = Date.now();
+      }
     }
+    
+    if (hasNewServers) {
+      try {
+        const modelChanged = rebuildConsolidatedModel();
+        if (modelChanged) {
+          await restartHttpServer();
+        }
+      } catch (error) {
+        logger.error('Error during model rebuild/server restart', {
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
+    }
+  } catch (error) {
+    logger.error('Critical error in retryInactiveServers', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    });
   }
 }
 
@@ -482,8 +587,14 @@ async function initializeWithResilience(): Promise<void> {
     logger.warn('No servers are currently active. The bridge will continue retrying...');
   }
   
-  // Start periodic retry timer
-  setInterval(retryInactiveServers, RETRY_INTERVAL);
+  // Start periodic retry timer with error handling
+  setInterval(() => {
+    retryInactiveServers().catch(error => {
+      logger.error('Error in periodic retry interval', {
+        error: error instanceof Error ? error.message : String(error)
+      });
+    });
+  }, RETRY_INTERVAL);
   logger.info('Started periodic retry every', { 
     retryInterval: RETRY_INTERVAL / 1000,
     seconds: RETRY_INTERVAL / 1000
@@ -514,152 +625,228 @@ async function checkServerHealth(server: DownstreamConfig): Promise<boolean> {
 
 // Dynamic route setup based on active backends
 function setupDynamicRoutes() {
-  logger.info('Setting up dynamic routes for groups:', { groups: Object.keys(groupTypeToBackend) });
-  
-  // Add new dynamic routes
-  for (const [groupType, backend] of Object.entries(groupTypeToBackend)) {
-    const targetUrl = backend.url;
-    const basePath = `/${groupType}`;
+  try {
+    logger.info('Setting up dynamic routes for groups:', { groups: Object.keys(groupTypeToBackend) });
     
-    logger.info('Setting up route', { basePath, targetUrl });
-    
-    // Use app.use with specific path pattern
-    app.use(basePath, (req: any, res: any, next: any) => {
-      req.headers[BASE_URL_HEADER] = BASE_URL;
-      next();
-    });
-    
-    app.use(basePath, createProxyMiddleware({
-      target: targetUrl,
-      changeOrigin: true,
-      onProxyReq: (proxyReq: any, req: any) => {
-        if (backend.apiKey) {
-          proxyReq.setHeader('Authorization', `Bearer ${backend.apiKey}`);
-        }
+    // Add new dynamic routes
+    for (const [groupType, backend] of Object.entries(groupTypeToBackend)) {
+      try {
+        const targetUrl = backend.url;
+        const basePath = `/${groupType}`;
         
-        // Inject distributed tracing headers
-        if (req.logger && req.logger.createDownstreamHeaders) {
-          const traceHeaders = req.logger.createDownstreamHeaders(req);
-          Object.entries(traceHeaders).forEach(([key, value]) => {
-            proxyReq.setHeader(key, value);
-          });
-          
-          logger.debug('Injected trace headers into proxy request', {
-            groupType,
-            targetUrl,
-            traceId: req.traceId,
-            correlationId: req.correlationId,
-            requestId: req.requestId,
-            injectedHeaders: Object.keys(traceHeaders)
-          });
-        }
-      },
-      onError: (err: any, req: any, res: any) => {
-        logger.error('Proxy error', { 
-          groupType,
-          targetUrl,
-          error: err instanceof Error ? err.message : String(err),
-          traceId: req.traceId,
-          correlationId: req.correlationId,
-          requestId: req.requestId
+        logger.info('Setting up route', { basePath, targetUrl });
+        
+        // Use app.use with specific path pattern
+        app.use(basePath, (req: any, res: any, next: any) => {
+          try {
+            req.headers[BASE_URL_HEADER] = BASE_URL;
+            next();
+          } catch (error) {
+            logger.error('Error in route header middleware', {
+              error: error instanceof Error ? error.message : String(error),
+              basePath
+            });
+            res.status(500).json({ error: 'Internal server error' });
+          }
         });
-        res.status(502).json({ 
-          error: 'Bad Gateway', 
-          message: `Upstream server ${targetUrl} is not available`,
+        
+        app.use(basePath, createProxyMiddleware({
+          target: targetUrl,
+          changeOrigin: true,
+          onProxyRes: (proxyRes: any, req: any, res: any) => {
+            // Ensure CORS headers are preserved/added to proxied responses
+            if (!proxyRes.headers['access-control-allow-origin']) {
+              proxyRes.headers['access-control-allow-origin'] = '*';
+            }
+            if (!proxyRes.headers['access-control-allow-methods']) {
+              proxyRes.headers['access-control-allow-methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH';
+            }
+            if (!proxyRes.headers['access-control-allow-headers']) {
+              proxyRes.headers['access-control-allow-headers'] = 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-MS-Client-Principal, X-Base-Url, X-Correlation-Id, X-Trace-Id';
+            }
+          },
+          onProxyReq: (proxyReq: any, req: any) => {
+            try {
+              if (backend.apiKey) {
+                proxyReq.setHeader('Authorization', `Bearer ${backend.apiKey}`);
+              }
+              
+              // Inject distributed tracing headers
+              if (req.logger && req.logger.createDownstreamHeaders) {
+                const traceHeaders = req.logger.createDownstreamHeaders(req);
+                Object.entries(traceHeaders).forEach(([key, value]) => {
+                  proxyReq.setHeader(key, value);
+                });
+                
+                logger.debug('Injected trace headers into proxy request', {
+                  groupType,
+                  targetUrl,
+                  traceId: req.traceId,
+                  correlationId: req.correlationId,
+                  requestId: req.requestId,
+                  injectedHeaders: Object.keys(traceHeaders)
+                });
+              }
+            } catch (error) {
+              logger.error('Error in proxy request handler', {
+                error: error instanceof Error ? error.message : String(error),
+                groupType,
+                targetUrl
+              });
+            }
+          },
+          onError: (err: any, req: any, res: any) => {
+            logger.error('Proxy error', { 
+              groupType,
+              targetUrl,
+              error: err instanceof Error ? err.message : String(err),
+              traceId: req.traceId,
+              correlationId: req.correlationId,
+              requestId: req.requestId
+            });
+            if (!res.headersSent) {
+              res.status(502).json({ 
+                error: 'Bad Gateway', 
+                message: `Upstream server ${targetUrl} is not available`,
+                groupType,
+                traceId: req.traceId,
+                correlationId: req.correlationId
+              });
+            }
+          }
+        }));
+      } catch (error) {
+        logger.error('Error setting up route for group', {
           groupType,
-          traceId: req.traceId,
-          correlationId: req.correlationId
+          error: error instanceof Error ? error.message : String(error)
         });
       }
-    }));
+    }
+  } catch (error) {
+    logger.error('Critical error in setupDynamicRoutes', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    });
   }
 }
 
 // API Routes (defined before dynamic routes)
 app.get('/', (req, res) => {
-  // Handle query parameters
-  const inline = req.query.inline as string;
-  const specversion = (req.query.specversion as string) || '1.0';
-  
-  // Debug logging for BASE_URL issue
-  logger.info('Root endpoint called', { 
-    baseUrl: BASE_URL, 
-    requestHost: req.get('host'),
-    requestUrl: req.url,
-    requestProtocol: req.protocol,
-    originalUrl: req.originalUrl
-  });
-  
-  // Check if requested specversion is supported
-  if (specversion !== '1.0' && specversion !== '1.0-rc1') {
-    return res.status(400).json({
-      error: 'unsupported_specversion',
-      message: `Specversion '${specversion}' is not supported. Supported versions: 1.0, 1.0-rc1`
+  try {
+    // Handle query parameters
+    const inline = req.query.inline as string;
+    const specversion = (req.query.specversion as string) || '1.0';
+    
+    // Debug logging for BASE_URL issue
+    logger.info('Root endpoint called', { 
+      baseUrl: BASE_URL, 
+      requestHost: req.get('host'),
+      requestUrl: req.url,
+      requestProtocol: req.protocol,
+      originalUrl: req.originalUrl
     });
-  }
-  
-  const now = new Date().toISOString();
-  const groups = Object.keys(groupTypeToBackend);
-  
-  // Force use of BASE_URL environment variable
-  const effectiveBaseUrl = BASE_URL;
-  
-  // Build the base registry response according to xRegistry spec
-  const registryResponse: any = {
-    specversion: specversion,
-    registryid: 'xregistry-bridge',
-    self: effectiveBaseUrl,
-    xid: '/',
-    epoch: bridgeEpoch,
-    name: 'xRegistry Bridge',
-    description: 'Unified xRegistry bridge for multiple package registry backends',
-    createdat: bridgeStartTime,
-    modifiedat: now
-  };
-  
-  // Add group collections (REQUIRED)
-  for (const groupType of groups) {
-    const plural = consolidatedModel.groups?.[groupType]?.plural || groupType;
-    registryResponse[`${plural}url`] = `${effectiveBaseUrl}/${groupType}`;
-    registryResponse[`${plural}count`] = 0; // TODO: implement actual count
-  }
-  
-  // Handle inline parameters
-  if (inline) {
-    const inlineRequests = inline.split(',').map(s => s.trim());
     
-    if (inlineRequests.includes('model')) {
-      registryResponse.model = consolidatedModel;
+    // Check if requested specversion is supported
+    if (specversion !== '1.0' && specversion !== '1.0-rc1') {
+      return res.status(400).json({
+        error: 'unsupported_specversion',
+        message: `Specversion '${specversion}' is not supported. Supported versions: 1.0, 1.0-rc1`
+      });
     }
     
-    if (inlineRequests.includes('capabilities')) {
-      registryResponse.capabilities = consolidatedCapabilities;
-    }
+    const now = new Date().toISOString();
+    const groups = Object.keys(groupTypeToBackend);
     
-    // Handle inline group collections
+    // Force use of BASE_URL environment variable
+    const effectiveBaseUrl = BASE_URL;
+    
+    // Build the base registry response according to xRegistry spec
+    const registryResponse: any = {
+      specversion: specversion,
+      registryid: 'xregistry-bridge',
+      self: effectiveBaseUrl,
+      xid: '/',
+      epoch: bridgeEpoch,
+      name: 'xRegistry Bridge',
+      description: 'Unified xRegistry bridge for multiple package registry backends',
+      createdat: bridgeStartTime,
+      modifiedat: now
+    };
+    
+    // Add group collections (REQUIRED)
     for (const groupType of groups) {
       const plural = consolidatedModel.groups?.[groupType]?.plural || groupType;
-      if (inlineRequests.includes(plural)) {
-        // TODO: implement actual group collection inlining
-        registryResponse[plural] = {};
+      registryResponse[`${plural}url`] = `${effectiveBaseUrl}/${groupType}`;
+      registryResponse[`${plural}count`] = 0; // TODO: implement actual count
+    }
+    
+    // Handle inline parameters
+    if (inline) {
+      const inlineRequests = inline.split(',').map(s => s.trim());
+      
+      if (inlineRequests.includes('model')) {
+        registryResponse.model = consolidatedModel;
+      }
+      
+      if (inlineRequests.includes('capabilities')) {
+        registryResponse.capabilities = consolidatedCapabilities;
+      }
+      
+      // Handle inline group collections
+      for (const groupType of groups) {
+        const plural = consolidatedModel.groups?.[groupType]?.plural || groupType;
+        if (inlineRequests.includes(plural)) {
+          // TODO: implement actual group collection inlining
+          registryResponse[plural] = {};
+        }
       }
     }
+    
+    return res.json(registryResponse);
+  } catch (error) {
+    logger.error('Error in root endpoint', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    });
+    return res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'An unexpected error occurred'
+    });
   }
-  
-  return res.json(registryResponse);
 });
 
 app.get('/model', (_, res) => {
-  res.json(consolidatedModel);
+  try {
+    res.json(consolidatedModel);
+  } catch (error) {
+    logger.error('Error in model endpoint', {
+      error: error instanceof Error ? error.message : String(error)
+    });
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
 });
 
 app.get('/capabilities', (_, res) => {
-  res.json(consolidatedCapabilities);
+  try {
+    res.json(consolidatedCapabilities);
+  } catch (error) {
+    logger.error('Error in capabilities endpoint', {
+      error: error instanceof Error ? error.message : String(error)
+    });
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
 });
 
 // Registries endpoint - returns the groups from consolidated model
 app.get('/registries', (_, res) => {
-  res.json(consolidatedModel.groups || {});
+  try {
+    res.json(consolidatedModel.groups || {});
+  } catch (error) {
+    logger.error('Error in registries endpoint', {
+      error: error instanceof Error ? error.message : String(error)
+    });
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
 });
 
 // Health endpoint
@@ -726,8 +913,41 @@ initializeWithResilience().catch(error => {
   process.exit(1);
 });
 
-// Set up dynamic routes after initialization
-setTimeout(setupDynamicRoutes, 1000);
+// Set up dynamic routes after initialization with error handling
+setTimeout(() => {
+  try {
+    setupDynamicRoutes();
+  } catch (error) {
+    logger.error('Error in delayed setupDynamicRoutes', {
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+}, 1000);
+
+// Graceful shutdown handlers
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM received, shutting down gracefully...');
+  if (httpServer && isServerRunning) {
+    httpServer.close(() => {
+      logger.info('HTTP server closed');
+      process.exit(0);
+    });
+  } else {
+    process.exit(0);
+  }
+});
+
+process.on('SIGINT', () => {
+  logger.info('SIGINT received, shutting down gracefully...');
+  if (httpServer && isServerRunning) {
+    httpServer.close(() => {
+      logger.info('HTTP server closed');
+      process.exit(0);
+    });
+  } else {
+    process.exit(0);
+  }
+});
 
 
 
