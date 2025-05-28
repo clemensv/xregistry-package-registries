@@ -47,10 +47,6 @@ az deployment group create \
         createManagedCertificate=false \
         autoDetectExistingCertificate=false \
         existingCertificateId="" \
-        bridgeCpu="0.3" \
-        bridgeMemory="0.6Gi" \
-        serviceCpu="0.25" \
-        serviceMemory="0.5Gi" \
         minReplicas=1 \
         maxReplicas=2
 
