@@ -1,0 +1,14 @@
+{
+  "backends": [
+    {
+      "id": "maven-central",
+      "name": "Maven Central",
+      "url": "https://repo1.maven.org/maven2",
+      "searchUrl": "https://search.maven.org/solrsearch/select",
+      "apiVersion": "v1",
+      "description": "Central Maven Repository",
+      "enabled": true,
+      "public": true
+    }
+  ]
+}

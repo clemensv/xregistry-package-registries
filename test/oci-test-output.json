@@ -1,0 +1,402 @@
+Starting xRegistry OCI server for basic tests...
+[OCI Server] Attempting to load OCI backends from config file: C:\git\xregistry-package-registries\test\config.json
+[OCI Server] Cache directory set to: C:\git\xregistry-package-registries\test\cache
+Server did not output a startup message within timeout, assuming it's ready...
+OCI server is ready for basic tests
+Stopping OCI server...
+OCI server stopped
+Running basic OCI test
+{
+  "stats": {
+    "suites": 7,
+    "tests": 13,
+    "passes": 8,
+    "pending": 2,
+    "failures": 3,
+    "start": "2025-05-30T06:22:28.197Z",
+    "end": "2025-05-30T06:22:38.320Z",
+    "duration": 10123
+  },
+  "tests": [
+    {
+      "title": "should return registry root with correct structure",
+      "fullTitle": "OCI Basic Server Functionality Core Endpoints should return registry root with correct structure",
+      "file": "C:\\git\\xregistry-package-registries\\test\\oci\\basic-server.test.js",
+      "duration": 6,
+      "currentRetry": 0,
+      "speed": "fast",
+      "err": {}
+    },
+    {
+      "title": "should return capabilities",
+      "fullTitle": "OCI Basic Server Functionality Core Endpoints should return capabilities",
+      "file": "C:\\git\\xregistry-package-registries\\test\\oci\\basic-server.test.js",
+      "duration": 4,
+      "currentRetry": 0,
+      "speed": "fast",
+      "err": {}
+    },
+    {
+      "title": "should return model",
+      "fullTitle": "OCI Basic Server Functionality Core Endpoints should return model",
+      "file": "C:\\git\\xregistry-package-registries\\test\\oci\\basic-server.test.js",
+      "duration": 4,
+      "currentRetry": 0,
+      "speed": "fast",
+      "err": {}
+    },
+    {
+      "title": "should return containerregistries collection",
+      "fullTitle": "OCI Basic Server Functionality Core Endpoints should return containerregistries collection",
+      "file": "C:\\git\\xregistry-package-registries\\test\\oci\\basic-server.test.js",
+      "duration": 3,
+      "currentRetry": 0,
+      "err": {
+        "message": "expected +0 to be above +0",
+        "showDiff": true,
+        "actual": "0",
+        "expected": "0",
+        "operator": "strictEqual",
+        "stack": "AssertionError: expected +0 to be above +0\n    at Context.<anonymous> (oci\\basic-server.test.js:97:55)\n    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)"
+      }
+    },
+    {
+      "title": "should support pagination for containerregistries",
+      "fullTitle": "OCI Basic Server Functionality Registry Resources should support pagination for containerregistries",
+      "file": "C:\\git\\xregistry-package-registries\\test\\oci\\basic-server.test.js",
+      "duration": 3,
+      "currentRetry": 0,
+      "err": {
+        "message": "expected +0 to equal 1",
+        "showDiff": true,
+        "actual": "0",
+        "expected": "1",
+        "operator": "strictEqual",
+        "stack": "AssertionError: expected +0 to equal 1\n    at Context.<anonymous> (oci\\basic-server.test.js:114:52)\n    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)"
+      }
+    },
+    {
+      "title": "should handle 404 for nonexistent registry",
+      "fullTitle": "OCI Basic Server Functionality Registry Resources should handle 404 for nonexistent registry",
+      "file": "C:\\git\\xregistry-package-registries\\test\\oci\\basic-server.test.js",
+      "duration": 4,
+      "currentRetry": 0,
+      "speed": "fast",
+      "err": {}
+    },
+    {
+      "title": "should return packages for a registry",
+      "fullTitle": "OCI Basic Server Functionality Package Operations should return packages for a registry",
+      "file": "C:\\git\\xregistry-package-registries\\test\\oci\\basic-server.test.js",
+      "currentRetry": 0,
+      "err": {}
+    },
+    {
+      "title": "should support pagination for packages",
+      "fullTitle": "OCI Basic Server Functionality Package Operations should support pagination for packages",
+      "file": "C:\\git\\xregistry-package-registries\\test\\oci\\basic-server.test.js",
+      "currentRetry": 0,
+      "err": {}
+    },
+    {
+      "title": "should respond to CORS preflight requests",
+      "fullTitle": "OCI Basic Server Functionality HTTP Standards should respond to CORS preflight requests",
+      "file": "C:\\git\\xregistry-package-registries\\test\\oci\\basic-server.test.js",
+      "duration": 3,
+      "currentRetry": 0,
+      "speed": "fast",
+      "err": {}
+    },
+    {
+      "title": "should include standard headers",
+      "fullTitle": "OCI Basic Server Functionality HTTP Standards should include standard headers",
+      "file": "C:\\git\\xregistry-package-registries\\test\\oci\\basic-server.test.js",
+      "duration": 5,
+      "currentRetry": 0,
+      "speed": "fast",
+      "err": {}
+    },
+    {
+      "title": "should support inline=true for meta information",
+      "fullTitle": "OCI Basic Server Functionality xRegistry-specific Features should support inline=true for meta information",
+      "file": "C:\\git\\xregistry-package-registries\\test\\oci\\basic-server.test.js",
+      "duration": 6,
+      "currentRetry": 0,
+      "speed": "fast",
+      "err": {}
+    },
+    {
+      "title": "should support inline=model for including model",
+      "fullTitle": "OCI Basic Server Functionality xRegistry-specific Features should support inline=model for including model",
+      "file": "C:\\git\\xregistry-package-registries\\test\\oci\\basic-server.test.js",
+      "duration": 6,
+      "currentRetry": 0,
+      "err": {
+        "message": "expected { specversion: '1.0-rc1', ΓÇª(16) } to have property 'model'",
+        "showDiff": false,
+        "actual": {
+          "specversion": "1.0-rc1",
+          "registryid": "oci-wrapper",
+          "name": "xRegistry OCI Proxy",
+          "description": "A proxy server that exposes OCI container registries through the xRegistry API.",
+          "documentation": "https://github.com/xregistry/spec/blob/main/core/spec.md",
+          "xid": "/",
+          "epoch": 1,
+          "createdat": "2025-05-30T06:22:38.308Z",
+          "modifiedat": "2025-05-30T06:22:38.308Z",
+          "labels": {},
+          "self": "http://localhost:3007/",
+          "modelurl": "http://localhost:3007/model",
+          "capabilitiesurl": "http://localhost:3007/capabilities",
+          "containerregistriesurl": "http://localhost:3007/containerregistries",
+          "containerregistriescount": 0,
+          "capabilities": {
+            "apis": [
+              "/capabilities",
+              "/export",
+              "/model"
+            ],
+            "flags": [
+              "collections",
+              "doc",
+              "epoch",
+              "filter",
+              "inline",
+              "limit",
+              "offset",
+              "nodefaultversionid",
+              "nodefaultversionsticky",
+              "noepoch",
+              "noreadonly",
+              "offered",
+              "schema",
+              "setdefaultversionid",
+              "specversion"
+            ],
+            "mutable": [
+              "model"
+            ],
+            "pagination": true,
+            "schemas": [
+              "xRegistry-json/1.0-rc1"
+            ],
+            "shortself": true,
+            "specversions": [
+              "1.0-rc1"
+            ],
+            "sticky": false,
+            "versionmodes": [
+              "manual",
+              "createdat",
+              "semver"
+            ]
+          },
+          "containerregistries": {}
+        },
+        "stack": "AssertionError: expected { specversion: '1.0-rc1', ΓÇª(16) } to have property 'model'\n    at Context.<anonymous> (oci\\basic-server.test.js:195:37)\n    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)"
+      }
+    },
+    {
+      "title": "should pass a basic test",
+      "fullTitle": "OCI Simple Test should pass a basic test",
+      "file": "C:\\git\\xregistry-package-registries\\test\\oci\\simple.test.js",
+      "duration": 0,
+      "currentRetry": 0,
+      "speed": "fast",
+      "err": {}
+    }
+  ],
+  "pending": [
+    {
+      "title": "should return packages for a registry",
+      "fullTitle": "OCI Basic Server Functionality Package Operations should return packages for a registry",
+      "file": "C:\\git\\xregistry-package-registries\\test\\oci\\basic-server.test.js",
+      "currentRetry": 0,
+      "err": {}
+    },
+    {
+      "title": "should support pagination for packages",
+      "fullTitle": "OCI Basic Server Functionality Package Operations should support pagination for packages",
+      "file": "C:\\git\\xregistry-package-registries\\test\\oci\\basic-server.test.js",
+      "currentRetry": 0,
+      "err": {}
+    }
+  ],
+  "failures": [
+    {
+      "title": "should return containerregistries collection",
+      "fullTitle": "OCI Basic Server Functionality Core Endpoints should return containerregistries collection",
+      "file": "C:\\git\\xregistry-package-registries\\test\\oci\\basic-server.test.js",
+      "duration": 3,
+      "currentRetry": 0,
+      "err": {
+        "message": "expected +0 to be above +0",
+        "showDiff": true,
+        "actual": "0",
+        "expected": "0",
+        "operator": "strictEqual",
+        "stack": "AssertionError: expected +0 to be above +0\n    at Context.<anonymous> (oci\\basic-server.test.js:97:55)\n    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)"
+      }
+    },
+    {
+      "title": "should support pagination for containerregistries",
+      "fullTitle": "OCI Basic Server Functionality Registry Resources should support pagination for containerregistries",
+      "file": "C:\\git\\xregistry-package-registries\\test\\oci\\basic-server.test.js",
+      "duration": 3,
+      "currentRetry": 0,
+      "err": {
+        "message": "expected +0 to equal 1",
+        "showDiff": true,
+        "actual": "0",
+        "expected": "1",
+        "operator": "strictEqual",
+        "stack": "AssertionError: expected +0 to equal 1\n    at Context.<anonymous> (oci\\basic-server.test.js:114:52)\n    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)"
+      }
+    },
+    {
+      "title": "should support inline=model for including model",
+      "fullTitle": "OCI Basic Server Functionality xRegistry-specific Features should support inline=model for including model",
+      "file": "C:\\git\\xregistry-package-registries\\test\\oci\\basic-server.test.js",
+      "duration": 6,
+      "currentRetry": 0,
+      "err": {
+        "message": "expected { specversion: '1.0-rc1', ΓÇª(16) } to have property 'model'",
+        "showDiff": false,
+        "actual": {
+          "specversion": "1.0-rc1",
+          "registryid": "oci-wrapper",
+          "name": "xRegistry OCI Proxy",
+          "description": "A proxy server that exposes OCI container registries through the xRegistry API.",
+          "documentation": "https://github.com/xregistry/spec/blob/main/core/spec.md",
+          "xid": "/",
+          "epoch": 1,
+          "createdat": "2025-05-30T06:22:38.308Z",
+          "modifiedat": "2025-05-30T06:22:38.308Z",
+          "labels": {},
+          "self": "http://localhost:3007/",
+          "modelurl": "http://localhost:3007/model",
+          "capabilitiesurl": "http://localhost:3007/capabilities",
+          "containerregistriesurl": "http://localhost:3007/containerregistries",
+          "containerregistriescount": 0,
+          "capabilities": {
+            "apis": [
+              "/capabilities",
+              "/export",
+              "/model"
+            ],
+            "flags": [
+              "collections",
+              "doc",
+              "epoch",
+              "filter",
+              "inline",
+              "limit",
+              "offset",
+              "nodefaultversionid",
+              "nodefaultversionsticky",
+              "noepoch",
+              "noreadonly",
+              "offered",
+              "schema",
+              "setdefaultversionid",
+              "specversion"
+            ],
+            "mutable": [
+              "model"
+            ],
+            "pagination": true,
+            "schemas": [
+              "xRegistry-json/1.0-rc1"
+            ],
+            "shortself": true,
+            "specversions": [
+              "1.0-rc1"
+            ],
+            "sticky": false,
+            "versionmodes": [
+              "manual",
+              "createdat",
+              "semver"
+            ]
+          },
+          "containerregistries": {}
+        },
+        "stack": "AssertionError: expected { specversion: '1.0-rc1', ΓÇª(16) } to have property 'model'\n    at Context.<anonymous> (oci\\basic-server.test.js:195:37)\n    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)"
+      }
+    }
+  ],
+  "passes": [
+    {
+      "title": "should return registry root with correct structure",
+      "fullTitle": "OCI Basic Server Functionality Core Endpoints should return registry root with correct structure",
+      "file": "C:\\git\\xregistry-package-registries\\test\\oci\\basic-server.test.js",
+      "duration": 6,
+      "currentRetry": 0,
+      "speed": "fast",
+      "err": {}
+    },
+    {
+      "title": "should return capabilities",
+      "fullTitle": "OCI Basic Server Functionality Core Endpoints should return capabilities",
+      "file": "C:\\git\\xregistry-package-registries\\test\\oci\\basic-server.test.js",
+      "duration": 4,
+      "currentRetry": 0,
+      "speed": "fast",
+      "err": {}
+    },
+    {
+      "title": "should return model",
+      "fullTitle": "OCI Basic Server Functionality Core Endpoints should return model",
+      "file": "C:\\git\\xregistry-package-registries\\test\\oci\\basic-server.test.js",
+      "duration": 4,
+      "currentRetry": 0,
+      "speed": "fast",
+      "err": {}
+    },
+    {
+      "title": "should handle 404 for nonexistent registry",
+      "fullTitle": "OCI Basic Server Functionality Registry Resources should handle 404 for nonexistent registry",
+      "file": "C:\\git\\xregistry-package-registries\\test\\oci\\basic-server.test.js",
+      "duration": 4,
+      "currentRetry": 0,
+      "speed": "fast",
+      "err": {}
+    },
+    {
+      "title": "should respond to CORS preflight requests",
+      "fullTitle": "OCI Basic Server Functionality HTTP Standards should respond to CORS preflight requests",
+      "file": "C:\\git\\xregistry-package-registries\\test\\oci\\basic-server.test.js",
+      "duration": 3,
+      "currentRetry": 0,
+      "speed": "fast",
+      "err": {}
+    },
+    {
+      "title": "should include standard headers",
+      "fullTitle": "OCI Basic Server Functionality HTTP Standards should include standard headers",
+      "file": "C:\\git\\xregistry-package-registries\\test\\oci\\basic-server.test.js",
+      "duration": 5,
+      "currentRetry": 0,
+      "speed": "fast",
+      "err": {}
+    },
+    {
+      "title": "should support inline=true for meta information",
+      "fullTitle": "OCI Basic Server Functionality xRegistry-specific Features should support inline=true for meta information",
+      "file": "C:\\git\\xregistry-package-registries\\test\\oci\\basic-server.test.js",
+      "duration": 6,
+      "currentRetry": 0,
+      "speed": "fast",
+      "err": {}
+    },
+    {
+      "title": "should pass a basic test",
+      "fullTitle": "OCI Simple Test should pass a basic test",
+      "file": "C:\\git\\xregistry-package-registries\\test\\oci\\simple.test.js",
+      "duration": 0,
+      "currentRetry": 0,
+      "speed": "fast",
+      "err": {}
+    }
+  ]
+}

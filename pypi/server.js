@@ -5,6 +5,13 @@ const path = require("path");
 const yargs = require("yargs");
 const { v4: uuidv4 } = require("uuid");
 const { createLogger } = require("../shared/logging/logger");
+const { parseFilterExpression, getNestedValue: getFilterValue, compareValues, applyXRegistryFilterWithNameConstraint } = require('../shared/filter');
+const { parseInlineParams } = require('../shared/inline');
+const { handleInlineFlag } = require('./inline');
+const { parseSortParam, applySortFlag } = require('../shared/sort');
+
+console.log('Loaded shared utilities:', ['filter', 'inline', 'sort']);
+
 const app = express();
 
 // Parse command line arguments with fallback to environment variables
@@ -86,6 +93,82 @@ const RESOURCE_TYPE_SINGULAR = "package";
 const DEFAULT_PAGE_LIMIT = 50;
 const SPEC_VERSION = "1.0-rc1";
 const SCHEMA_VERSION = "xRegistry-json/1.0-rc1";
+
+// Refresh interval in milliseconds (6 hours - PyPI is less frequently updated than npm)
+const REFRESH_INTERVAL = 6 * 60 * 60 * 1000;
+
+// Package names cache
+let packageNamesCache = [];
+let lastRefreshTime = 0;
+
+// Function to refresh package names from PyPI
+async function refreshPackageNames() {
+  const operationId = uuidv4();
+  logger.info("Refreshing PyPI package names cache...", { 
+    operationId,
+    refreshInterval: REFRESH_INTERVAL 
+  });
+  
+  try {
+    const startTime = Date.now();
+    
+    // Fetch package list from PyPI simple API
+    logger.debug("Fetching package list from PyPI simple API...", { operationId });
+    
+    const response = await cachedGet("https://pypi.org/simple/", {
+      Accept: "application/vnd.pypi.simple.v1+json",
+    });
+    
+    if (response && response.projects && Array.isArray(response.projects)) {
+      // Extract package names and sort them alphabetically
+      const packageNames = response.projects.map(project => project.name);
+      packageNamesCache = packageNames.sort();
+      lastRefreshTime = Date.now();
+      
+      logger.info("PyPI package names loaded successfully", { 
+        operationId,
+        packageCount: packageNamesCache.length,
+        sorted: true,
+        lastRefreshTime: new Date(lastRefreshTime).toISOString(),
+        totalDuration: Date.now() - startTime
+      });
+    } else {
+      throw new Error("PyPI API did not return a valid projects array");
+    }
+    
+    return true;
+  } catch (error) {
+    logger.error("Error refreshing PyPI package names", { 
+      operationId,
+      error: error.message,
+      stack: error.stack,
+      currentCacheSize: packageNamesCache.length
+    });
+    
+    // If we failed to load the package names, try to provide a fallback
+    if (packageNamesCache.length === 0) {
+      logger.warn("Using fallback list of popular Python packages", { 
+        operationId,
+        fallbackCount: 24 
+      });
+      packageNamesCache = [
+        "beautifulsoup4", "certifi", "charset-normalizer", "click", "django", 
+        "flask", "idna", "jinja2", "numpy", "pandas", "pillow", "pip", 
+        "pygame", "pytest", "python-dateutil", "pytz", "requests", "scipy", 
+        "setuptools", "six", "tornado", "urllib3", "wheel", "pyyaml"
+      ]; // Already sorted alphabetically
+    }
+    
+    return false;
+  }
+}
+
+// Schedule periodic refresh
+function scheduleRefresh() {
+  setInterval(async () => {
+    await refreshPackageNames();
+  }, REFRESH_INTERVAL);
+}
 
 // Configure Express to not decode URLs
 app.set('decode_param_values', false);
@@ -742,7 +825,7 @@ function makeAllUrlsAbsolute(req, obj) {
   
   // Process the object
   for (const key in obj) {
-    if (typeof obj[key] === 'string' && key.endsWith('url') || key === 'self') {
+    if (typeof obj[key] === 'string' && (key.endsWith('url') || key === 'self')) {
       // If it's a URL and not already absolute, make it absolute
       if (!obj[key].startsWith('http')) {
         obj[key] = `${baseUrl}${obj[key].startsWith('/') ? '' : '/'}${obj[key]}`;
@@ -754,6 +837,57 @@ function makeAllUrlsAbsolute(req, obj) {
   }
   
   return obj;
+}
+
+// Utility function to generate pagination Link headers
+function generatePaginationLinks(req, totalCount, offset, limit) {
+  const links = [];
+  const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}${req.path}`;
+  
+  // Add base query parameters from original request (except pagination ones)
+  const queryParams = {...req.query};
+  delete queryParams.limit;
+  delete queryParams.offset;
+  
+  // Build the base query string
+  let queryString = Object.keys(queryParams).length > 0 ? 
+    '?' + Object.entries(queryParams).map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`).join('&') : 
+    '';
+  
+  // If we have any params already, use & to add more, otherwise start with ?
+  const paramPrefix = queryString ? '&' : '?';
+  
+  // Calculate totalPages (ceiling division)
+  const totalPages = Math.ceil(totalCount / limit);
+  const currentPage = Math.floor(offset / limit) + 1;
+  
+  // First link
+  const firstUrl = `${baseUrl}${queryString}${paramPrefix}limit=${limit}&offset=0`;
+  links.push(`<${firstUrl}>; rel="first"`);
+  
+  // Previous link (if not on the first page)
+  if (offset > 0) {
+    const prevOffset = Math.max(0, offset - limit);
+    const prevUrl = `${baseUrl}${queryString}${paramPrefix}limit=${limit}&offset=${prevOffset}`;
+    links.push(`<${prevUrl}>; rel="prev"`);
+  }
+  
+  // Next link (if not on the last page)
+  if (offset + limit < totalCount) {
+    const nextUrl = `${baseUrl}${queryString}${paramPrefix}limit=${limit}&offset=${offset + limit}`;
+    links.push(`<${nextUrl}>; rel="next"`);
+  }
+  
+  // Last link
+  const lastOffset = Math.max(0, (totalPages - 1) * limit);
+  const lastUrl = `${baseUrl}${queryString}${paramPrefix}limit=${limit}&offset=${lastOffset}`;
+  links.push(`<${lastUrl}>; rel="last"`);
+  
+  // Add count and total-count as per RFC5988
+  links.push(`count="${totalCount}"`);
+  links.push(`per-page="${limit}"`);
+  
+  return links.join(', ');
 }
 
 // Group collection
@@ -807,13 +941,8 @@ app.get(`/${GROUP_TYPE}`, (req, res) => {
 app.get(`/${GROUP_TYPE}/${GROUP_ID}`, async (req, res) => {
   const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
   
-  let packagescount = 0;
-  try {
-    const response = await cachedGet("https://pypi.org/simple/", {
-      Accept: "application/vnd.pypi.simple.v1+json",
-    });
-    packagescount = response.projects.length;
-  } catch {}
+  // Use package count from cache instead of API call
+  const packagescount = packageNamesCache.length > 0 ? packageNamesCache.length : 0;
   
   let groupResponse = {
     ...xregistryCommonAttrs({
@@ -846,39 +975,37 @@ app.get(`/${GROUP_TYPE}/${GROUP_ID}`, async (req, res) => {
 // All packages with filtering
 app.get(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`, async (req, res) => {
   const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
+  const operationId = uuidv4();
   
   try {
-    const response = await cachedGet("https://pypi.org/simple/", {
-      Accept: "application/vnd.pypi.simple.v1+json",
-    });
-    let packageNames = response.projects.map((project) => project.name);
+    // Use our package names cache instead of direct API call
+    let packageNames = [...packageNamesCache]; // Already sorted alphabetically from refreshPackageNames
     
-    // Filtering support: ?filter=substring (case-insensitive substring match)
+    logger.debug("Processing packages request", { 
+      operationId,
+      cacheSize: packageNames.length,
+      hasFilter: !!req.query.filter,
+      hasSort: !!req.query.sort,
+      filter: req.query.filter,
+      sort: req.query.sort
+    });
+    
+    // xRegistry-compliant filtering support
     if (req.query.filter) {
-      const filter = req.query.filter.toLowerCase();
-      packageNames = packageNames.filter((name) =>
-        name.toLowerCase().includes(filter)
-      );
+      // Check if it's a simple text search (no equals sign) or structured filter
+      if (req.query.filter.includes('=')) {
+        // Structured filter (e.g., name=express, packageid=lodash)
+        packageNames = await applyXRegistryFilterWithNameConstraint(req.query.filter, packageNames, req);
+      } else {
+        // Simple text search (e.g., filter=express)
+        const searchTerm = req.query.filter.toLowerCase();
+        packageNames = packageNames.filter(name => name.toLowerCase().includes(searchTerm));
+      }
     }
     
-    // Custom sorting: packages starting with letters first, then numbers/symbols at the bottom
-    packageNames.sort((a, b) => {
-      const aFirstChar = a.charAt(0);
-      const bFirstChar = b.charAt(0);
-      
-      // Check if first character is a letter (a-z, A-Z)
-      const aIsLetter = /^[a-zA-Z]/.test(aFirstChar);
-      const bIsLetter = /^[a-zA-Z]/.test(bFirstChar);
-      
-      
-      // If one starts with letter and other doesn't, letter comes first
-      if (aIsLetter && !bIsLetter) return -1;
-      if (!aIsLetter && bIsLetter) return 1;
-      
-      // If both start with letters or both start with non-letters, sort alphabetically
-      return a.toLowerCase().localeCompare(b.toLowerCase());
-    });
-    
+    // Apply sort flag (default asc on name)
+    packageNames = applySortFlag(req.query.sort, packageNames);
+
     // Pagination parameters
     const totalCount = packageNames.length;
     const limit = req.query.limit ? parseInt(req.query.limit, 10) : DEFAULT_PAGE_LIMIT;
@@ -903,7 +1030,7 @@ app.get(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`, async (req, res) => {
           parentUrl: `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`,
           type: RESOURCE_TYPE_SINGULAR,
         }),
-        self: `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}`,
+        self: `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${encodeURIComponent(packageName)}`,
       };
     });
     
@@ -917,6 +1044,7 @@ app.get(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`, async (req, res) => {
     
     // Apply flag handlers for each resource
     for (const packageName in resources) {
+      resources[packageName] = handleInlineFlag(req, resources[packageName]);
       resources[packageName] = handleDocFlag(req, resources[packageName]);
       resources[packageName] = handleEpochFlag(req, resources[packageName]);
       resources[packageName] = handleNoReadonlyFlag(req, resources[packageName]);
@@ -932,8 +1060,24 @@ app.get(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`, async (req, res) => {
     // Apply schema headers
     setXRegistryHeaders(res, { epoch: 1 });
     
+    logger.debug("Packages request completed successfully", { 
+      operationId,
+      totalCount,
+      filteredCount: packageNames.length,
+      returnedCount: paginatedPackageNames.length,
+      offset,
+      limit
+    });
+    
     res.json(resources);
   } catch (error) {
+    logger.error("Error processing packages request", { 
+      operationId,
+      error: error.message,
+      stack: error.stack,
+      cacheSize: packageNamesCache.length
+    });
+    
     res
       .status(500)
       .json(
@@ -1399,29 +1543,7 @@ function handleDocFlag(req, data) {
   return data;
 }
 
-// Utility function to handle inline flag
-function handleInlineFlag(req, data, resourceType, metaObject = null) {
-  const inlineParam = req.query.inline;
-  
-  // Handle inline=true for versions collection
-  if (inlineParam === 'true' && data[`${resourceType}url`]) {
-    // Currently not implemented - would fetch and include the referenced resource
-    // For now, we add a header to indicate this isn't fully supported
-    req.res.set('Warning', '299 - "Inline flag partially supported"');
-  }
-  
-  // Handle meta inlining for resources
-  // Include meta object when specifically requested via inline=true or inline=meta
-  // OR by default during development/testing (remove this in production)
-  if (inlineParam === 'true' || inlineParam === 'meta') { // Always include meta for testing
-    if (metaObject && data.metaurl) {
-      // Include meta object
-      data.meta = metaObject;
-    }
-  }
-  
-  return data;
-}
+// Moved the inline implementation to its own file: inline.js
 
 // Utility function to handle epoch flag
 function handleEpochFlag(req, data) {
@@ -1736,6 +1858,19 @@ function makeUrlAbsolute(req, url) {
   return `${baseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
 }
 
+// Catch-all route for 404 errors - must be last
+app.use((req, res) => {
+  res.status(404).json(
+    createErrorResponse(
+      "not_found", 
+      "Resource not found", 
+      404, 
+      req.originalUrl, 
+      `The requested resource '${req.originalUrl}' was not found`
+    )
+  );
+});
+
 // Graceful shutdown function
 function gracefulShutdown() {
   logger.info("Shutting down gracefully...");
@@ -1813,9 +1948,30 @@ module.exports = {
 
 // If running as standalone, start the server - ONLY if this file is run directly
 if (require.main === module) {
-  app.listen(PORT, () => {
-    logger.logStartup(PORT, {
-      baseUrl: BASE_URL
+  // Load package cache synchronously before starting server
+  refreshPackageNames().then(() => {
+    // Schedule periodic refresh
+    scheduleRefresh();
+    
+    // Start the server
+    app.listen(PORT, () => {
+      logger.logStartup(PORT, {
+        baseUrl: BASE_URL
+      });
+      console.log(`Package cache loaded successfully with ${packageNamesCache.length} packages`);
+    });
+  }).catch(error => {
+    logger.error("Failed to load initial package cache, starting server anyway", { 
+      error: error.message,
+      cacheSize: packageNamesCache.length
+    });
+    
+    // Start server even if initial cache load failed
+    app.listen(PORT, () => {
+      logger.logStartup(PORT, {
+        baseUrl: BASE_URL
+      });
+      console.log(`Server started with ${packageNamesCache.length} packages in cache`);
     });
   });
 }

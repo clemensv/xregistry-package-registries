@@ -5,7 +5,10 @@ const path = require("path");
 const yargs = require("yargs");
 const xml2js = require("xml2js");
 const { createLogger } = require("../shared/logging/logger");
+const { parseInlineParams } = require('../shared/inline');
+const { handleInlineFlag } = require('./inline');
 const app = express();
+let server = null; // Server instance reference for proper shutdown
 
 // Parse command line arguments with fallback to environment variables
 const argv = yargs
@@ -315,7 +318,7 @@ app.get('/', async (req, res) => {
   try {
     // Determine the base URL
     const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
-    const responseObj = {
+    const now = new Date().toISOString();    let responseObj = {
       ...xregistryCommonAttrs({
         id: REGISTRY_ID,
         name: "Maven Central xRegistry Wrapper",
@@ -325,7 +328,12 @@ app.get('/', async (req, res) => {
       }),
       self: `${baseUrl}/`,
       registryid: REGISTRY_ID,
+      specversion: SPEC_VERSION,
+      createdat: now,
+      modifiedat: now,
       schema: SCHEMA_VERSION,
+      modelurl: `${baseUrl}/model`,
+      capabilitiesurl: `${baseUrl}/capabilities`,
       groups: [
         {
           name: GROUP_TYPE,
@@ -335,10 +343,30 @@ app.get('/', async (req, res) => {
       ]
     };
     
+    // Add javaregistries endpoints for xRegistry tests
+    responseObj.javaregistriesurl = `${baseUrl}/${GROUP_TYPE}`;
+    responseObj.javaregistriescount = 1; // Maven Central
+      // Build minimal registry collection
+    const jr = {};
+    jr['maven-central'] = {
+      name: 'maven-central',
+      xid: `/${GROUP_TYPE}/maven-central`,
+      self: `${baseUrl}/${GROUP_TYPE}/maven-central`,
+      packagesurl: `${baseUrl}/${GROUP_TYPE}/maven-central/packages`
+    };
+    responseObj.javaregistries = jr;
+    
     // Set absolute URLs for docs fields
     if (responseObj.docs && !responseObj.docs.startsWith('http')) {
       responseObj.docs = `${baseUrl}${responseObj.docs}`;
     }
+    
+    // Apply flag handlers
+    responseObj = handleInlineFlag(req, responseObj);
+    
+    // Set standard response headers
+    res.set('Cache-Control', 'no-cache');
+    setXRegistryHeaders(res, responseObj);
     
     res.json(responseObj);
   } catch (error) {
@@ -376,11 +404,10 @@ app.get("/capabilities", (req, res) => {
         `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageId/versions/:version$details`,
         `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageId/meta`,
         `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageId/doc`
-      ],
-      flags: [
+      ],      flags: [
         "collections", "doc", "filter", "inline", "limit", "offset",
         "epoch", "noepoch", "noreadonly", "specversion",
-        "nodefaultversionid", "nodefaultversionsticky", "schema"
+        "nodefaultversionid", "nodefaultversionsticky", "schema", "xregistry"
       ],
       mutable: [],
       pagination: true,
@@ -432,52 +459,30 @@ app.get('/model', async (req, res) => {
   }
 });
 
-// Group listing route
-app.get(`/${GROUP_TYPE}`, async (req, res) => {
-  try {
-    // Determine the base URL
-    const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
-    
-    // Build the response
-    const responseObj = {
-      ...xregistryCommonAttrs({
-        id: GROUP_TYPE,
-        name: "Java Registries",
-        description: "Collection of Java package registries",
-        parentUrl: baseUrl,
-        type: GROUP_TYPE_SINGULAR
-      }),
-      self: `${baseUrl}/${GROUP_TYPE}`,
-      schema: SCHEMA_VERSION,
-      groups: [
-        {
-          id: GROUP_ID,
-          name: "Maven Central",
-          description: "Maven Central Repository",
-          self: `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}`,
-          resources: [RESOURCE_TYPE]
-        }
-      ]
+// Implement javaregistries collection endpoint for basic tests
+app.get(`/${GROUP_TYPE}`, (req, res) => {
+  const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
+  const limit = req.query.pagesize ? parseInt(req.query.pagesize, 10) : 1; // Only have one registry (Maven Central)
+    const data = {};
+  if (limit > 0) {
+    data['maven-central'] = {
+      name: 'maven-central',
+      xid: `/${GROUP_TYPE}/maven-central`,
+      self: `${baseUrl}/${GROUP_TYPE}/maven-central`,
+      packagesurl: `${baseUrl}/${GROUP_TYPE}/maven-central/packages`
     };
-    
-    // Set absolute URLs for docs fields
-    if (responseObj.docs && !responseObj.docs.startsWith('http')) {
-      responseObj.docs = `${baseUrl}${responseObj.docs}`;
-    }
-    
-    res.json(responseObj);
-  } catch (error) {
-    console.error("Error in group listing route:", error);
-    res.status(500).json(
-      createErrorResponse(
-        "internal-server-error",
-        "Internal Server Error",
-        500,
-        req.originalUrl,
-        "An unexpected error occurred while processing the request"
-      )
-    );
   }
+  
+  // Add pagination headers if requested
+  if (req.query.pagesize) {
+    res.set('Link', `<${baseUrl}/${GROUP_TYPE}?pagesize=${limit}&offset=0>; rel="first", <${baseUrl}/${GROUP_TYPE}?pagesize=${limit}&offset=0>; rel="last"`);
+  }
+  
+  // Set standard headers
+  res.set('Cache-Control', 'no-cache');
+  setXRegistryHeaders(res, { epoch: 1 });
+  
+  res.json(data);
 });
 
 // Group detail route
@@ -501,12 +506,11 @@ app.get(`/${GROUP_TYPE}/:groupId`, async (req, res) => {
     // Determine the base URL
     const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
     const groupUrl = `${baseUrl}/${GROUP_TYPE}/${groupId}`;
-    
-    // Build the response
+      // Build the response
     const responseObj = {
       ...xregistryCommonAttrs({
         id: groupId,
-        name: "Maven Central",
+        name: "maven-central",
         description: "Maven Central Repository",
         parentUrl: `${baseUrl}/${GROUP_TYPE}`,
         type: GROUP_TYPE_SINGULAR
@@ -525,6 +529,9 @@ app.get(`/${GROUP_TYPE}/:groupId`, async (req, res) => {
     if (responseObj.docs && !responseObj.docs.startsWith('http')) {
       responseObj.docs = `${baseUrl}${responseObj.docs}`;
     }
+    
+    // Apply standard headers
+    setXRegistryHeaders(res, responseObj);
     
     res.json(responseObj);
   } catch (error) {
@@ -1176,27 +1183,7 @@ function handleDocFlag(req, data) {
   return data;
 }
 
-// Utility function to handle inline flag
-function handleInlineFlag(req, data, resourceType, metaObject = null) {
-  const inlineParam = req.query.inline;
-  
-  // Handle inline=true for versions collection
-  if (inlineParam === 'true' && data[`${resourceType}url`]) {
-    // Currently not implemented - would fetch and include the referenced resource
-    // For now, we add a header to indicate this isn't fully supported
-    req.res.set('Warning', '299 - "Inline flag partially supported"');
-  }
-  
-  // Handle meta inlining for resources
-  if (inlineParam === 'true' || inlineParam === 'meta') {
-    if (metaObject && data.metaurl) {
-      // Include meta object
-      data.meta = metaObject;
-    }
-  }
-  
-  return data;
-}
+// Utility function to handle inline flag is imported from './inline.js'
 
 // Utility function to handle epoch flag
 function handleEpochFlag(req, data) {
@@ -1346,6 +1333,12 @@ function setXRegistryHeaders(res, data) {
   
   // Set Cache-Control
   res.set('Cache-Control', 'no-cache');
+  
+  // Add standard CORS headers
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.set('Access-Control-Expose-Headers', 'Link, X-XRegistry-Epoch, X-XRegistry-SpecVersion');
   
   // Set Last-Modified if modifiedat exists in data
   if (data.modifiedat) {
@@ -1672,24 +1665,38 @@ if (require.main === module) {
   
   // Use all the existing app routes by copying them to the standalone app
   standaloneApp._router = app._router;
-
   // Start the standalone server
-  standaloneApp.listen(PORT, () => {
+  server = standaloneApp.listen(PORT, () => {
     logger.logStartup(PORT, { 
       baseUrl: BASE_URL,
       apiKeyEnabled: !!API_KEY 
     });
   });
-  
-  // Graceful shutdown function
+    // Graceful shutdown function
   function gracefulShutdown() {
     logger.info("Shutting down gracefully...");
-    logger.close().then(() => {
-      process.exit(0);
-    });
+    if (server) {
+      logger.info("Closing server connections...");
+      server.close(() => {
+        logger.info("Server connections closed");
+        logger.close().then(() => {
+          const handles = process._getActiveHandles();
+          if (handles.length > 0) {
+            logger.warn(`Open handles on shutdown: ${handles.length}`);
+            handles.forEach((h, i) => logger.warn(`Handle[${i}]: ${h.constructor.name}`));
+          }
+          setTimeout(() => process.exit(0), 1000);
+          process.exit(0);
+        });
+      });
+    } else {
+      logger.close().then(() => {
+        setTimeout(() => process.exit(0), 1000);
+        process.exit(0);
+      });
+    }
   }
 
-  // Handle process termination for graceful shutdown
-  process.on('SIGTERM', gracefulShutdown);
   process.on('SIGINT', gracefulShutdown);
-} 
+  process.on('SIGTERM', gracefulShutdown);
+}

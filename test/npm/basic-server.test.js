@@ -18,26 +18,45 @@ describe('Basic Server Functionality', function() {
     await waitForServer(baseUrl, 15000);
     console.log('Server is ready for basic tests');
   });
-  
-  after(function(done) {
+    after(function(done) {
     if (serverProcess) {
       console.log('Stopping server...');
+      let cleanupCompleted = false;
+      
+      const completeCleanup = () => {
+        if (!cleanupCompleted) {
+          cleanupCompleted = true;
+          console.log('Server stopped');
+          done();
+        }
+      };
+      
+      serverProcess.on('exit', completeCleanup);
+      serverProcess.on('error', completeCleanup);
+      
       serverProcess.kill('SIGTERM');
       
-      serverProcess.on('exit', () => {
-        console.log('Server stopped');
-        done();
-      });
-      
       setTimeout(() => {
-        if (serverProcess && !serverProcess.killed) {
+        if (serverProcess && !serverProcess.killed && !cleanupCompleted) {
+          console.log('Force killing server...');
           serverProcess.kill('SIGKILL');
-          done();
+          setTimeout(completeCleanup, 1000);
         }
       }, 3000);
     } else {
       done();
     }
+  });
+  
+  before(function() {
+    process.on('unhandledRejection', (reason) => {
+      console.error('Unhandled Rejection:', reason);
+      setTimeout(() => process.exit(1), 500);
+    });
+    process.on('uncaughtException', (err) => {
+      console.error('Uncaught Exception:', err);
+      setTimeout(() => process.exit(1), 500);
+    });
   });
   
   describe('Core Endpoints', function() {
@@ -335,4 +354,29 @@ describe('Basic Server Functionality', function() {
     
     throw new Error(`Server did not become ready within ${timeout}ms`);
   }
+});
+
+after(function(done) {
+  // Log open handles and requests after all tests
+  const handles = process._getActiveHandles();
+  const requests = process._getActiveRequests();
+  if (handles.length > 0 || requests.length > 0) {
+    console.warn(`\n[Mocha after] Open handles: ${handles.length}`);
+    handles.forEach((h, i) => {
+      console.warn(`[Mocha after] Handle[${i}]:`, h.constructor ? h.constructor.name : typeof h, h);
+    });
+    console.warn(`[Mocha after] Open requests: ${requests.length}`);
+    requests.forEach((r, i) => {
+      console.warn(`[Mocha after] Request[${i}]:`, r.constructor ? r.constructor.name : typeof r, r);
+    });
+  }
+  // Wait a moment to allow logs to flush, then force exit if needed
+  setTimeout(() => {
+    if (handles.length > 0 || requests.length > 0) {
+      console.warn('[Mocha after] Forcing process exit due to open handles/requests.');
+      process.exit(1);
+    } else {
+      done();
+    }
+  }, 1000);
 });

@@ -10,7 +10,13 @@ test/
 │   ├── basic-server.test.js         # Core server functionality tests
 │   ├── integration-angular.test.js  # Real Angular packages integration test
 │   └── README.md                    # NPM test documentation
-├── integration/           # Integration test files and configurations
+├── nuget/                # NuGet wrapper-specific tests
+│   ├── basic-server.test.js         # Core server functionality tests
+│   └── README.md                    # NuGet test documentation
+├── pypi/                 # PyPI wrapper-specific tests
+│   ├── basic-server.test.js         # Core server functionality tests
+│   └── README.md                    # PyPI test documentation
+├── integration/          # Integration test files and configurations
 ├── unit/                 # Unit test files
 ├── regression/           # Regression test files
 ├── package.json          # Centralized test dependencies and scripts

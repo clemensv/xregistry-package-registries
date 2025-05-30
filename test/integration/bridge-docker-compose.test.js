@@ -115,7 +115,6 @@ describe('Bridge Docker Compose Integration Tests', function() {
 
     console.log('🎯 All services are ready for testing');
   });
-
   after(async function() {
     this.timeout(300000); // 5 minutes for cleanup
 
@@ -125,10 +124,26 @@ describe('Bridge Docker Compose Integration Tests', function() {
         await checkComposeServices();
         
         console.log('🧹 Stopping and removing Docker Compose stack...');
+        // First try graceful shutdown
+        try {
+          await executeCommand('docker-compose -f docker-compose.bridge.yml stop', testDir);
+        } catch (stopError) {
+          console.log('Error stopping services gracefully:', stopError.message);
+        }
+        
+        // Then remove everything
         await executeCommand('docker-compose -f docker-compose.bridge.yml down -v --remove-orphans', testDir);
         console.log('Compose cleanup completed');
       } catch (error) {
         console.error('Error during compose cleanup:', error.message);
+        // Try force cleanup as last resort
+        try {
+          console.log('Attempting force cleanup...');
+          await executeCommand('docker-compose -f docker-compose.bridge.yml kill', testDir);
+          await executeCommand('docker-compose -f docker-compose.bridge.yml down -v --remove-orphans', testDir);
+        } catch (forceError) {
+          console.error('Force cleanup also failed:', forceError.message);
+        }
       }
     }
   });

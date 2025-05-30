@@ -3,7 +3,16 @@ const axios = require("axios");
 const fs = require("fs");
 const path = require("path");
 const yargs = require("yargs");
+const { v4: uuidv4 } = require("uuid");
 const { createLogger } = require("../shared/logging/logger");
+// Import shared utilities for consistent behavior across all registry types
+const { parseFilterExpression, getNestedValue: getFilterValue, compareValues, applyXRegistryFilterWithNameConstraint } = require('../shared/filter');
+const { parseInlineParams } = require('../shared/inline');
+const { parseSortParam, applySortFlag } = require('../shared/sort');
+const { handleInlineFlag } = require('./inline');
+
+console.log('Loaded shared utilities:', ['filter', 'inline', 'sort']);
+
 const app = express();
 
 // CORS Middleware
@@ -85,11 +94,12 @@ const logger = createLogger({
   environment: process.env.NODE_ENV || 'production',
   enableFile: !!LOG_FILE,
   logFile: LOG_FILE,
-  enableConsole: !QUIET_MODE,
-  enableW3CLog: !!(argv.w3log || argv['w3log-stdout']),
+  enableConsole: !QUIET_MODE,  enableW3CLog: !!(argv.w3log || argv['w3log-stdout']),
   w3cLogFile: argv.w3log,
   w3cLogToStdout: argv['w3log-stdout']
 });
+
+logger.info('Initialized NuGet server with shared filter, sort, and inline utilities');
 
 const REGISTRY_ID = "nuget-wrapper";
 const GROUP_TYPE = "dotnetregistries";
@@ -102,6 +112,12 @@ const SPEC_VERSION = "1.0-rc1";
 const SCHEMA_VERSION = "xRegistry-json/1.0-rc1";
 const NUGET_API_BASE_URL = "https://api.nuget.org/v3/search";
 const NUGET_SEARCH_QUERY_SERVICE_URL = "https://azuresearch-usnc.nuget.org/query";
+const NUGET_CATALOG_INDEX_URL = "https://api.nuget.org/v3/catalog0/index.json";
+
+// Package names cache for faster lookups
+let packageNamesCache = [];
+let catalogCursor = null; // Timestamp tracking for catalog processing
+let lastCacheUpdate = null;
 
 // Configure Express to not decode URLs
 app.set('decode_param_values', false);
@@ -312,11 +328,28 @@ async function packageExists(packageId, req = null) {
       correlationId: req?.correlationId
     });
     
+    // First check if package is in cache
+    if (isPackageInCache(packageId)) {
+      logger.debug("Package found in cache", { 
+        checkId,
+        packageId,
+        traceId: req?.traceId,
+        correlationId: req?.correlationId
+      });
+      return true;
+    }
+    
+    // If not in cache, check with NuGet API
     const searchUrl = `${NUGET_SEARCH_QUERY_SERVICE_URL}?q=${encodeURIComponent(packageId)}&prerelease=false&take=1`;
     const response = await cachedGet(searchUrl);
     const exists = response.data.length > 0 && response.data[0].id.toLowerCase() === packageId.toLowerCase();
     
-    logger.debug(exists ? "Package found in NuGet" : "Package not found in NuGet", { 
+    // If package exists but not in cache, add it to cache
+    if (exists) {
+      addPackageToCache(response.data[0].id); // Use the exact case from API
+    }
+    
+    logger.debug(exists ? "Package found in NuGet API" : "Package not found in NuGet", { 
       checkId,
       packageId,
       exists,
@@ -492,26 +525,7 @@ function handleDocFlag(req, data) {
   return data;
 }
 
-function handleInlineFlag(req, data, resourceType, metaObject = null) {
-  const inlineParam = req.query.inline;
-  
-  // Handle inline=true for versions collection
-  if (inlineParam === 'true' && data[`${resourceType}url`]) {
-    // Currently not implemented - would fetch and include the referenced resource
-    // For now, we add a header to indicate this isn't fully supported
-    req.res.set('Warning', '299 - "Inline flag partially supported"');
-  }
-  
-  // Handle meta inlining for resources
-  if (inlineParam === 'true' || inlineParam === 'meta') {
-    if (metaObject && data.metaurl) {
-      // Include meta object
-      data.meta = metaObject;
-    }
-  }
-  
-  return data;
-}
+// Moved the inline implementation to its own file: inline.js
 
 function handleEpochFlag(req, data) {
   if (req.query.noepoch === 'true') {
@@ -1132,8 +1146,187 @@ async function processNuGetDependencies(dependencyGroups, parentPackageIdForLogg
         processedDeps.push(depObj);
       }
     }
+  }  return processedDeps;
+}
+
+// Catalog-based package indexing functions
+async function fetchCatalogIndex() {
+  try {
+    logger.debug("Fetching NuGet catalog index", { url: NUGET_CATALOG_INDEX_URL });
+    const catalogIndex = await cachedGet(NUGET_CATALOG_INDEX_URL);
+    return catalogIndex;
+  } catch (error) {
+    logger.error("Failed to fetch catalog index", { error: error.message });
+    throw error;
   }
-  return processedDeps;
+}
+
+async function processCatalogPage(pageUrl, cursor) {
+  try {
+    logger.debug("Processing catalog page", { pageUrl });
+    const page = await cachedGet(pageUrl);
+    
+    if (!page || !page.items) {
+      logger.warn("Invalid catalog page data", { pageUrl });
+      return { packageIds: [], latestTimestamp: cursor };
+    }
+    
+    const packageIds = new Set();
+    let latestTimestamp = cursor;
+    
+    // Process each catalog leaf item
+    for (const item of page.items) {
+      if (!item.commitTimeStamp || !item['nuget:id']) {
+        continue;
+      }
+      
+      const itemTimestamp = new Date(item.commitTimeStamp);
+      const cursorDate = cursor ? new Date(cursor) : new Date(0);
+      
+      // Only process items newer than our cursor
+      if (itemTimestamp > cursorDate) {
+        // Check if this is a package details entry (not a delete)
+        if (item['@type'] && item['@type'].includes('nuget:PackageDetails')) {
+          packageIds.add(item['nuget:id']);
+        }
+        
+        // Update latest timestamp
+        if (!latestTimestamp || itemTimestamp > new Date(latestTimestamp)) {
+          latestTimestamp = item.commitTimeStamp;
+        }
+      }
+    }
+    
+    return {
+      packageIds: Array.from(packageIds),
+      latestTimestamp
+    };
+  } catch (error) {
+    logger.error("Error processing catalog page", { pageUrl, error: error.message });
+    return { packageIds: [], latestTimestamp: cursor };
+  }
+}
+
+async function refreshPackageNamesFromCatalog() {
+  try {
+    logger.info("Starting catalog-based package refresh", { 
+      currentCacheSize: packageNamesCache.length,
+      currentCursor: catalogCursor 
+    });
+    
+    const catalogIndex = await fetchCatalogIndex();
+    
+    if (!catalogIndex || !catalogIndex.items) {
+      logger.error("Invalid catalog index structure");
+      return;
+    }
+    
+    const newPackageIds = new Set(packageNamesCache);
+    let latestTimestamp = catalogCursor;
+    
+    // Process each catalog page
+    for (const page of catalogIndex.items) {
+      if (!page['@id'] || !page.commitTimeStamp) {
+        continue;
+      }
+      
+      const pageTimestamp = new Date(page.commitTimeStamp);
+      const cursorDate = catalogCursor ? new Date(catalogCursor) : new Date(0);
+      
+      // Only process pages newer than our cursor
+      if (pageTimestamp > cursorDate) {
+        const result = await processCatalogPage(page['@id'], catalogCursor);
+        
+        // Add new package IDs to our set
+        result.packageIds.forEach(id => newPackageIds.add(id));
+        
+        // Update latest timestamp
+        if (!latestTimestamp || new Date(result.latestTimestamp) > new Date(latestTimestamp)) {
+          latestTimestamp = result.latestTimestamp;
+        }
+      }
+    }
+    
+    // Update cache and cursor
+    const oldCount = packageNamesCache.length;
+    packageNamesCache = Array.from(newPackageIds).sort();
+    catalogCursor = latestTimestamp;
+    lastCacheUpdate = new Date().toISOString();
+    
+    logger.info("Package catalog refresh completed", {
+      previousCount: oldCount,
+      newCount: packageNamesCache.length,
+      addedPackages: packageNamesCache.length - oldCount,
+      newCursor: catalogCursor,
+      cacheUpdateTime: lastCacheUpdate
+    });
+    
+  } catch (error) {
+    logger.error("Error refreshing package names from catalog", { error: error.message });
+    
+    // If catalog fails and we have no cache, use fallback packages
+    if (packageNamesCache.length === 0) {
+      logger.warn("Catalog refresh failed and cache is empty, using fallback packages");
+      packageNamesCache = [
+        "Newtonsoft.Json",
+        "Microsoft.Extensions.DependencyInjection", 
+        "System.Text.Json",
+        "Microsoft.EntityFrameworkCore",
+        "AutoMapper"
+      ].sort();
+      lastCacheUpdate = new Date().toISOString();
+    }
+  }
+}
+
+async function initializePackageCache() {
+  try {
+    logger.info("Initializing NuGet package cache from catalog");
+    
+    // Initialize cursor to a reasonable starting point (e.g., 24 hours ago)
+    // For a full index, you could start from a much earlier date or null
+    const startTime = new Date();
+    startTime.setHours(startTime.getHours() - 24);
+    catalogCursor = startTime.toISOString();
+    
+    await refreshPackageNamesFromCatalog();
+    
+    if (packageNamesCache.length > 0) {
+      logger.info("Package cache initialized successfully", { 
+        packageCount: packageNamesCache.length,
+        cursor: catalogCursor
+      });
+    } else {
+      logger.warn("Package cache initialization resulted in empty cache");
+    }
+    
+  } catch (error) {
+    logger.error("Failed to initialize package cache", { error: error.message });
+    // Set fallback packages if initialization fails
+    packageNamesCache = [
+      "Newtonsoft.Json",
+      "Microsoft.Extensions.DependencyInjection", 
+      "System.Text.Json",
+      "Microsoft.EntityFrameworkCore",
+      "AutoMapper"
+    ].sort();
+    lastCacheUpdate = new Date().toISOString();
+  }
+}
+
+function isPackageInCache(packageId) {
+  return packageNamesCache.some(name => name.toLowerCase() === packageId.toLowerCase());
+}
+
+function addPackageToCache(packageId) {
+  if (!isPackageInCache(packageId)) {
+    packageNamesCache.push(packageId);
+    packageNamesCache.sort();
+    logger.debug("Added package to cache", { 
+      packageId,
+      newCacheSize: packageNamesCache.length 
+    });
+  }
 }
 
 // Root Document
@@ -1171,14 +1364,16 @@ app.get("/", (req, res) => {
       },
     },
   };
-  
-  // Make all URLs in the docs field absolute
+    // Make all URLs in the docs field absolute
   convertDocsToAbsoluteUrl(req, rootResponse);
-  
-  // Apply flag handlers
+    // Apply flag handlers - ensure consistent order with other registry implementations
   rootResponse = handleCollectionsFlag(req, rootResponse);
   rootResponse = handleDocFlag(req, rootResponse);
+    // Apply inline flag handling using our custom implementation
+  rootResponse = handleInlineFlag(req, rootResponse);
+  // Apply inline flag for resource type 
   rootResponse = handleInlineFlag(req, rootResponse, GROUP_TYPE);
+  
   rootResponse = handleEpochFlag(req, rootResponse);
   rootResponse = handleSpecVersionFlag(req, rootResponse);
   rootResponse = handleNoReadonlyFlag(req, rootResponse);
@@ -1283,11 +1478,11 @@ app.get(`/${GROUP_TYPE}`, (req, res) => {
       self: `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}`,
       [`${RESOURCE_TYPE}url`]: `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`,
     };
-    
-    // Apply flag handlers to each group
+      // Apply flag handlers to each group
     groups[GROUP_ID] = handleDocFlag(req, groups[GROUP_ID]);
     groups[GROUP_ID] = handleEpochFlag(req, groups[GROUP_ID]);
     groups[GROUP_ID] = handleNoReadonlyFlag(req, groups[GROUP_ID]);
+    groups[GROUP_ID] = handleInlineFlag(req, groups[GROUP_ID]);
     groups[GROUP_ID] = handleSchemaFlag(req, groups[GROUP_ID], 'group');
   }
   
@@ -1317,11 +1512,14 @@ app.get(`/${GROUP_TYPE}/${GROUP_ID}`, async (req, res) => {
     [`${RESOURCE_TYPE}url`]: `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`,
     [`${RESOURCE_TYPE}count`]: 200000, // Approximate count of NuGet packages
   };
-  
-  // Apply flag handlers
+  // Apply flag handlers - ensure consistent order with other registry implementations
   groupResponse = handleCollectionsFlag(req, groupResponse);
   groupResponse = handleDocFlag(req, groupResponse);
+  
+  // Apply inline flags from shared utilities
+  groupResponse = handleInlineFlag(req, groupResponse);
   groupResponse = handleInlineFlag(req, groupResponse, RESOURCE_TYPE);
+  
   groupResponse = handleEpochFlag(req, groupResponse);
   groupResponse = handleSpecVersionFlag(req, groupResponse);
   groupResponse = handleNoReadonlyFlag(req, groupResponse);
@@ -1347,39 +1545,79 @@ app.get(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`, async (req, res) => {
         createErrorResponse("invalid_data", "Limit must be greater than 0", 400, req.originalUrl, "The limit parameter must be a positive integer", limit)
       );
     }
-    
-    // For NuGet, we'll query the v3 API
+      // For NuGet, use cached package names when no filter, otherwise search API
     let query = req.query.filter || '';
     let packageNames = [];
-    
-    try {
+      try {
       if (query) {
         // Search for packages matching the filter
-        const searchUrl = `${NUGET_SEARCH_QUERY_SERVICE_URL}?q=${encodeURIComponent(query)}&skip=${offset}&take=${limit}&prerelease=true`;
-        const response = await cachedGet(searchUrl);
-        
-        if (response && response.data) {
-          packageNames = response.data.map(pkg => pkg.id);
+        logger.debug("Searching NuGet packages with filter", { query, offset, limit });
+          if (typeof query === 'string' && !query.includes('=') && !query.includes('>') && !query.includes('<')) {
+          // Simple text search - use NuGet search API
+          logger.debug("Using simple text search filter via NuGet API", { query });
+          const searchUrl = `${NUGET_SEARCH_QUERY_SERVICE_URL}?q=${encodeURIComponent(query)}&skip=${offset}&take=${limit}&prerelease=true`;
+          const response = await cachedGet(searchUrl);
+          
+          if (response && response.data) {
+            packageNames = response.data.map(pkg => pkg.id);
+          }
+        } else {
+          // Complex xRegistry filter - use cached names and apply filter with shared utility
+          logger.debug("Using structured filter on cached package names", { query });
+          
+          if (packageNamesCache.length === 0) {
+            logger.warn("Package cache is empty, refreshing before filtering...");
+            await refreshPackageNamesFromCatalog();
+          }
+          
+          // Apply xRegistry filter using the shared filter utility
+          packageNames = await applyXRegistryFilterWithNameConstraint(query, packageNamesCache, req);
+          
+          // Apply pagination after filtering
+          packageNames = packageNames.slice(offset, offset + limit);
         }
       } else {
-        // Get popular packages for an empty query
-        const popularUrl = `${NUGET_SEARCH_QUERY_SERVICE_URL}?q=&skip=${offset}&take=${limit}&prerelease=true`;
-        const response = await cachedGet(popularUrl);
+        // Use cached package names for better performance when no filter
+        logger.debug("Using cached package names for package listing", { 
+          cacheSize: packageNamesCache.length, 
+          lastUpdate: lastCacheUpdate,
+          offset, 
+          limit 
+        });
         
-        if (response && response.data) {
-          packageNames = response.data.map(pkg => pkg.id);
+        if (packageNamesCache.length === 0) {
+          logger.warn("Package cache is empty, refreshing...");
+          await refreshPackageNamesFromCatalog();
         }
+        
+        // Apply pagination to cached package names
+        const startIndex = offset;
+        const endIndex = offset + limit;
+        packageNames = packageNamesCache.slice(startIndex, endIndex);
       }
+        // Apply sorting if requested (use shared sorting utility)
+      logger.debug("Applying sort to package names", { sort: req.query.sort });
+      packageNames = applySortFlag(req.query.sort, packageNames);
     } catch (error) {
-      console.error("Error querying NuGet API:", error.message);
-      // If the API query fails, return a 500 error instead of using a fallback.
-      return res.status(500).json(
-        createErrorResponse("server_error", "Failed to query NuGet API for package listing", 500, req.originalUrl, error.message)
-      );
+      logger.error("Error getting package names", { error: error.message, query, offset, limit });
+      
+      // If cache is available and the query failed, try to use cache
+      if (!query && packageNamesCache.length > 0) {
+        logger.info("Falling back to cached package names after API error");
+        const startIndex = offset;
+        const endIndex = offset + limit;
+        packageNames = packageNamesCache.slice(startIndex, endIndex);
+      } else {
+        // If the API query fails and no cache available, return error
+        return res.status(500).json(
+          createErrorResponse("server_error", "Failed to query NuGet packages", 500, req.originalUrl, error.message)
+        );
+      }
     }
-    
-    // Create resource objects for the results
+      // Create resource objects for the results
     const resources = {};
+    
+    logger.debug("Creating resource objects for packages", { count: packageNames.length });
     
     for (const packageName of packageNames) {
       // Normalize the package ID for consistency
@@ -1398,15 +1636,24 @@ app.get(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`, async (req, res) => {
     }
     
     // Apply flag handlers for each resource
+    logger.debug("Applying flag handlers to package resources", { count: Object.keys(resources).length });
+    
     for (const packageId in resources) {
       resources[packageId] = handleDocFlag(req, resources[packageId]);
+      resources[packageId] = handleInlineFlag(req, resources[packageId]);
       resources[packageId] = handleEpochFlag(req, resources[packageId]);
       resources[packageId] = handleNoReadonlyFlag(req, resources[packageId]);
     }
-    
-    // Estimate total count - in a real implementation, this would come from the API
-    // For now, we'll use a default value if we're using the fallback list
-    const totalCount = packageNames.length === 5 ? 100000 : packageNames.length * 20;
+      // Calculate total count based on whether we're using cache or search results
+    let totalCount;
+    if (query) {
+      // For filtered searches, estimate based on returned results
+      // In a real implementation, the search API might provide total count
+      totalCount = packageNames.length < limit ? offset + packageNames.length : offset + packageNames.length + 1000;
+    } else {
+      // For unfiltered listing, use actual cache size
+      totalCount = packageNamesCache.length;
+    }
     
     // Add pagination links
     const links = generatePaginationLinks(req, totalCount, offset, limit);
@@ -1472,6 +1719,11 @@ module.exports = {
       console.log(`NuGet: Attaching routes at ${pathPrefix}`);
     }
 
+    // Initialize package cache for shared app
+    initializePackageCache().catch(error => {
+      logger.error("Failed to initialize NuGet package cache in shared app", { error: error.message });
+    });
+
     // Mount all the existing routes from this server at the path prefix
     // We need to create a new router and copy all existing routes
     const router = express.Router();
@@ -1526,18 +1778,41 @@ module.exports = {
 
 // If running as standalone, start the server - ONLY if this file is run directly
 if (require.main === module) {
-  // Start the standalone server
-  app.listen(PORT, () => {
-    logger.logStartup(PORT, { 
-  baseUrl: BASE_URL,
-  apiKeyEnabled: !!API_KEY 
-});
-    if (BASE_URL) {
-      console.log(`Using base URL: ${BASE_URL}`);
-    }
-    if (API_KEY) {
-      console.log("API key authentication is enabled");
-    }
+  // Initialize package cache before starting the server
+  initializePackageCache().then(() => {
+    // Start the standalone server
+    app.listen(PORT, () => {
+      logger.logStartup(PORT, { 
+        baseUrl: BASE_URL,
+        apiKeyEnabled: !!API_KEY 
+      });
+      console.log(`Server listening on port ${PORT}`);
+      if (BASE_URL) {
+        console.log(`Using base URL: ${BASE_URL}`);
+      }
+      if (API_KEY) {
+        console.log("API key authentication is enabled");
+      }
+      
+      // Set up periodic cache refresh (every 4 hours)
+      setInterval(async () => {
+        try {
+          await refreshPackageNamesFromCatalog();
+        } catch (error) {
+          logger.error("Periodic cache refresh failed", { error: error.message });
+        }
+      }, 4 * 60 * 60 * 1000); // 4 hours
+    });
+  }).catch(error => {
+    logger.error("Failed to initialize package cache, starting server anyway", { error: error.message });
+    // Start server even if cache initialization fails
+    app.listen(PORT, () => {
+      logger.logStartup(PORT, { 
+        baseUrl: BASE_URL,
+        apiKeyEnabled: !!API_KEY 
+      });
+      console.log(`Server listening on port ${PORT}`);
+    });
   });
   
   // Graceful shutdown function

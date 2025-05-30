@@ -139,13 +139,26 @@ describe('NuGet Docker Integration Tests', function() {
       try {
         console.log('Final container status before cleanup:');
         await checkContainerStatus(containerName);
+          console.log('Stopping and removing NuGet Docker container...');
+        // Stop container with timeout
+        try {
+          await executeCommand(`docker stop --time=10 ${containerName}`);
+        } catch (error) {
+          console.log('Error stopping container, attempting force kill:', error.message);
+          await executeCommand(`docker kill ${containerName}`).catch(() => {});
+        }
         
-        console.log('Stopping and removing NuGet Docker container...');
-        await executeCommand(`docker stop ${containerName}`);
-        await executeCommand(`docker rm ${containerName}`);
+        // Remove container
+        await executeCommand(`docker rm -f ${containerName}`);
         console.log('Container cleanup completed');
       } catch (error) {
         console.error('Error during container cleanup:', error.message);
+        // Try force cleanup as last resort
+        try {
+          await executeCommand(`docker rm -f ${containerName}`);
+        } catch (forceError) {
+          console.error('Force cleanup also failed:', forceError.message);
+        }
       }
     }
 

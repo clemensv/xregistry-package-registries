@@ -1,0 +1,22 @@
+{
+  "backends": [
+    {
+      "id": "docker.io",
+      "name": "Docker Hub",
+      "url": "https://registry.hub.docker.com",
+      "apiVersion": "v2",
+      "description": "Default Docker Hub registry",
+      "enabled": true,
+      "public": true
+    },
+    {
+      "id": "ghcr.io",
+      "name": "GitHub Container Registry",
+      "url": "https://ghcr.io",
+      "apiVersion": "v2",
+      "description": "GitHub Container Registry",
+      "enabled": true,
+      "public": true
+    }
+  ]
+}

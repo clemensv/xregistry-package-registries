@@ -8,7 +8,8 @@ const util = require("util");
 const { v4: uuidv4 } = require("uuid");
 const { createLogger } = require("../shared/logging/logger");
 const { parseFilterExpression, getNestedValue: getFilterValue, compareValues, applyXRegistryFilterWithNameConstraint } = require('../shared/filter');
-const { parseInlineParams, handleInlineFlag } = require('../shared/inline');
+const { parseInlineParams } = require('../shared/inline');
+const { handleInlineFlag } = require('./inline');
 const { parseSortParam, applySortFlag } = require('../shared/sort');
 
 console.log('Loaded shared utilities:', ['filter', 'inline', 'sort']);

@@ -1,0 +1,10 @@
+{
+  "oci_backends": [
+    {
+      "id": "docker.io",
+      "name": "docker.io", 
+      "url": "https://registry-1.docker.io",
+      "enabled": true
+    }
+  ]
+}

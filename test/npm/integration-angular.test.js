@@ -42,22 +42,30 @@ describe('Angular Packages Integration Test', function() {
     await waitForServer(baseUrl, 30000);
     console.log('Server is ready');
   });
-  
-  after(function(done) {
+    after(function(done) {
     if (serverProcess) {
       console.log('Stopping server...');
-      serverProcess.kill('SIGTERM');
+      let cleanupCompleted = false;
       
-      serverProcess.on('exit', () => {
-        console.log('Server stopped');
-        done();
-      });
+      const completeCleanup = () => {
+        if (!cleanupCompleted) {
+          cleanupCompleted = true;
+          console.log('Server stopped');
+          done();
+        }
+      };
+      
+      serverProcess.on('exit', completeCleanup);
+      serverProcess.on('error', completeCleanup);
+      
+      serverProcess.kill('SIGTERM');
       
       // Force kill after 5 seconds
       setTimeout(() => {
-        if (serverProcess && !serverProcess.killed) {
+        if (serverProcess && !serverProcess.killed && !cleanupCompleted) {
+          console.log('Force killing server...');
           serverProcess.kill('SIGKILL');
-          done();
+          setTimeout(completeCleanup, 1000);
         }
       }, 5000);
     } else {

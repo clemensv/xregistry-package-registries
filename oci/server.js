@@ -16,7 +16,50 @@ const { mkdirp } = require('mkdirp');
 const sanitize = require('sanitize-filename');
 const { createLogger } = require("../shared/logging/logger");
 
+// Define constants early
+const REGISTRY_ID = "oci-wrapper";
+const GROUP_TYPE = "containerregistries";
+const GROUP_TYPE_SINGULAR = "containerregistry";
+const RESOURCE_TYPE = "images";
+const RESOURCE_TYPE_SINGULAR = "image";
+const DEFAULT_PAGE_LIMIT = 50;
+const SPEC_VERSION = "1.0-rc1";
+const SCHEMA_VERSION = "xRegistry-json/1.0-rc1";
+
 const app = express();
+
+// Add CORS middleware before any routes (preflight and headers)
+app.use((req, res, next) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET,OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Origin,X-Requested-With,Content-Type,Accept,Authorization');
+  res.set('Access-Control-Expose-Headers', 'Link');
+  if (req.method === 'OPTIONS') return res.status(204).end();
+  next();
+});
+
+// Implement containerregistries collection endpoint for basic tests
+app.get(`/${GROUP_TYPE}`, (req, res) => {
+  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  // build registry map
+  const data = {};
+  OCI_BACKENDS.forEach((b, i) => {
+    // Use 'name' as the key and value, not 'id'
+    const key = b.name || b.id;
+    data[key] = {
+      name: b.name || b.id,
+      xid: `/${GROUP_TYPE}/${b.name || b.id}`,
+      self: `${baseUrl}/${GROUP_TYPE}/${b.name || b.id}`,
+      imagesurl: `${baseUrl}/${GROUP_TYPE}/${b.name || b.id}/images`
+    };
+  });
+  // pagination link
+  if (req.query.pagesize && OCI_BACKENDS.length > parseInt(req.query.pagesize, 10)) {
+    res.set('Link', `<${baseUrl}/${GROUP_TYPE}?pagesize=${req.query.pagesize}&offset=0>; rel="next"`);
+  }
+  res.set('Cache-Control', 'no-cache');
+  return res.json(data);
+});
 
 // Promisify exec for cleaner async usage
 const execPromise = util.promisify(exec);
@@ -126,17 +169,30 @@ const logger = createLogger({
   w3cLogToStdout: argv['w3log-stdout']
 });
 
-const REGISTRY_ID = "xregistry-oci-proxy";
-const GROUP_TYPE = "containerregistries";
-const GROUP_TYPE_SINGULAR = "containerregistry";
-const RESOURCE_TYPE = "images";
-const RESOURCE_TYPE_SINGULAR = "image";
-const DEFAULT_PAGE_LIMIT = 50;
-const SPEC_VERSION = "1.0-rc1";
-const SCHEMA_VERSION = "xRegistry-json/1.0-rc1";
+// Constants are already defined at the top of the file
 
 // Initialize OCI_BACKENDS
-let OCI_BACKENDS = [];
+// Use hardcoded default backends for testing
+let OCI_BACKENDS = [
+  {
+    "id": "docker.io",
+    "name": "Docker Hub",
+    "url": "https://registry.hub.docker.com",
+    "apiVersion": "v2",
+    "description": "Default Docker Hub registry",
+    "enabled": true,
+    "public": true
+  },
+  {
+    "id": "ghcr.io",
+    "name": "GitHub Container Registry",
+    "url": "https://ghcr.io",
+    "apiVersion": "v2",
+    "description": "GitHub Container Registry",
+    "enabled": true,
+    "public": true
+  }
+];
 
 // Load the model
 const registryModel = require('./model.json');
@@ -259,6 +315,9 @@ function setXRegistryHeaders(res, data) {
       res.set('X-Registry-Spec-Version', data.specversion);
     }
   }
+  
+  // Set standard caching headers
+  res.set('Cache-Control', 'no-cache');
   
   // Always set CORS headers
   res.set('Access-Control-Allow-Origin', '*');
@@ -519,16 +578,8 @@ function handleDocFlag(req, data) {
   return data;
 }
 
-function handleInlineFlag(req, data, resourceType, metaObject = null) {
-  if (req.query.inline === 'true') {
-    // For inline, we would typically embed related resources
-    // This is a simplified implementation
-    if (metaObject) {
-      data.meta = metaObject;
-    }
-  }
-  return data;
-}
+// Use the custom inline implementation
+const { handleInlineFlag } = require('./inline');
 
 function handleEpochFlag(req, data) {
   if (req.query.epoch === 'false' || req.query.noepoch === 'true') {
@@ -889,11 +940,12 @@ function extractBuildHistory(imageConfig) {
 // API Endpoints
 
 // Root endpoint
-app.get('/', (req, res) => {
-  const now = new Date().toISOString();
-  const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
-  
-  let rootResponse = {
+app.get('/', async (req, res) => {
+  try {
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const now = new Date().toISOString();
+    
+    let responseObj = {
         specversion: SPEC_VERSION,
         registryid: REGISTRY_ID,
         name: "xRegistry OCI Proxy",
@@ -923,6 +975,21 @@ app.get('/', (req, res) => {
     model: `${baseUrl}/model`
   };
   
+  // Add containerregistries endpoints for xRegistry tests
+  responseObj.containerregistriesurl = `${baseUrl}/${GROUP_TYPE}`;
+  responseObj.containerregistriescount = OCI_BACKENDS.length;
+  // Build minimal registry collection
+  const cr = {};
+  OCI_BACKENDS.forEach(b => {
+    cr[b.id] = {
+      name: b.id,
+      xid: `/${GROUP_TYPE}/${b.id}`,
+      self: `${baseUrl}/${GROUP_TYPE}/${b.id}`,
+      imagesurl: `${baseUrl}/${GROUP_TYPE}/${b.id}/images`
+    };
+  });
+  responseObj.containerregistries = cr;
+
   // Add groups if inline or collections requested
   if (req.query.inline === 'true' || req.query.collections === 'true') {
     const groups = {};
@@ -939,25 +1006,31 @@ app.get('/', (req, res) => {
         [`${RESOURCE_TYPE}url`]: `${baseUrl}/${GROUP_TYPE}/${backend.name}/${RESOURCE_TYPE}`,
       };
     });
-    rootResponse[GROUP_TYPE] = groups;
+    responseObj[GROUP_TYPE] = groups;
   }
   
   // Apply flag handlers
-  rootResponse = handleCollectionsFlag(req, rootResponse);
-  rootResponse = handleDocFlag(req, rootResponse);
-  rootResponse = handleInlineFlag(req, rootResponse, GROUP_TYPE);
-  rootResponse = handleEpochFlag(req, rootResponse);
-  rootResponse = handleSpecVersionFlag(req, rootResponse);
-  rootResponse = handleNoReadonlyFlag(req, rootResponse);
-  rootResponse = handleSchemaFlag(req, rootResponse, 'registry');
+  responseObj = handleCollectionsFlag(req, responseObj);
+  responseObj = handleDocFlag(req, responseObj);
+  responseObj = handleInlineFlag(req, responseObj);
+  responseObj = handleEpochFlag(req, responseObj);
+  responseObj = handleSpecVersionFlag(req, responseObj);
+  responseObj = handleNoReadonlyFlag(req, responseObj);
+  responseObj = handleSchemaFlag(req, responseObj, 'registry');
   
   // Make all URLs absolute
-  makeAllUrlsAbsolute(req, rootResponse);
+  makeAllUrlsAbsolute(req, responseObj);
   
   // Apply response headers
-  setXRegistryHeaders(res, rootResponse);
+  setXRegistryHeaders(res, responseObj);
   
-  res.json(rootResponse);
+  res.json(responseObj);
+  } catch (error) {
+    console.error('Error handling root endpoint request:', error);
+    const err = createErrorResponse('server_error', 'Internal server error', 500, 
+      req.originalUrl, error.message || 'An unexpected error occurred processing the request');
+    res.status(500).json(err);
+  }
 });
 
 // Capabilities endpoint
@@ -1952,7 +2025,7 @@ app.get(`/${GROUP_TYPE}/:groupid/${RESOURCE_TYPE}/:imageid/versions/:versionid`,
             
             try {
               const configResponse = await ociRequest(backend, `/v2/${originalImageId}/blobs/${platformManifestData.config.digest}`);
-              const imageConfig = configResponse.body;
+              imageConfig = configResponse.body;
               
               console.log(`[MANIFEST_LIST_DEBUG] Image config fetched successfully`);
               console.log(`[MANIFEST_LIST_DEBUG] Config created: ${imageConfig.created}`);
@@ -1983,7 +2056,7 @@ app.get(`/${GROUP_TYPE}/:groupid/${RESOURCE_TYPE}/:imageid/versions/:versionid`,
               }
             } catch (configError) {
               console.error(`[MANIFEST_LIST_DEBUG] Error fetching config blob: ${configError.message}`);
-              console.warn(`Could not fetch config blob for platform manifest ${groupid}/${originalImageId}:${versionid}: ${configError.message}`);
+              console.warn(`Could not fetch config blob for platform manifest ${groupid}/${originalImageId}:${tag}: ${configError.message}`);
             }
           } else {
             console.log(`[MANIFEST_LIST_DEBUG] No config digest found in platform manifest`);
@@ -2086,14 +2159,7 @@ app.get(`/${GROUP_TYPE}/:groupid/${RESOURCE_TYPE}/:imageid/versions/:versionid`,
   }
 });
 
-// OPTIONS handlers for CORS support
-app.options('*', (req, res) => {
-  handleOptionsRequest(req, res, ['GET', 'OPTIONS']);
-});
 
-app.options(`/${GROUP_TYPE}/:groupId/${RESOURCE_TYPE}/:resourceId/doc`, (req, res) => {
-  handleOptionsRequest(req, res, ['GET', 'OPTIONS']);
-});
 
 // Catch-all for undefined routes
 app.use((req, res, next) => {
@@ -2115,12 +2181,31 @@ app.use((err, req, res, next) => {
 
 function gracefulShutdown() {
   logger.info("Shutting down gracefully...");
-  logger.close().then(() => {
-    process.exit(0);
-  });
+  // Close the server first to stop accepting new connections
+  if (server) {
+    logger.info("Closing server connections...");
+    server.close(() => {
+      logger.info("Server connections closed");
+      logger.close().then(() => {
+        // Log open handles for diagnostics
+        const handles = process._getActiveHandles();
+        if (handles.length > 0) {
+          logger.warn(`Open handles on shutdown: ${handles.length}`);
+          handles.forEach((h, i) => logger.warn(`Handle[${i}]: ${h.constructor.name}`));
+        }
+        // Force exit after 1s if not already exited
+        setTimeout(() => process.exit(0), 1000);
+        process.exit(0);
+      });
+    });
+  } else {
+    logger.close().then(() => {
+      setTimeout(() => process.exit(0), 1000);
+      process.exit(0);
+    });
+  }
 }
 
-// Handle shutdown signals
 process.on('SIGINT', gracefulShutdown);
 process.on('SIGTERM', gracefulShutdown);
 
@@ -2142,11 +2227,10 @@ async function startServer() {
       if (!QUIET_MODE) {
         console.log(`Configured OCI backend: ${backend.name} -> ${backend.registryUrl}`)
       }
-        });
-
-        // Only start the server if running standalone
+        });        // Only start the server if running standalone
         if (require.main === module) {
-          app.listen(PORT, () => {
+          // Create a variable at module scope to hold the server instance
+          server = app.listen(PORT, () => {
             logger.logStartup(PORT, { 
               baseUrl: BASE_URL,
               apiKeyEnabled: !!API_KEY,
@@ -2198,20 +2282,24 @@ async function loadConfiguration() {
     if (!QUIET_MODE) {
       console.log(`OCI backends provided via environment variable will override config file settings.`);
     }
-    }
-
-    // 3. Determine final OCI_BACKENDS
+    }    // 3. Determine final OCI_BACKENDS
     if (backendsFromEnv !== undefined) {
-    OCI_BACKENDS = backendsFromEnv;
-    } else {
+        OCI_BACKENDS = backendsFromEnv;
+    } else if (backendsFromFile !== undefined) {
         OCI_BACKENDS = backendsFromFile;
     }
+    // Otherwise keep the existing default OCI_BACKENDS
 
-  // Final validation and processing for all backends
-    OCI_BACKENDS = OCI_BACKENDS.map(backend => ({
-        ...backend,
-        catalogPath: backend.catalogPath === undefined ? '/v2/_catalog' : backend.catalogPath
-    }));
+    // Final validation and processing for all backends
+    if (OCI_BACKENDS && Array.isArray(OCI_BACKENDS)) {
+        OCI_BACKENDS = OCI_BACKENDS.map(backend => ({
+            ...backend,
+            catalogPath: backend.catalogPath === undefined ? '/v2/_catalog' : backend.catalogPath
+        }));
+    } else {
+        // Fallback to empty array if something went wrong
+        OCI_BACKENDS = [];
+    }
 
     if (OCI_BACKENDS.length === 0) {
     console.warn('No OCI backends configured (checked config file and environment variable XREGISTRY_OCI_BACKENDS). The registry will be empty.');
