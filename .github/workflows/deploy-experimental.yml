@@ -1,0 +1,208 @@
+name: Build & Deploy Experimental Environment
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_image_tag:
+        description: 'Base image tag for standard components'
+        required: false
+        default: 'latest'
+        type: string
+      experimental_components:
+        description: 'Experimental components to deploy (JSON string)'
+        required: false
+        default: '{}'
+        type: string
+      feature_branch:
+        description: 'Feature branch for building experimental images'
+        required: false
+        default: ''
+        type: string
+      resource_group:
+        description: 'Azure Resource Group'
+        required: false
+        default: 'xregistry-pkg-exp'
+        type: string
+      location:
+        description: 'Azure Region'
+        required: false
+        default: 'westeurope'
+        type: string
+      experimental_id:
+        description: 'Unique identifier for this experiment'
+        required: false
+        default: ''
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+  PYPI_IMAGE_NAME: ${{ github.repository }}/xregistry-pypi-bridge
+  OCI_IMAGE_NAME: ${{ github.repository }}/xregistry-oci-bridge
+  NPM_IMAGE_NAME: ${{ github.repository }}/xregistry-npm-bridge
+  MAVEN_IMAGE_NAME: ${{ github.repository }}/xregistry-maven-bridge
+  NUGET_IMAGE_NAME: ${{ github.repository }}/xregistry-nuget-bridge
+  BRIDGE_IMAGE_NAME: ${{ github.repository }}/xregistry-bridge
+
+jobs:
+  validate-input:
+    runs-on: ubuntu-latest
+    outputs:
+      experimental_id: ${{ steps.set-exp-id.outputs.exp_id }}
+      feature_branch: ${{ steps.validate-branch.outputs.branch }}
+      components: ${{ steps.validate-components.outputs.valid_components }}
+    
+    steps:
+      - name: Set experimental ID
+        id: set-exp-id
+        run: |
+          if [ -z "${{ inputs.experimental_id }}" ]; then
+            EXP_ID="exp-$(date +%Y%m%d-%H%M%S)"
+          else
+            EXP_ID="${{ inputs.experimental_id }}"
+          fi
+          echo "exp_id=$EXP_ID" >> $GITHUB_OUTPUT
+          echo "Using Experimental ID: $EXP_ID"
+      
+      - name: Validate branch
+        id: validate-branch
+        run: |
+          if [ -z "${{ inputs.feature_branch }}" ]; then
+            echo "branch=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "Using current branch: ${{ github.ref_name }}"
+          else
+            echo "branch=${{ inputs.feature_branch }}" >> $GITHUB_OUTPUT
+            echo "Using specified branch: ${{ inputs.feature_branch }}"
+          fi
+
+      - name: Validate component JSON
+        id: validate-components
+        run: |
+          COMPONENTS='${{ inputs.experimental_components }}'
+          if ! echo "$COMPONENTS" | jq empty 2>/dev/null; then
+            echo "ERROR: Invalid JSON format for experimental components"
+            exit 1
+          fi
+          echo "valid_components=$COMPONENTS" >> $GITHUB_OUTPUT
+          echo "Components validated successfully"
+
+  build-experimental-images:
+    needs: validate-input
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    strategy:
+      matrix:
+        component: [bridge, npm, pypi, maven, nuget, oci]
+    
+    steps:
+      - name: Parse components JSON
+        id: parse-components
+        run: |
+          COMPONENTS='${{ needs.validate-input.outputs.components }}'
+          ENABLED=$(echo "$COMPONENTS" | jq -r '.${{ matrix.component }}.enabled // false')
+          echo "component_enabled=$ENABLED" >> $GITHUB_OUTPUT
+          if [ "$ENABLED" = "true" ]; then
+            echo "${{ matrix.component }} component is enabled for experimental build"
+          else
+            echo "${{ matrix.component }} component is not enabled - skipping build"
+          fi
+
+      - name: Checkout repository
+        if: steps.parse-components.outputs.component_enabled == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate-input.outputs.feature_branch }}
+
+      - name: Set up Docker Buildx
+        if: steps.parse-components.outputs.component_enabled == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        if: steps.parse-components.outputs.component_enabled == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push ${{ matrix.component }}
+        if: steps.parse-components.outputs.component_enabled == 'true'
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./${{ matrix.component }}.Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env[format('{0}_IMAGE_NAME', matrix.component | upper)] }}:${{ needs.validate-input.outputs.experimental_id }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+  
+  deploy-experimental:
+    needs: [validate-input, build-experimental-images]
+    runs-on: ubuntu-latest
+    permissions:
+      packages: read
+      id-token: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate-input.outputs.feature_branch }}
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Prepare experimental components
+        id: prepare-components
+        run: |
+          COMPONENTS='${{ needs.validate-input.outputs.components }}'
+          EXP_ID="${{ needs.validate-input.outputs.experimental_id }}"
+          
+          # Update image tags for enabled components
+          UPDATED_COMPONENTS=$(echo "$COMPONENTS" | jq '. as $original | reduce keys[] as $k ({}; 
+            if $original[$k].enabled == true then 
+              . + {($k): {"enabled": true, "imageTag": "'$EXP_ID'"}} 
+            else 
+              . + {($k): $original[$k]}
+            end)')
+          
+          echo "UPDATED_COMPONENTS=$UPDATED_COMPONENTS" >> $GITHUB_ENV
+          echo "Updated experimental components configuration:"
+          echo "$UPDATED_COMPONENTS" | jq .
+
+      - name: Deploy to Azure
+        env:
+          RESOURCE_GROUP: ${{ inputs.resource_group }}
+          LOCATION: ${{ inputs.location }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          BASE_IMAGE_TAG: ${{ inputs.base_image_tag }}
+          EXPERIMENTAL_COMPONENTS: ${{ env.UPDATED_COMPONENTS }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          chmod +x ./deploy/deploy-experimental.sh
+          ./deploy/deploy-experimental.sh
+
+      - name: Record deployment metadata
+        run: |
+          EXP_ID="${{ needs.validate-input.outputs.experimental_id }}"
+          COMPONENTS='${{ env.UPDATED_COMPONENTS }}'
+          RESOURCE_GROUP="${{ inputs.resource_group }}"
+          
+          echo "### Experimental Deployment: $EXP_ID" >> $GITHUB_STEP_SUMMARY
+          echo "- **Resource Group**: $RESOURCE_GROUP" >> $GITHUB_STEP_SUMMARY
+          echo "- **Base Image Tag**: ${{ inputs.base_image_tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Feature Branch**: ${{ needs.validate-input.outputs.feature_branch }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Deployment Time**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> $GITHUB_STEP_SUMMARY
+          
+          echo "#### Component Configuration" >> $GITHUB_STEP_SUMMARY
+          echo '```json' >> $GITHUB_STEP_SUMMARY
+          echo "$COMPONENTS" | jq . >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
