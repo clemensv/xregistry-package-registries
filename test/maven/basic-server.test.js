@@ -157,10 +157,9 @@ describe('Maven Basic Server Functionality', function() {
     
     it('should support group IDs for Maven artifacts', async function() {
       if (!firstRegistryName) this.skip();
-      
-      // Attempt to get a common Maven artifact (if available)
+        // Attempt to get a common Maven artifact (if available)
       try {
-        const response = await axios.get(`${baseUrl}/javaregistries/${firstRegistryName}/packages/org.apache.commons`);
+        const response = await axios.get(`${baseUrl}/javaregistries/${firstRegistryName}/packages/org.apache.commons:commons-lang3`);
         expect(response.status).to.equal(200);
       } catch (error) {
         // If not found, we'll skip instead of failing
@@ -212,43 +211,53 @@ describe('Maven Basic Server Functionality', function() {
       expect(response.data).to.have.property('model');
       expect(response.data.model).to.have.property('groups');
     });
-    
-    it('should support Maven-specific metadata handling', async function() {
+      it('should support Maven-specific metadata handling', async function() {
       // Test specific to Maven - XML to JSON conversion handling
       const response = await axios.get(`${baseUrl}/capabilities`);
       
       expect(response.status).to.equal(200);
-      expect(response.data.capabilities).to.have.property('apis');
-      // Check for Maven API capabilities
-      const apis = response.data.capabilities.apis;
-      expect(apis).to.include.members(['xregistry']);
+      expect(response.data.capabilities).to.have.property('flags');
+      // Check for Maven API capabilities - xregistry should be in flags
+      const flags = response.data.capabilities.flags;
+      expect(flags).to.include.members(['xregistry']);
     });
-  });
-  // Helper functions
+  });  // Helper functions
   async function startServer(port) {
     const serverPath = path.resolve(__dirname, '../../maven/server.js');
     
     return new Promise((resolve, reject) => {
-      const childProcess = spawn('node', [serverPath, '--port', port], {
-        shell: true,
+      let started = false;
+      let stdout = '';
+      let stderr = '';
+        const childProcess = spawn('node', [serverPath, '--port', port], {
+        shell: false,
         env: { ...process.env, NODE_ENV: 'test' }
-      });
-        let stderr = '';
-      
-      childProcess.stdout.on('data', (data) => {
+      });childProcess.stdout.on('data', (data) => {
+        stdout += data.toString();
         console.log(`[Maven Server] ${data.toString().trim()}`);
+        
+        if (stdout.includes('Service started') || stdout.includes(`Maven Central xRegistry server started on port ${port}`)) {
+          if (!started) {
+            started = true;
+            resolve(childProcess);
+          }
+        }
       });
       
       childProcess.stderr.on('data', (data) => {
-        console.error(`[Maven Server Error] ${data.toString().trim()}`);
         stderr += data.toString();
-        if (stderr.includes('Server listening on port') || stderr.includes(`listening on port ${port}`)) {
-          resolve(childProcess);
+        console.error(`[Maven Server Error] ${data.toString().trim()}`);
+        
+        if (stderr.includes('Service started') || stderr.includes(`Maven Central xRegistry server started on port ${port}`)) {
+          if (!started) {
+            started = true;
+            resolve(childProcess);
+          }
         }
       });
       
       childProcess.on('close', (code) => {
-        if (code !== 0) {
+        if (!started && code !== 0) {
           reject(new Error(`Server exited with code ${code}: ${stderr}`));
         }
       });
@@ -257,9 +266,13 @@ describe('Maven Basic Server Functionality', function() {
         reject(new Error(`Failed to start server: ${error.message}`));
       });
       
-      // Fallback timeout
+      // Fallback timeout - but only if we haven't already resolved
       setTimeout(() => {
-        resolve(childProcess);
+        if (!started) {
+          console.log('Server did not output a startup message within timeout, assuming it\'s ready...');
+          started = true;
+          resolve(childProcess);
+        }
       }, 10000);
     });
   }

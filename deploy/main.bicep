@@ -30,13 +30,13 @@ param repositoryName string
 param alertEmailAddress string = 'clemensv@microsoft.com'
 
 @description('CPU allocation for bridge container')
-param bridgeCpu string = '0.5'
+param bridgeCpu string = '0.75'
 
 @description('Memory allocation for bridge container')
 param bridgeMemory string = '1.0Gi'
 
 @description('CPU allocation for service containers')
-param serviceCpu string = '0.3'
+param serviceCpu string = '0.25'
 
 @description('Memory allocation for service containers')
 param serviceMemory string = '0.6Gi'
