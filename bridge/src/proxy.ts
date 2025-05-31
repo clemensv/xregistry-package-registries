@@ -295,7 +295,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 // Test server connectivity and fetch model
-async function testServer(server: DownstreamConfig, req?: any): Promise<{ model: any, capabilities: any } | null> {
+async function testServer(server: DownstreamConfig, req?: any): Promise<{ model: any, capabilities: any, rootResponse?: any } | null> {
   const startTime = Date.now();
   const headers: Record<string, string> = {};
   
@@ -320,6 +320,12 @@ async function testServer(server: DownstreamConfig, req?: any): Promise<{ model:
       traceHeaders: Object.keys(headers).filter(h => h.startsWith('x-') || h === 'traceparent')
     });
     
+    // First test root endpoint to get counts and general info
+    const rootResponse = await axios.get(server.url, { 
+      headers, 
+      timeout: SERVER_HEALTH_TIMEOUT 
+    });
+    
     // Test /model endpoint specifically
     const modelResponse = await axios.get(`${server.url}/model`, { 
       headers, 
@@ -337,13 +343,27 @@ async function testServer(server: DownstreamConfig, req?: any): Promise<{ model:
       serverUrl: server.url,
       duration,
       modelGroups: Object.keys(modelResponse.data.groups || {}).length,
+      rootEndpointInfo: Object.keys(rootResponse.data)
+        .filter(key => key.endsWith('count') || key.endsWith('url'))
+        .reduce((acc: Record<string, any>, key: string) => { 
+          acc[key] = rootResponse.data[key]; 
+          return acc; 
+        }, {}),
       traceId: headers['x-trace-id'] || 'generated',
       correlationId: headers['x-correlation-id']
     });
     
+    // Merge root response data into model data to capture counts
+    Object.keys(rootResponse.data)
+      .filter(key => key.endsWith('count'))
+      .forEach(countKey => {
+        modelResponse.data[countKey] = rootResponse.data[countKey];
+      });
+    
     return {
       model: modelResponse.data,
-      capabilities: capabilitiesResponse.data
+      capabilities: capabilitiesResponse.data,
+      rootResponse: rootResponse.data
     };
   } catch (error) {
     const duration = Date.now() - startTime;
@@ -731,7 +751,7 @@ function setupDynamicRoutes() {
 }
 
 // API Routes (defined before dynamic routes)
-app.get('/', (req, res) => {
+app.get('/', async (req, res) => {
   try {
     // Handle query parameters
     const inline = req.query.inline as string;
@@ -772,12 +792,42 @@ app.get('/', (req, res) => {
       createdat: bridgeStartTime,
       modifiedat: now
     };
-    
-    // Add group collections (REQUIRED)
+      // Add group collections (REQUIRED)
     for (const groupType of groups) {
       const plural = consolidatedModel.groups?.[groupType]?.plural || groupType;
       registryResponse[`${plural}url`] = `${effectiveBaseUrl}/${groupType}`;
-      registryResponse[`${plural}count`] = 0; // TODO: implement actual count
+      
+      // Get count from the server state that holds this registry
+      const backendServer = groupTypeToBackend[groupType];
+      const serverState = backendServer ? serverStates.get(backendServer.url) : undefined;
+      
+      if (serverState?.isActive && serverState.model?.groups?.[groupType]?.plural) {
+        // Try to get count from server's root response or model
+        const serverPlural = serverState.model.groups[groupType].plural;
+        const countKey = `${serverPlural}count`;
+        
+        // Log that we're trying to get the count
+        logger.debug('Attempting to get count for group', { 
+          groupType, 
+          plural,
+          serverPlural,
+          countKey, 
+          hasCount: serverState.model[countKey] !== undefined
+        });
+        
+        // Use count from server if available, otherwise default to 0
+        registryResponse[`${plural}count`] = serverState.model[countKey] !== undefined ? 
+          serverState.model[countKey] : 0;
+      } else {
+        // If no active server or count not available, default to 0
+        registryResponse[`${plural}count`] = 0;
+        logger.debug('No server or count available for group', { 
+          groupType, 
+          plural, 
+          hasBackend: !!backendServer,
+          serverActive: backendServer ? serverStates.get(backendServer.url)?.isActive : false
+        });
+      }
     }
     
     // Handle inline parameters
@@ -791,13 +841,48 @@ app.get('/', (req, res) => {
       if (inlineRequests.includes('capabilities')) {
         registryResponse.capabilities = consolidatedCapabilities;
       }
-      
-      // Handle inline group collections
+        // Handle inline group collections
       for (const groupType of groups) {
         const plural = consolidatedModel.groups?.[groupType]?.plural || groupType;
         if (inlineRequests.includes(plural)) {
-          // TODO: implement actual group collection inlining
-          registryResponse[plural] = {};
+          // Get the backend server for this group type
+          const backendServer = groupTypeToBackend[groupType];
+          
+          if (backendServer) {
+            try {
+              // Fetch the group collection directly from the backend
+              const headers: Record<string, string> = {};
+              if (backendServer.apiKey) headers['Authorization'] = `Bearer ${backendServer.apiKey}`;
+              
+              // Get the current registry group collection
+              const groupResponse = await axios.get(`${backendServer.url}/${groupType}`, {
+                headers,
+                timeout: 5000
+              });
+              
+              // Use the backend's response directly
+              registryResponse[plural] = groupResponse.data;
+              
+              logger.debug('Inlined group collection', {
+                groupType,
+                plural,
+                backendUrl: backendServer.url,
+                responseKeys: Object.keys(groupResponse.data).length
+              });
+            } catch (error) {
+              logger.error('Failed to fetch group collection for inlining', {
+                groupType,
+                plural,
+                backendUrl: backendServer.url,
+                error: error instanceof Error ? error.message : String(error)
+              });
+              // Provide empty object on error
+              registryResponse[plural] = {};
+            }
+          } else {
+            // No backend server available for this group type
+            registryResponse[plural] = {};
+          }
         }
       }
     }

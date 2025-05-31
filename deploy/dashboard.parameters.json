@@ -1,0 +1,26 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environment": {
+      "value": "prod"
+    },    "logAnalyticsWorkspaceId": {
+      "value": "/subscriptions/87dc3419-ee4f-4833-8e15-d25cc10df733/resourceGroups/xregistry-package-registries/providers/Microsoft.OperationalInsights/workspaces/workspace-xregistrypackageregistriesPtsx"
+    },
+    "appInsightsResourceId": {
+      "value": "/subscriptions/87dc3419-ee4f-4833-8e15-d25cc10df733/resourceGroups/xregistry-package-registries/providers/Microsoft.Insights/components/xregistry-pkg-registries-prod-insights"
+    },
+    "containerAppsEnvironmentId": {
+      "value": "/subscriptions/87dc3419-ee4f-4833-8e15-d25cc10df733/resourceGroups/xregistry-package-registries/providers/Microsoft.App/managedEnvironments/xregistry-package-registries"
+    },
+    "alertEmailAddresses": {
+      "value": "clemensv@microsoft.com"
+    },
+    "alertPhoneNumbers": {
+      "value": ""
+    },
+    "dashboardSuffix": {
+      "value": ""
+    }
+  }
+}

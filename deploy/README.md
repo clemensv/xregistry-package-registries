@@ -1,23 +1,67 @@
-# xRegistry Deployment Scripts
+# xRegistry Package Registries - Deployment Guide
 
-This directory contains the infrastructure-as-code (IaC) deployment scripts for the xRegistry application using Azure Container Apps and comprehensive observability.
+This directory contains the centralized deployment configuration and scripts for the xRegistry package registries dashboard and monitoring system.
 
 ## Overview
 
 The deployment creates:
-- **Azure Container Apps** - All 6 services (bridge, npm, pypi, maven, nuget, oci)
-- **Application Insights** - Comprehensive telemetry and monitoring
-- **Log Analytics Workspace** - Centralized logging and queries
-- **Operational Alerts** - Email notifications for critical issues
-- **Auto-scaling** - HTTP-based scaling rules
+- **Enhanced Dashboard** - Comprehensive monitoring with 20+ tiles
+- **Application Insights** - Real-time telemetry and analytics
+- **Log Analytics Workspace** - Centralized logging and KQL queries
+- **Operational Alerts** - Email notifications for service issues
+- **Service Monitoring** - Health tracking for all 6 registry services
 
 ## Files
 
-- `main.bicep` - Main Bicep template defining all Azure resources
-- `parameters.json` - Template for deployment parameters
+- `deployment-config.json` - Centralized environment configuration
+- `DeploymentConfig.psm1` - PowerShell module for configuration management
+- `dashboard.bicep` - Main dashboard Bicep template
+- `dashboard.parameters.json` - Generated dashboard parameters
+- `deploy-dashboard.ps1` - Main deployment script
+- `generate-parameters.ps1` - Parameters generation script
+- `validate-dashboard.ps1` - Deployment validation script
+- `main.bicep` - Main application Bicep template
+- `parameters.json` - Application deployment parameters
 - `deploy.sh` - Bash deployment script (Linux/macOS/WSL)
 - `deploy.ps1` - PowerShell deployment script (Windows/Cross-platform)
 - `README.md` - This documentation
+
+## Centralized Configuration
+
+All environment-specific settings are centralized in `deployment-config.json`:
+
+- **Production Environment**: `xregistry-package-registries` resource group
+- **Development Environment**: `xregistry-pkg-dev` resource group (configurable)
+- **Resource IDs**: Application Insights, Log Analytics, Container Apps Environment
+- **Service Configuration**: All 6 registry service ports and names
+- **Alert Configuration**: Email notifications
+
+## Dashboard Deployment
+
+### Deploy Enhanced Dashboard (Production)
+```powershell
+.\deploy-dashboard.ps1 -Environment production
+```
+
+### Deploy Dashboard (Development)
+```powershell
+.\deploy-dashboard.ps1 -Environment development
+```
+
+### What-If Deployment
+```powershell
+.\deploy-dashboard.ps1 -Environment production -WhatIf
+```
+
+### Validate Deployment
+```powershell
+.\validate-dashboard.ps1 -Environment production
+```
+
+### Generate Parameters
+```powershell
+.\generate-parameters.ps1 -Environment production
+```
 
 ## Prerequisites
 
