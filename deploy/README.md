@@ -13,22 +13,29 @@ The deployment creates:
 
 ## Files
 
-- `deployment-config.json` - Centralized environment configuration
-- `DeploymentConfig.psm1` - PowerShell module for configuration management
-- `dashboard.bicep` - Main dashboard Bicep template
-- `dashboard.parameters.json` - Generated dashboard parameters
-- `deploy-dashboard.ps1` - Main deployment script
-- `generate-parameters.ps1` - Parameters generation script
-- `validate-dashboard.ps1` - Deployment validation script
+### Core Infrastructure Templates
 - `main.bicep` - Main application Bicep template
-- `parameters.json` - Application deployment parameters
-- `deploy.sh` - Bash deployment script (Linux/macOS/WSL)
-- `deploy.ps1` - PowerShell deployment script (Windows/Cross-platform)
+- `dashboard.bicep` - Dashboard Bicep template
+- `alerts.bicep` - Alert definitions and monitoring rules
+
+### Parameters and Configuration
+- `parameters.json` - Main application deployment parameters
+- `dashboard.parameters.json` - Dashboard parameters
+- `config.json` - Environment-specific configuration
+
+### Deployment Scripts
+- `deploy.ps1` - Main PowerShell deployment script (Windows/Cross-platform)
+- `deploy.sh` - Main Bash deployment script (Linux/macOS/WSL)
+- `deploy-dashboard.ps1` - Dashboard-specific deployment script
+
+### Utilities and Modules
+- `DeploymentConfig.psm1` - PowerShell module for configuration management
+- `generate-parameters.ps1` - Parameters generation script
 - `README.md` - This documentation
 
-## Centralized Configuration
+## Configuration
 
-All environment-specific settings are centralized in `deployment-config.json`:
+All environment-specific settings are centralized in `config.json`:
 
 - **Production Environment**: `xregistry-package-registries` resource group
 - **Development Environment**: `xregistry-pkg-dev` resource group (configurable)
@@ -51,11 +58,6 @@ All environment-specific settings are centralized in `deployment-config.json`:
 ### What-If Deployment
 ```powershell
 .\deploy-dashboard.ps1 -Environment production -WhatIf
-```
-
-### Validate Deployment
-```powershell
-.\validate-dashboard.ps1 -Environment production
 ```
 
 ### Generate Parameters

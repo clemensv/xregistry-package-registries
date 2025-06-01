@@ -22,7 +22,7 @@ function Get-DeploymentConfig {
         [string]$Environment = "production"
     )
     
-    $configPath = Join-Path $PSScriptRoot "deployment-config.json"
+    $configPath = Join-Path $PSScriptRoot "config.json"
     
     if (-not (Test-Path $configPath)) {
         throw "Deployment configuration file not found: $configPath"

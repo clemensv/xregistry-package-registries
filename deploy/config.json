@@ -21,22 +21,14 @@
   },
   "development": {
     "subscriptionId": "87dc3419-ee4f-4833-8e15-d25cc10df733",
-    "resourceGroupName": "xregistry-package-registries-dev",
+    "resourceGroupName": "xregistry-pkg-dev",
     "location": "West Europe",
     "environment": "dev",
     "containerAppsEnvironmentName": "xregistry-package-registries-dev",
-    "logAnalyticsWorkspaceName": "workspace-xregistrypackageregistriesDevPtsx",
+    "logAnalyticsWorkspaceName": "workspace-xregistrypackageregistries-dev",
     "appInsightsName": "xregistry-pkg-registries-dev-insights",
     "containerAppName": "xregistry-pkg-registries-dev",
     "alertEmail": "clemensv@microsoft.com",
-    "dashboardName": "xregistry-pkg-dev-enhanced-dashboard",
-    "registryServices": {
-      "npm": { "port": 3100, "name": "NPM Registry" },
-      "pypi": { "port": 3000, "name": "PyPI Registry" },
-      "maven": { "port": 3300, "name": "Maven Registry" },
-      "nuget": { "port": 3200, "name": "NuGet Registry" },
-      "oci": { "port": 3400, "name": "OCI Registry" },
-      "bridge": { "port": 8092, "name": "Bridge Service" }
-    }
+    "dashboardName": "xregistry-pkg-dev-dashboard"
   }
 }

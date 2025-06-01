@@ -22,31 +22,30 @@ $MAX_REPLICAS = 1 # Adjust as needed, consider costs
 # --- Script --- 
 
 Write-Host "Checking if logged into Azure..."
-$context = Get-AzContext
+$context = az account show
 if (-not $context) {
-    Write-Error "Not logged into Azure. Please run 'Connect-AzAccount' and try again."
+    Write-Error "Not logged into Azure. Please run 'az login' and try again."
     exit 1
 }
-Write-Host "Logged in as $($context.Account) on subscription $($context.Subscription.Name)"
+Write-Host "Logged in as $($context.user.name) on subscription $($context.name)"
 
 Write-Host "Checking if resource group '$RESOURCE_GROUP' exists in location '$LOCATION'..."
-if (-not (Get-AzResourceGroup -Name $RESOURCE_GROUP -Location $LOCATION -ErrorAction SilentlyContinue)) {
+$rg = az group show --name $RESOURCE_GROUP --query "name" --output tsv 2>$null
+if (-not $rg) {
     Write-Host "Resource group '$RESOURCE_GROUP' not found. Creating..."
-    New-AzResourceGroup -Name $RESOURCE_GROUP -Location $LOCATION
+    az group create --name $RESOURCE_GROUP --location $LOCATION
     Write-Host "Resource group '$RESOURCE_GROUP' created."
 } else {
     Write-Host "Resource group '$RESOURCE_GROUP' already exists."
 }
 
 Write-Host "Checking if Container Apps Environment '$ACA_ENV_NAME' exists..."
-$containerAppEnv = Get-AzContainerAppEnvironment -ResourceGroupName $RESOURCE_GROUP -Name $ACA_ENV_NAME -ErrorAction SilentlyContinue
+$containerAppEnv = az containerapp env show --resource-group $RESOURCE_GROUP --name $ACA_ENV_NAME --query "name" --output tsv 2>$null
 if (-not $containerAppEnv) {
     Write-Host "Container Apps Environment '$ACA_ENV_NAME' not found. Creating..."
-    # For a consumption-only environment, no VNet is specified.
-    # To use a workload profiles environment (for more control/VNet integration), you need to create a VNet and subnet first.
-    New-AzContainerAppEnvironment -ResourceGroupName $RESOURCE_GROUP -Name $ACA_ENV_NAME -Location $LOCATION
+    az containerapp env create --resource-group $RESOURCE_GROUP --name $ACA_ENV_NAME --location $LOCATION
     Write-Host "Container Apps Environment '$ACA_ENV_NAME' created."
-    $containerAppEnv = Get-AzContainerAppEnvironment -ResourceGroupName $RESOURCE_GROUP -Name $ACA_ENV_NAME
+    $containerAppEnv = az containerapp env show --resource-group $RESOURCE_GROUP --name $ACA_ENV_NAME --query "name" --output tsv
 } else {
     Write-Host "Container Apps Environment '$ACA_ENV_NAME' already exists."
 }
@@ -64,29 +63,27 @@ $envVars = @(
 # $RegistryPassword = (az acr credential show -n youracr --query passwords[0].value --output tsv)
 
 Write-Host "Creating/Updating Container App '$ACA_NAME'..."
-$containerApp = Get-AzContainerApp -ResourceGroupName $RESOURCE_GROUP -Name $ACA_NAME -ErrorAction SilentlyContinue
+$containerApp = az containerapp show --resource-group $RESOURCE_GROUP --name $ACA_NAME --query "name" --output tsv 2>$null
 
 if ($containerApp) {
     Write-Host "Container App '$ACA_NAME' exists, updating..."
-    Update-AzContainerApp -ResourceGroupName $RESOURCE_GROUP -Name $ACA_NAME \
-        -Image $IMAGE_NAME \
-        -Cpu $CPU -Memory $MEMORY \
-        -Env $envVars \
-        -MinReplica $MIN_REPLICAS -MaxReplica $MAX_REPLICAS \
-        # -RegistryServer $RegistryServer -RegistryUsername $RegistryUsername -RegistryPassword $RegistryPassword # Uncomment if using private registry
+    az containerapp update --resource-group $RESOURCE_GROUP --name $ACA_NAME \
+        --image $IMAGE_NAME \
+        --cpu $CPU --memory $MEMORY \
+        --min-replicas $MIN_REPLICAS --max-replicas $MAX_REPLICAS \
+        --env-vars PORT=$PORT XREGISTRY_LOG_LEVEL=info XREGISTRY_CACHE_DIR=/cache XREGISTRY_OCI_BACKENDS=$XREGISTRY_OCI_BACKENDS
     Write-Host "Container App '$ACA_NAME' updated."
 } else {
     Write-Host "Container App '$ACA_NAME' not found, creating..."
-    New-AzContainerApp -ResourceGroupName $RESOURCE_GROUP -Name $ACA_NAME -Environment $containerAppEnv.Id \
-        -Image $IMAGE_NAME \
-        -TargetPort $PORT -Ingress External \
-        -Cpu $CPU -Memory $MEMORY \
-        -Env $envVars \
-        -MinReplica $MIN_REPLICAS -MaxReplica $MAX_REPLICAS \
-        # -RegistryServer $RegistryServer -RegistryUsername $RegistryUsername -RegistryPassword $RegistryPassword # Uncomment if using private registry
+    az containerapp create --resource-group $RESOURCE_GROUP --name $ACA_NAME --environment $ACA_ENV_NAME \
+        --image $IMAGE_NAME \
+        --target-port $PORT --ingress external \
+        --cpu $CPU --memory $MEMORY \
+        --min-replicas $MIN_REPLICAS --max-replicas $MAX_REPLICAS \
+        --env-vars PORT=$PORT XREGISTRY_LOG_LEVEL=info XREGISTRY_CACHE_DIR=/cache XREGISTRY_OCI_BACKENDS=$XREGISTRY_OCI_BACKENDS
     Write-Host "Container App '$ACA_NAME' created."
 }
 
-$app = Get-AzContainerApp -ResourceGroupName $RESOURCE_GROUP -Name $ACA_NAME
+$app = az containerapp show --resource-group $RESOURCE_GROUP --name $ACA_NAME --query "name" --output tsv
 Write-Host "Container App '$($app.Name)' provisioned with FQDN: $($app.ConfigurationIngressFqdn)"
-Write-Host "You can access the xRegistry OCI proxy at: http://$($app.ConfigurationIngressFqdn)/" 
+Write-Host "You can access the xRegistry OCI proxy at: http://$($app.ConfigurationIngressFqdn)/"

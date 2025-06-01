@@ -21,17 +21,18 @@ $DNS_NAME_LABEL = "xregistry-oci-proxy-$(Get-Random -Maximum 99999)" # Unique DN
 # --- Script ---
 
 Write-Host "Checking if logged into Azure..."
-$context = Get-AzContext
+$context = az account show
 if (-not $context) {
-    Write-Error "Not logged into Azure. Please run 'Connect-AzAccount' and try again."
+    Write-Error "Not logged into Azure. Please run 'az login' and try again."
     exit 1
 }
-Write-Host "Logged in as $($context.Account) on subscription $($context.Subscription.Name)"
+Write-Host "Logged in as $($context.user.name) on subscription $($context.name)"
 
 Write-Host "Checking if resource group '$RESOURCE_GROUP' exists in location '$LOCATION'..."
-if (-not (Get-AzResourceGroup -Name $RESOURCE_GROUP -Location $LOCATION -ErrorAction SilentlyContinue)) {
+$rg = az group show --name $RESOURCE_GROUP --query "name" --output tsv 2>$null
+if (-not $rg) {
     Write-Host "Resource group '$RESOURCE_GROUP' not found. Creating..."
-    New-AzResourceGroup -Name $RESOURCE_GROUP -Location $LOCATION
+    az group create --name $RESOURCE_GROUP --location $LOCATION
     Write-Host "Resource group '$RESOURCE_GROUP' created."
 } else {
     Write-Host "Resource group '$RESOURCE_GROUP' already exists."
@@ -51,25 +52,22 @@ $envVars = @{
 
 Write-Host "Creating/Updating Azure Container Instance '$ACI_NAME'..."
 # Check if ACI exists
-$aci = Get-AzContainerGroup -ResourceGroupName $RESOURCE_GROUP -Name $ACI_NAME -ErrorAction SilentlyContinue
+$aci = az container show --resource-group $RESOURCE_GROUP --name $ACI_NAME --query "name" --output tsv 2>$null
 
 if ($aci) {
     Write-Warning "Container Instance '$ACI_NAME' already exists. ACI does not support in-place updates of image or environment variables via this script's method. Please delete it first if you need to update."
-    Write-Host "To delete, run: Remove-AzContainerGroup -ResourceGroupName $RESOURCE_GROUP -Name $ACI_NAME"
-    # Alternatively, for some properties, you might use `Update-AzContainerGroup` but it has limitations.
-    # For a full update, deletion and recreation is often simplest for ACI.
+    Write-Host "To delete, run: az container delete --resource-group $RESOURCE_GROUP --name $ACI_NAME"
 } else {
     Write-Host "Container Instance '$ACI_NAME' not found, creating..."
-    New-AzContainerGroup -ResourceGroupName $RESOURCE_GROUP -Name $ACI_NAME -Location $LOCATION \
-        -Image $IMAGE_NAME -Cpu $CPU -MemoryInGb $MEMORY \
-        -Port $PORT -IpAddressType Public -DnsNameLabel $DNS_NAME_LABEL \
-        -EnvironmentVariable $envVars \
-        # -RegistryServer $RegistryServer -RegistryUsername $RegistryUsername -RegistryPassword $RegistryPassword # Uncomment if using private registry
-        -OsType Linux
-    Write-Host "Azure Container Instance '$ACI_NAME' created."
+    $aci = az container create --resource-group $RESOURCE_GROUP --name $ACI_NAME --image $IMAGE_NAME --cpu $CPU --memory $MEMORY --ports $PORT --dns-name-label $DNS_NAME_LABEL --environment-variables PORT=$PORT XREGISTRY_LOG_LEVEL=info XREGISTRY_CACHE_DIR=/cache XREGISTRY_OCI_BACKENDS=$XREGISTRY_OCI_BACKENDS --os-type Linux | ConvertFrom-Json
+    if (-not $aci) {
+        Write-Error "Failed to create Azure Container Instance."
+    } else {
+        Write-Host "Azure Container Instance '$ACI_NAME' created."
+    }
 }
 
-$containerGroup = Get-AzContainerGroup -ResourceGroupName $RESOURCE_GROUP -Name $ACI_NAME
-Write-Host "Container Instance '$($containerGroup.Name)' provisioned."
-Write-Host "FQDN: $($containerGroup.IpAddress.Fqdn)"
-Write-Host "You can access the xRegistry OCI proxy at: http://$($containerGroup.IpAddress.Fqdn):$PORT/" 
+$containerGroup = az container show --resource-group $RESOURCE_GROUP --name $ACI_NAME --query "{name:name, fqdn:ipAddress.fqdn}" --output json
+Write-Host "Container Instance '$($containerGroup.name)' provisioned."
+Write-Host "FQDN: $($containerGroup.fqdn)"
+Write-Host "You can access the xRegistry OCI proxy at: http://$($containerGroup.fqdn):$PORT/"

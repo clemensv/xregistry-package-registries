@@ -44,104 +44,58 @@ if (-not (Test-Path $parametersFile)) {
     exit 1
 }
 
-if ($WhatIf) {
-    Write-Host "🔍 Running What-If deployment..." -ForegroundColor Magenta
-} else {
-    Write-Host "🚀 Starting deployment..." -ForegroundColor Green
-}
-
-try {
-    # Check if logged in to Azure
-    $context = Get-AzContext
-    if (-not $context) {
-        Write-Host "❌ Not logged in to Azure. Please run 'Connect-AzAccount' first." -ForegroundColor Red
-        exit 1
-    }
-
-    Write-Host "✅ Azure context: $($context.Account.Id) - $($context.Subscription.Name)" -ForegroundColor Green
-
-    # Create resource group if it doesn't exist
-    $rg = Get-AzResourceGroup -Name $config.resourceGroupName -ErrorAction SilentlyContinue
-    if (-not $rg) {
-        Write-Host "📦 Creating resource group: $($config.resourceGroupName)" -ForegroundColor Yellow
-        $rg = New-AzResourceGroup -Name $config.resourceGroupName -Location $config.location
-        Write-Host "✅ Resource group created successfully" -ForegroundColor Green
-    } else {
-        Write-Host "✅ Resource group exists: $($config.resourceGroupName)" -ForegroundColor Green
-    }
-
-    # Deploy the template
-    $deploymentParams = @{
-        ResourceGroupName     = $config.resourceGroupName
-        TemplateFile         = $templateFile
-        TemplateParameterFile = $parametersFile
-        Name                 = $deploymentName
-        Verbose              = $Verbose
-    }
-
-    if ($WhatIf) {
-        $result = New-AzResourceGroupDeployment @deploymentParams -WhatIf
-        Write-Host "🔍 What-If deployment completed" -ForegroundColor Magenta
-    } else {
-        Write-Host "🚀 Deploying enhanced xRegistry dashboard..." -ForegroundColor Green
-        $result = New-AzResourceGroupDeployment @deploymentParams
-        
-        if ($result.ProvisioningState -eq "Succeeded") {
-            Write-Host "✅ Deployment completed successfully!" -ForegroundColor Green
-            
-            # Display outputs
-            if ($result.Outputs) {
-                Write-Host "" -ForegroundColor White
-                Write-Host "📊 Deployment Outputs:" -ForegroundColor Cyan
-                Write-Host "======================" -ForegroundColor Cyan
-                
-                if ($result.Outputs.dashboardName) {
-                    Write-Host "  Dashboard Name: $($result.Outputs.dashboardName.Value)" -ForegroundColor White
-                }
-                
-                if ($result.Outputs.dashboardUrl) {
-                    Write-Host "  Dashboard URL: $($result.Outputs.dashboardUrl.Value)" -ForegroundColor White
-                    Write-Host "  ➡️  Open this URL to view your enhanced xRegistry dashboard" -ForegroundColor Yellow
-                }
-                
-                if ($result.Outputs.alertsConfigured) {
-                    Write-Host "  Configured Alerts:" -ForegroundColor White
-                    $result.Outputs.alertsConfigured.Value | ForEach-Object {
-                        Write-Host "    • $($_.name) (Severity: $($_.severity)) - $($_.description)" -ForegroundColor Gray
-                    }
-                }
-
-                if ($result.Outputs.monitoringCapabilities) {
-                    $capabilities = $result.Outputs.monitoringCapabilities.Value
-                    Write-Host "  Monitored Services:" -ForegroundColor White
-                    $capabilities.serviceTypes | ForEach-Object {
-                        Write-Host "    • $_" -ForegroundColor Gray
-                    }
-                }
-            }
-            
-            Write-Host "" -ForegroundColor White
-            Write-Host "🎉 Enhanced xRegistry Dashboard deployed successfully!" -ForegroundColor Green
-            Write-Host "📱 The dashboard is now available in the Azure Portal" -ForegroundColor Yellow
-            Write-Host "🔔 Alert notifications will be sent to: $($Environment) environment recipients" -ForegroundColor Yellow
-            
-        } else {
-            Write-Host "❌ Deployment failed with state: $($result.ProvisioningState)" -ForegroundColor Red
-            if ($result.Error) {
-                Write-Host "Error details: $($result.Error)" -ForegroundColor Red
-            }
-            exit 1
-        }
-    }
-
-} catch {
-    Write-Host "❌ Deployment failed with error:" -ForegroundColor Red
-    Write-Host $_.Exception.Message -ForegroundColor Red
-    if ($_.Exception.InnerException) {
-        Write-Host "Inner exception: $($_.Exception.InnerException.Message)" -ForegroundColor Red
-    }
+# Replace Azure PowerShell commands with Azure CLI equivalents
+# Ensure proper handling of Azure CLI command outputs
+$context = az account show --output json | ConvertFrom-Json
+if (-not $context) {
+    Write-Host "❌ Not logged in to Azure. Please run 'az login' first." -ForegroundColor Red
     exit 1
 }
+
+Write-Host "✅ Azure context: $($context.id) - $($context.name)" -ForegroundColor Green
+
+# Ensure proper handling of resource group check
+$rg = az group show --name $config.resourceGroupName --query "name" --output tsv 2>$null
+if (-not $rg) {
+    Write-Host "📦 Creating resource group: $($config.resourceGroupName)" -ForegroundColor Yellow
+    $rgCreateOutput = az group create --name $config.resourceGroupName --location $config.location --output json | ConvertFrom-Json
+    # Add debug output to log raw Azure CLI responses
+    Write-Host "DEBUG: Raw resource group output:" -ForegroundColor Yellow
+    Write-Host $rgCreateOutput
+
+    if (-not $rgCreateOutput) {
+        Write-Error "Failed to create resource group."
+        exit 1
+    }
+    Write-Host "✅ Resource group created successfully" -ForegroundColor Green
+} else {
+    Write-Host "✅ Resource group exists: $($config.resourceGroupName)" -ForegroundColor Green
+}
+
+# Redirect Azure CLI output to a temporary file to avoid re-reading the same stream
+$tempFile = [System.IO.Path]::GetTempFileName()
+az deployment group create --resource-group $config.resourceGroupName --template-file $templateFile --parameters @$parametersFile --output json > $tempFile 2>&1
+
+# Read the output from the temporary file
+$deploymentOutputRaw = Get-Content -Path $tempFile -Raw
+Remove-Item -Path $tempFile -Force
+
+Write-Host "DEBUG: Raw deployment output:" -ForegroundColor Yellow
+Write-Host $deploymentOutputRaw
+
+# Parse deployment output only if it is valid JSON
+try {
+    $deploymentOutput = $deploymentOutputRaw | ConvertFrom-Json
+} catch {
+    Write-Error "Failed to parse deployment output as JSON."
+    exit 1
+}
+
+if (-not $deploymentOutput) {
+    Write-Error "Deployment failed."
+    exit 1
+}
+Write-Host "✅ Deployment completed successfully!" -ForegroundColor Green
 
 Write-Host "" -ForegroundColor White
 Write-Host "🏁 Enhanced xRegistry Dashboard deployment process completed!" -ForegroundColor Cyan

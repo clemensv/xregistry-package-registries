@@ -178,13 +178,13 @@ resource actionGroup 'Microsoft.Insights/actionGroups@2023-01-01' = {
 resource containerAppEnvironment 'Microsoft.App/managedEnvironments@2023-05-01' = {
   name: containerAppEnvName
   location: location
-  properties: {
-    appLogsConfiguration: {
+  properties: {    appLogsConfiguration: {
       destination: 'log-analytics'
       logAnalyticsConfiguration: {
         customerId: logAnalyticsWorkspace.properties.customerId
         sharedKey: logAnalyticsWorkspace.listKeys().primarySharedKey
       }
+    }
     }
   }
 }

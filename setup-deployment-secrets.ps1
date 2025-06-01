@@ -235,4 +235,4 @@ Write-Host ""
 Write-Host "🗑️  To clean up later:" -ForegroundColor Yellow
 Write-Host "   az ad sp delete --id $ClientId" -ForegroundColor Gray
 Write-Host ""
-Write-Host "Done!" -ForegroundColor Green 
+Write-Host "Done!" -ForegroundColor Green

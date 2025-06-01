@@ -224,4 +224,4 @@ catch {
     Write-ColorOutput "  • Check container app exists: az containerapp show --name $AppName --resource-group $ResourceGroup" "White"
     Write-Host ""
     exit 1
-} 
+}

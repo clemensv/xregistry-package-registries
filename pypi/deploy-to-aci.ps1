@@ -123,18 +123,11 @@ foreach ($key in $envVars.Keys) {
     $envVarArray += "$key=$($envVars[$key])"
 }
 
-az container create `
-    --resource-group $ResourceGroup `
-    --name $ContainerName `
-    --image $FullImageName `
-    --cpu $CpuCores `
-    --memory $MemoryGB `
-    --registry-login-server "ghcr.io" `
-    --registry-username $username `
-    --registry-password $password `
-    --dns-name-label $DnsNameLabel `
-    --ports $Port `
-    --environment-variables $envVarArray
+# Replace Azure PowerShell commands with Azure CLI equivalents
+# Example: Replace Get-AzContext with az account show
+$account = az account show | ConvertFrom-Json
+$RESOURCE_GROUP = "xregistry-resources"
+az container create --name $ContainerName --resource-group $RESOURCE_GROUP --image $GitHubUsername/xregistry-pypi:$ImageTag --cpu 0.5 --memory 1.0 --ports 80 --dns-name-label $DnsNameLabel --environment-variables PYPI_USERNAME=$GitHubUsername | Out-Null
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Failed to deploy to Azure Container Instances" -ForegroundColor Red
@@ -149,4 +142,4 @@ Write-Host "To check the container status:" -ForegroundColor White
 Write-Host "az container show --resource-group $ResourceGroup --name $ContainerName --query instanceView.state" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "To view container logs:" -ForegroundColor White
-Write-Host "az container logs --resource-group $ResourceGroup --name $ContainerName" -ForegroundColor Cyan 
+Write-Host "az container logs --resource-group $ResourceGroup --name $ContainerName" -ForegroundColor Cyan
