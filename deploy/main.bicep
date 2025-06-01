@@ -54,7 +54,7 @@ param customDomainName string = 'packages.mcpxreg.com'
 param domainVerificationKey string = '4DB3F9C0627FBAE988A42C7C3870CE028A6C0CA15ED27DD32926EDC26EDD5B38'
 
 @description('Whether to create a new managed certificate or use existing one')
-param createManagedCertificate bool = false  // Default to false to avoid conflicts
+param createManagedCertificate bool = false // Default to false to avoid conflicts
 
 @description('Existing managed certificate resource ID (if not creating new)')
 param existingCertificateId string = ''
@@ -74,11 +74,9 @@ var appInsightsName = '${resourcePrefix}-insights'
 var actionGroupName = '${resourcePrefix}-alerts'
 var managedCertificateName = replace(customDomainName, '.', '-')
 // Determine which certificate to use based on availability and configuration
-var managedCertificateId = createManagedCertificate 
+var managedCertificateId = createManagedCertificate
   ? managedCertificate.id
-  : (!empty(existingCertificateId) 
-      ? existingManagedCertificate.id 
-      : existingCertificateBySubject.id)
+  : (!empty(existingCertificateId) ? existingManagedCertificate.id : existingCertificateBySubject.id)
 
 // Generate unique API keys for each service
 var npmApiKey = 'npm-${uniqueString(resourceGroup().id, 'npm')}'
@@ -89,18 +87,32 @@ var ociApiKey = 'oci-${uniqueString(resourceGroup().id, 'oci')}'
 
 // Use a computed base URL - the actual FQDN will be different but services should handle this
 // For initial deployment, use a reasonable placeholder that won't cause startup failures
-var baseUrl = useCustomDomain ? 'https://${customDomainName}' : 'https://${containerAppName}.${location}.azurecontainerapps.io' 
+var baseUrl = useCustomDomain
+  ? 'https://${customDomainName}'
+  : 'https://${containerAppName}.${location}.azurecontainerapps.io'
 
 // Container image URIs
 // Determine image path format based on registry type
 // When using ACR, repositoryName will be 'ACR_NO_PREFIX' to indicate no prefix needed
 var imagePrefix = (empty(repositoryName) || repositoryName == 'ACR_NO_PREFIX') ? '' : '${repositoryName}/'
-var bridgeImage = (empty(repositoryName) || repositoryName == 'ACR_NO_PREFIX') ? '${containerRegistryServer}/xregistry-bridge:${imageTag}' : '${containerRegistryServer}/${imagePrefix}xregistry-bridge:${imageTag}'
-var npmImage = (empty(repositoryName) || repositoryName == 'ACR_NO_PREFIX') ? '${containerRegistryServer}/xregistry-npm-bridge:${imageTag}' : '${containerRegistryServer}/${imagePrefix}xregistry-npm-bridge:${imageTag}'
-var pypiImage = (empty(repositoryName) || repositoryName == 'ACR_NO_PREFIX') ? '${containerRegistryServer}/xregistry-pypi-bridge:${imageTag}' : '${containerRegistryServer}/${imagePrefix}xregistry-pypi-bridge:${imageTag}'
-var mavenImage = (empty(repositoryName) || repositoryName == 'ACR_NO_PREFIX') ? '${containerRegistryServer}/xregistry-maven-bridge:${imageTag}' : '${containerRegistryServer}/${imagePrefix}xregistry-maven-bridge:${imageTag}'
-var nugetImage = (empty(repositoryName) || repositoryName == 'ACR_NO_PREFIX') ? '${containerRegistryServer}/xregistry-nuget-bridge:${imageTag}' : '${containerRegistryServer}/${imagePrefix}xregistry-nuget-bridge:${imageTag}'
-var ociImage = (empty(repositoryName) || repositoryName == 'ACR_NO_PREFIX') ? '${containerRegistryServer}/xregistry-oci-bridge:${imageTag}' : '${containerRegistryServer}/${imagePrefix}xregistry-oci-bridge:${imageTag}'
+var bridgeImage = (empty(repositoryName) || repositoryName == 'ACR_NO_PREFIX')
+  ? '${containerRegistryServer}/xregistry-bridge:${imageTag}'
+  : '${containerRegistryServer}/${imagePrefix}xregistry-bridge:${imageTag}'
+var npmImage = (empty(repositoryName) || repositoryName == 'ACR_NO_PREFIX')
+  ? '${containerRegistryServer}/xregistry-npm-bridge:${imageTag}'
+  : '${containerRegistryServer}/${imagePrefix}xregistry-npm-bridge:${imageTag}'
+var pypiImage = (empty(repositoryName) || repositoryName == 'ACR_NO_PREFIX')
+  ? '${containerRegistryServer}/xregistry-pypi-bridge:${imageTag}'
+  : '${containerRegistryServer}/${imagePrefix}xregistry-pypi-bridge:${imageTag}'
+var mavenImage = (empty(repositoryName) || repositoryName == 'ACR_NO_PREFIX')
+  ? '${containerRegistryServer}/xregistry-maven-bridge:${imageTag}'
+  : '${containerRegistryServer}/${imagePrefix}xregistry-maven-bridge:${imageTag}'
+var nugetImage = (empty(repositoryName) || repositoryName == 'ACR_NO_PREFIX')
+  ? '${containerRegistryServer}/xregistry-nuget-bridge:${imageTag}'
+  : '${containerRegistryServer}/${imagePrefix}xregistry-nuget-bridge:${imageTag}'
+var ociImage = (empty(repositoryName) || repositoryName == 'ACR_NO_PREFIX')
+  ? '${containerRegistryServer}/xregistry-oci-bridge:${imageTag}'
+  : '${containerRegistryServer}/${imagePrefix}xregistry-oci-bridge:${imageTag}'
 
 // Downstream services configuration for bridge
 var downstreamsConfig = {
@@ -178,13 +190,13 @@ resource actionGroup 'Microsoft.Insights/actionGroups@2023-01-01' = {
 resource containerAppEnvironment 'Microsoft.App/managedEnvironments@2023-05-01' = {
   name: containerAppEnvName
   location: location
-  properties: {    appLogsConfiguration: {
+  properties: {
+    appLogsConfiguration: {
       destination: 'log-analytics'
       logAnalyticsConfiguration: {
         customerId: logAnalyticsWorkspace.properties.customerId
         sharedKey: logAnalyticsWorkspace.listKeys().primarySharedKey
       }
-    }
     }
   }
 }
@@ -197,7 +209,7 @@ resource existingManagedCertificate 'Microsoft.App/managedEnvironments/managedCe
 
 // Check if certificate with same subject name already exists (auto-detection)
 resource existingCertificateBySubject 'Microsoft.App/managedEnvironments/managedCertificates@2023-05-01' existing = if (!createManagedCertificate && empty(existingCertificateId) && autoDetectExistingCertificate) {
-  name: 'packages.mcpxreg.com-xregistr-250526135004'  // Known existing certificate name
+  name: 'packages.mcpxreg.com-xregistr-250526135004' // Known existing certificate name
   parent: containerAppEnvironment
 }
 
@@ -222,12 +234,14 @@ resource managedCertificate 'Microsoft.App/managedEnvironments/managedCertificat
 resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
   name: containerAppName
   location: location
-  dependsOn: createManagedCertificate ? [
-    containerAppEnvironment
-    managedCertificate
-  ] : [
-    containerAppEnvironment
-  ]
+  dependsOn: createManagedCertificate
+    ? [
+        containerAppEnvironment
+        managedCertificate
+      ]
+    : [
+        containerAppEnvironment
+      ]
   properties: {
     environmentId: containerAppEnvironment.id
     configuration: {
@@ -241,13 +255,15 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             latestRevision: true
           }
         ]
-        customDomains: useCustomDomain ? [
-          {
-            name: customDomainName
-            bindingType: 'SniEnabled'
-            certificateId: managedCertificateId
-          }
-        ] : []
+        customDomains: useCustomDomain
+          ? [
+              {
+                name: customDomainName
+                bindingType: 'SniEnabled'
+                certificateId: managedCertificateId
+              }
+            ]
+          : []
         corsPolicy: {
           allowedOrigins: ['*']
           allowedMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD']
@@ -256,13 +272,15 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
         }
       }
       // For public GHCR repos, containerRegistryUsername will be empty and no registry auth is needed
-      registries: empty(containerRegistryUsername) ? [] : [
-        {
-          server: containerRegistryServer
-          username: containerRegistryUsername
-          passwordSecretRef: 'registry-password'
-        }
-      ]
+      registries: empty(containerRegistryUsername)
+        ? []
+        : [
+            {
+              server: containerRegistryServer
+              username: containerRegistryUsername
+              passwordSecretRef: 'registry-password'
+            }
+          ]
       secrets: [
         {
           name: 'registry-password'
@@ -809,15 +827,17 @@ output apiKeys object = {
 output customDomainName string = customDomainName
 output managedCertificateId string = managedCertificateId
 output managedCertificateName string = managedCertificateName
-output domainVerificationRequired object = createManagedCertificate ? {
-  txtRecordName: 'asuid.${customDomainName}'
-  txtRecordValue: domainVerificationKey
-  instructions: 'Create a TXT record in your DNS with the above name and value to verify domain ownership'
-  status: 'New certificate will be created - DNS verification required'
-} : {
-  txtRecordName: 'N/A'
-  txtRecordValue: 'N/A' 
-  instructions: 'Using existing certificate'
-  status: 'Using existing certificate'
-}
-output baseUrl string = baseUrl 
+output domainVerificationRequired object = createManagedCertificate
+  ? {
+      txtRecordName: 'asuid.${customDomainName}'
+      txtRecordValue: domainVerificationKey
+      instructions: 'Create a TXT record in your DNS with the above name and value to verify domain ownership'
+      status: 'New certificate will be created - DNS verification required'
+    }
+  : {
+      txtRecordName: 'N/A'
+      txtRecordValue: 'N/A'
+      instructions: 'Using existing certificate'
+      status: 'Using existing certificate'
+    }
+output baseUrl string = baseUrl
