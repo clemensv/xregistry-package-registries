@@ -6,7 +6,7 @@
       "value": "prod"
     },
     "appInsightsResourceId": {
-      "value": "/subscriptions/87dc3419-ee4f-4833-8e15-d25cc10df733/resourceGroups/xregistry-package-registries/providers/Microsoft.Insights/components/xregistry-pkg-registries-prod-insights"
+      "value": "[resourceId('Microsoft.Insights/components', concat('xregistry-pkg-', parameters('environment'), '-insights'))]"
     },
     "alertEmailAddresses": {
       "value": "clemensv@microsoft.com"
