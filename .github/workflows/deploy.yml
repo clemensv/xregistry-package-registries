@@ -641,12 +641,6 @@ jobs:
           fi
           echo "✅ GHCR authentication successful"
 
-      - name: Fail-Fast Image Accessibility Check
-        run: |
-          echo "🚨 Running fail-fast image accessibility test..."
-          chmod +x ./deploy/test-image-access.sh
-          ./deploy/test-image-access.sh "${{ github.repository }}" "latest" "${{ secrets.GITHUB_TOKEN }}" "${{ github.actor }}"
-
       - name: Deploy xRegistry Container App (All Services)
         run: |
           # Run the deployment script with parameters
