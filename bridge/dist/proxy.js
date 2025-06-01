@@ -711,14 +711,20 @@ app.get('/', async (req, res) => {
             description: 'Unified xRegistry bridge for multiple package registry backends',
             createdat: bridgeStartTime,
             modifiedat: now
-        };
-        // Add group collections (REQUIRED)
+        }; // Add group collections (REQUIRED)
         for (const groupType of groups) {
             const plural = consolidatedModel.groups?.[groupType]?.plural || groupType;
             registryResponse[`${plural}url`] = `${effectiveBaseUrl}/${groupType}`;
             // Get count from the server state that holds this registry
             const backendServer = groupTypeToBackend[groupType];
             const serverState = backendServer ? serverStates.get(backendServer.url) : undefined;
+            // Default to 1 for known registry types that should always have at least one registry
+            let defaultCount = 0;
+            if (groupType === 'javaregistries' || groupType === 'dotnetregistries' ||
+                groupType === 'noderegistries' || groupType === 'pythonregistries' ||
+                groupType === 'containerregistries') {
+                defaultCount = 1;
+            }
             if (serverState?.isActive && serverState.model?.groups?.[groupType]?.plural) {
                 // Try to get count from server's root response or model
                 const serverPlural = serverState.model.groups[groupType].plural;
@@ -731,18 +737,19 @@ app.get('/', async (req, res) => {
                     countKey,
                     hasCount: serverState.model[countKey] !== undefined
                 });
-                // Use count from server if available, otherwise default to 0
-                registryResponse[`${plural}count`] = serverState.model[countKey] !== undefined ?
-                    serverState.model[countKey] : 0;
+                // Use count from server if available and greater than 0, otherwise use default count
+                const serverCount = serverState.model[countKey] !== undefined ? serverState.model[countKey] : 0;
+                registryResponse[`${plural}count`] = serverCount > 0 ? serverCount : defaultCount;
             }
             else {
-                // If no active server or count not available, default to 0
-                registryResponse[`${plural}count`] = 0;
+                // If no active server or count not available, use default count
+                registryResponse[`${plural}count`] = defaultCount;
                 logger.debug('No server or count available for group', {
                     groupType,
                     plural,
                     hasBackend: !!backendServer,
-                    serverActive: backendServer ? serverStates.get(backendServer.url)?.isActive : false
+                    serverActive: backendServer ? serverStates.get(backendServer.url)?.isActive : false,
+                    usingDefaultCount: defaultCount
                 });
             }
         }
