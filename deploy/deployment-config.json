@@ -1,59 +1,42 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "xRegistry Package Registries Deployment Configuration",
-  "description": "Centralized configuration for xRegistry package registries deployment environment",
-  "type": "object",
-  "properties": {
-    "production": {
-      "type": "object",
-      "description": "Production environment configuration",
-      "properties": {
-        "subscriptionId": "87dc3419-ee4f-4833-8e15-d25cc10df733",
-        "resourceGroupName": "xregistry-package-registries",
-        "location": "West Europe",
-        "environment": "prod",
-        "containerAppsEnvironmentName": "xregistry-package-registries",
-        "logAnalyticsWorkspaceName": "workspace-xregistrypackageregistriesPtsx",
-        "appInsightsName": "xregistry-pkg-registries-prod-insights",
-        "containerAppName": "xregistry-pkg-registries-prod",
-        "alertEmail": "clemensv@microsoft.com",
-        "dashboardName": "xregistry-pkg-prod-enhanced-dashboard",
-        "registryServices": {
-          "npm": { "port": 3100, "name": "NPM Registry" },
-          "pypi": { "port": 3000, "name": "PyPI Registry" },
-          "maven": { "port": 3300, "name": "Maven Registry" },
-          "nuget": { "port": 3200, "name": "NuGet Registry" },
-          "oci": { "port": 3400, "name": "OCI Registry" },
-          "bridge": { "port": 8092, "name": "Bridge Service" }
-        }
-      },
-      "required": [
-        "subscriptionId",
-        "resourceGroupName", 
-        "location",
-        "environment",
-        "containerAppsEnvironmentName",
-        "logAnalyticsWorkspaceName",
-        "appInsightsName",
-        "alertEmail"
-      ]
-    },
-    "development": {
-      "type": "object",
-      "description": "Development environment configuration",
-      "properties": {
-        "subscriptionId": "87dc3419-ee4f-4833-8e15-d25cc10df733",
-        "resourceGroupName": "xregistry-pkg-dev",
-        "location": "West Europe",
-        "environment": "dev",
-        "containerAppsEnvironmentName": "xregistry-package-registries-dev",
-        "logAnalyticsWorkspaceName": "workspace-xregistrypackageregistries-dev",
-        "appInsightsName": "xregistry-pkg-registries-dev-insights",
-        "containerAppName": "xregistry-pkg-registries-dev",
-        "alertEmail": "clemensv@microsoft.com",
-        "dashboardName": "xregistry-pkg-dev-dashboard"
-      }
+  "production": {
+    "subscriptionId": "87dc3419-ee4f-4833-8e15-d25cc10df733",
+    "resourceGroupName": "xregistry-package-registries",
+    "location": "West Europe",
+    "environment": "prod",
+    "containerAppsEnvironmentName": "xregistry-package-registries",
+    "logAnalyticsWorkspaceName": "workspace-xregistrypackageregistriesPtsx",
+    "appInsightsName": "xregistry-pkg-registries-prod-insights",
+    "containerAppName": "xregistry-pkg-registries-prod",
+    "alertEmail": "clemensv@microsoft.com",
+    "dashboardName": "xregistry-pkg-prod-enhanced-dashboard",
+    "registryServices": {
+      "npm": { "port": 3100, "name": "NPM Registry" },
+      "pypi": { "port": 3000, "name": "PyPI Registry" },
+      "maven": { "port": 3300, "name": "Maven Registry" },
+      "nuget": { "port": 3200, "name": "NuGet Registry" },
+      "oci": { "port": 3400, "name": "OCI Registry" },
+      "bridge": { "port": 8092, "name": "Bridge Service" }
     }
   },
-  "default": "production"
+  "development": {
+    "subscriptionId": "87dc3419-ee4f-4833-8e15-d25cc10df733",
+    "resourceGroupName": "xregistry-package-registries-dev",
+    "location": "West Europe",
+    "environment": "dev",
+    "containerAppsEnvironmentName": "xregistry-package-registries-dev",
+    "logAnalyticsWorkspaceName": "workspace-xregistrypackageregistriesDevPtsx",
+    "appInsightsName": "xregistry-pkg-registries-dev-insights",
+    "containerAppName": "xregistry-pkg-registries-dev",
+    "alertEmail": "clemensv@microsoft.com",
+    "dashboardName": "xregistry-pkg-dev-enhanced-dashboard",
+    "registryServices": {
+      "npm": { "port": 3100, "name": "NPM Registry" },
+      "pypi": { "port": 3000, "name": "PyPI Registry" },
+      "maven": { "port": 3300, "name": "Maven Registry" },
+      "nuget": { "port": 3200, "name": "NuGet Registry" },
+      "oci": { "port": 3400, "name": "OCI Registry" },
+      "bridge": { "port": 8092, "name": "Bridge Service" }
+    }
+  }
 }
