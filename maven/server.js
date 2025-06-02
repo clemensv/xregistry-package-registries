@@ -5,61 +5,72 @@ const path = require("path");
 const yargs = require("yargs");
 const xml2js = require("xml2js");
 const { createLogger } = require("../shared/logging/logger");
-const { parseInlineParams } = require('../shared/inline');
-const { handleInlineFlag } = require('./inline');
+const { parseInlineParams } = require("../shared/inline");
+const { handleInlineFlag } = require("./inline");
+const {
+  parseFilterExpression,
+  getNestedValue: getFilterValue,
+  compareValues,
+  applyXRegistryFilterWithNameConstraint,
+  applyXRegistryFilters,
+  FilterOptimizer,
+  optimizedPagination,
+} = require("../shared/filter");
+const { parseSortParam, applySortFlag } = require("../shared/sort");
+const { v4: uuidv4 } = require("uuid");
 const app = express();
 let server = null; // Server instance reference for proper shutdown
 
 // Parse command line arguments with fallback to environment variables
 const argv = yargs
-  .option('port', {
-    alias: 'p',
-    description: 'Port to listen on',
-    type: 'number',
-    default: process.env.XREGISTRY_MAVEN_PORT || process.env.PORT || 3300
+  .option("port", {
+    alias: "p",
+    description: "Port to listen on",
+    type: "number",
+    default: process.env.XREGISTRY_MAVEN_PORT || process.env.PORT || 3300,
   })
-  .option('log', {
-    alias: 'l',
-    description: 'Path to trace log file (OpenTelemetry format)',
-    type: 'string',
-    default: process.env.XREGISTRY_MAVEN_LOG || null
+  .option("log", {
+    alias: "l",
+    description: "Path to trace log file (OpenTelemetry format)",
+    type: "string",
+    default: process.env.XREGISTRY_MAVEN_LOG || null,
   })
-  .option('w3log', {
-    description: 'Enable W3C Extended Log Format and specify log file path',
-    type: 'string',
-    default: process.env.W3C_LOG_FILE
+  .option("w3log", {
+    description: "Enable W3C Extended Log Format and specify log file path",
+    type: "string",
+    default: process.env.W3C_LOG_FILE,
   })
-  .option('w3log-stdout', {
-    description: 'Output W3C logs to stdout instead of file',
-    type: 'boolean',
-    default: process.env.W3C_LOG_STDOUT === 'true'
+  .option("w3log-stdout", {
+    description: "Output W3C logs to stdout instead of file",
+    type: "boolean",
+    default: process.env.W3C_LOG_STDOUT === "true",
   })
-  .option('quiet', {
-    alias: 'q',
-    description: 'Suppress trace logging to stderr',
-    type: 'boolean',
-    default: process.env.XREGISTRY_MAVEN_QUIET === 'true' || false
+  .option("quiet", {
+    alias: "q",
+    description: "Suppress trace logging to stderr",
+    type: "boolean",
+    default: process.env.XREGISTRY_MAVEN_QUIET === "true" || false,
   })
-  .option('baseurl', {
-    alias: 'b',
-    description: 'Base URL for self-referencing URLs',
-    type: 'string',
-    default: process.env.XREGISTRY_MAVEN_BASEURL || null
+  .option("baseurl", {
+    alias: "b",
+    description: "Base URL for self-referencing URLs",
+    type: "string",
+    default: process.env.XREGISTRY_MAVEN_BASEURL || null,
   })
-  .option('api-key', {
-    alias: 'k',
-    description: 'API key for authentication (if set, clients must provide this in Authorization header)',
-    type: 'string',
-    default: process.env.XREGISTRY_MAVEN_API_KEY || null
+  .option("api-key", {
+    alias: "k",
+    description:
+      "API key for authentication (if set, clients must provide this in Authorization header)",
+    type: "string",
+    default: process.env.XREGISTRY_MAVEN_API_KEY || null,
   })
-  .option('log-level', {
-    description: 'Log level',
-    type: 'string',
-    choices: ['debug', 'info', 'warn', 'error'],
-    default: process.env.LOG_LEVEL || 'info'
+  .option("log-level", {
+    description: "Log level",
+    type: "string",
+    choices: ["debug", "info", "warn", "error"],
+    default: process.env.LOG_LEVEL || "info",
   })
-  .help()
-  .argv;
+  .help().argv;
 
 const PORT = argv.port;
 const LOG_FILE = argv.log;
@@ -69,15 +80,15 @@ const API_KEY = argv.apiKey;
 
 // Initialize enhanced logger with W3C support and OTel context
 const logger = createLogger({
-  serviceName: process.env.SERVICE_NAME || 'xregistry-maven',
-  serviceVersion: process.env.SERVICE_VERSION || '1.0.0',
-  environment: process.env.NODE_ENV || 'production',
+  serviceName: process.env.SERVICE_NAME || "xregistry-maven",
+  serviceVersion: process.env.SERVICE_VERSION || "1.0.0",
+  environment: process.env.NODE_ENV || "production",
   enableFile: !!LOG_FILE,
   logFile: LOG_FILE,
   enableConsole: !QUIET_MODE,
-  enableW3CLog: !!(argv.w3log || argv['w3log-stdout']),
+  enableW3CLog: !!(argv.w3log || argv["w3log-stdout"]),
   w3cLogFile: argv.w3log,
-  w3cLogToStdout: argv['w3log-stdout']
+  w3cLogToStdout: argv["w3log-stdout"],
 });
 
 const REGISTRY_ID = "maven-wrapper";
@@ -95,7 +106,8 @@ const MAVEN_REPO_URL = "https://repo1.maven.org/maven2";
 // Maven Index related constants and variables
 const MAVEN_INDEX_DIR_NAME = "maven-index-cache";
 const MAVEN_INDEX_DIR = path.join(__dirname, MAVEN_INDEX_DIR_NAME);
-const MAVEN_INDEX_URL = "https://repo.maven.apache.org/maven2/.index/nexus-maven-repository-index.gz";
+const MAVEN_INDEX_URL =
+  "https://repo.maven.apache.org/maven2/.index/nexus-maven-repository-index.gz";
 const MAVEN_INDEX_GZ_FILE = "nexus-maven-repository-index.gz";
 const MAVEN_LUCENE_DIR_NAME = "central-lucene-index";
 const MAVEN_GA_LIST_FILE_NAME = "all-maven-ga.txt";
@@ -104,6 +116,71 @@ const INDEXER_CLI_JAR_PATTERN = "indexer-cli-*.jar"; // User needs to place this
 
 let mavenPackageCoordinatesCache = [];
 let lastIndexRefreshTime = 0;
+
+// Maven Central search cache
+let mavenSearchCache = [];
+let lastMavenCacheUpdate = 0;
+
+// Phase III: Advanced filtering with optimization
+const filterOptimizer = new FilterOptimizer({
+  cacheSize: 800, // Cache up to 800 filter results
+  maxCacheAge: 600000, // 10 minutes cache TTL
+  enableTwoStepFiltering: true, // Enable two-step filtering
+  maxMetadataFetches: 30, // Limit concurrent metadata fetches (Maven is slower)
+});
+
+// Metadata fetcher for two-step filtering
+async function fetchPackageMetadata(packageName) {
+  try {
+    // Package name is in format "groupId:artifactId"
+    const [groupId, artifactId] = packageName.split(":");
+    if (!groupId || !artifactId) {
+      throw new Error("Invalid package name format");
+    }
+
+    // Fetch versions to get latest
+    const versions = await fetchMavenArtifactVersions(groupId, artifactId);
+    const latestVersion = versions[versions.length - 1]; // Versions are sorted
+
+    // Fetch POM for metadata
+    const pomUrl = `https://repo1.maven.org/maven2/${groupId.replace(
+      /\./g,
+      "/"
+    )}/${artifactId}/${latestVersion}/${artifactId}-${latestVersion}.pom`;
+    const pomData = await parsePom(pomUrl);
+
+    return {
+      name: packageName,
+      groupId: groupId,
+      artifactId: artifactId,
+      version: latestVersion,
+      description: pomData.description || "",
+      author: pomData.organization?.name || "",
+      license: pomData.licenses?.length > 0 ? pomData.licenses[0].name : "",
+      homepage: pomData.url || "",
+      repository: pomData.scm?.url || "",
+      dependencies: pomData.dependencies || [],
+    };
+  } catch (error) {
+    // Return minimal metadata if fetch fails
+    const [groupId, artifactId] = packageName.split(":");
+    return {
+      name: packageName,
+      groupId: groupId || "",
+      artifactId: artifactId || "",
+      version: "",
+      description: "",
+      author: "",
+      license: "",
+      homepage: "",
+      repository: "",
+      dependencies: [],
+    };
+  }
+}
+
+// Set the metadata fetcher
+filterOptimizer.setMetadataFetcher(fetchPackageMetadata);
 
 // Load Registry Model from JSON file
 let registryModel;
@@ -135,23 +212,26 @@ if (!fs.existsSync(MAVEN_INDEX_DIR)) {
 // OpenTelemetry logger handles logging automatically
 
 // Configure Express to not decode URLs
-app.set('decode_param_values', false);
+app.set("decode_param_values", false);
 
 // Configure Express to pass raw URLs through without normalization
-app.enable('strict routing');
-app.enable('case sensitive routing');
-app.disable('x-powered-by');
+app.enable("strict routing");
+app.enable("case sensitive routing");
+app.disable("x-powered-by");
 
 // Add OpenTelemetry middleware for request tracing and logging
 app.use(logger.middleware());
 
 // Add CORS middleware
 app.use((req, res, next) => {
-  res.set('Access-Control-Allow-Origin', '*');
-  res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.set('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  res.set('Access-Control-Expose-Headers', 'Link');
-  if (req.method === 'OPTIONS') {
+  res.set("Access-Control-Allow-Origin", "*");
+  res.set("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.set(
+    "Access-Control-Allow-Headers",
+    "Origin, X-Requested-With, Content-Type, Accept, Authorization"
+  );
+  res.set("Access-Control-Expose-Headers", "Link");
+  if (req.method === "OPTIONS") {
     return res.status(204).end();
   }
   next();
@@ -160,76 +240,90 @@ app.use((req, res, next) => {
 // Add middleware for API key authentication (if configured)
 if (API_KEY) {
   logger.info("API key authentication enabled");
-  
+
   app.use((req, res, next) => {
     // Check for Authorization header
     const authHeader = req.headers.authorization;
-    
+
     // Skip authentication for OPTIONS requests (pre-flight CORS)
-    if (req.method === 'OPTIONS') {
+    if (req.method === "OPTIONS") {
       return next();
     }
-    
+
     // Skip authentication for health checks on /model endpoint from localhost
-    if (req.path === '/model' && (req.ip === '127.0.0.1' || req.ip === '::1' || req.connection.remoteAddress === '127.0.0.1')) {
-      logger.debug("Skipping authentication for localhost health check", { path: req.path, ip: req.ip });
+    if (
+      req.path === "/model" &&
+      (req.ip === "127.0.0.1" ||
+        req.ip === "::1" ||
+        req.connection.remoteAddress === "127.0.0.1")
+    ) {
+      logger.debug("Skipping authentication for localhost health check", {
+        path: req.path,
+        ip: req.ip,
+      });
       return next();
     }
-    
+
     if (!authHeader) {
-      logger.warn("Unauthorized request: No Authorization header provided", { 
-        method: req.method, 
-        path: req.path 
+      logger.warn("Unauthorized request: No Authorization header provided", {
+        method: req.method,
+        path: req.path,
       });
-      return res.status(401).json(
-        createErrorResponse(
-          "unauthorized", 
-          "Authentication required", 
-          401, 
-          req.originalUrl, 
-          "API key must be provided in the Authorization header"
-        )
-      );
+      return res
+        .status(401)
+        .json(
+          createErrorResponse(
+            "unauthorized",
+            "Authentication required",
+            401,
+            req.originalUrl,
+            "API key must be provided in the Authorization header"
+          )
+        );
     }
-    
+
     // Check for Bearer token format
-    const parts = authHeader.split(' ');
+    const parts = authHeader.split(" ");
     const scheme = parts[0];
     const credentials = parts[1];
-    
+
     if (!/^Bearer$/i.test(scheme)) {
-      logger.warn("Unauthorized request: Invalid Authorization format", { 
-        method: req.method, 
-        path: req.path 
+      logger.warn("Unauthorized request: Invalid Authorization format", {
+        method: req.method,
+        path: req.path,
       });
-      return res.status(401).json(
-        createErrorResponse(
-          "unauthorized", 
-          "Invalid authorization format", 
-          401, 
-          req.originalUrl, 
-          "Format is: Authorization: Bearer <api-key>"
-        )
-      );
+      return res
+        .status(401)
+        .json(
+          createErrorResponse(
+            "unauthorized",
+            "Invalid authorization format",
+            401,
+            req.originalUrl,
+            "Format is: Authorization: Bearer <api-key>"
+          )
+        );
     }
-    
+
     // Verify the API key
     if (credentials !== API_KEY) {
-      logger.warn("Unauthorized request: Invalid API key provided", { 
-        method: req.method, 
-        path: req.path 
+      logger.warn("Unauthorized request: Invalid API key provided", {
+        method: req.method,
+        path: req.path,
       });
-      return res.status(401).json(
-        createErrorResponse(
-          "unauthorized", 
-          "Invalid API key", 
-          401, 
-          req.originalUrl, 
-          "The provided API key is not valid"
-        )
-      );
+      return res
+        .status(401)
+        .json(
+          createErrorResponse(
+            "unauthorized",
+            "Invalid API key",
+            401,
+            req.originalUrl,
+            "The provided API key is not valid"
+          )
+        );
     }
-    
+
     // API key is valid, proceed to the next middleware
     next();
   });
@@ -237,16 +331,17 @@ if (API_KEY) {
 
 // Add middleware to handle trailing slashes
 app.use((req, res, next) => {
-  if (req.path.length > 1 && req.path.endsWith('/')) {
+  if (req.path.length > 1 && req.path.endsWith("/")) {
     // Remove trailing slash (except for root path) and maintain query string
-    const query = req.url.indexOf('?') !== -1 ? req.url.slice(req.url.indexOf('?')) : '';
+    const query =
+      req.url.indexOf("?") !== -1 ? req.url.slice(req.url.indexOf("?")) : "";
     const pathWithoutSlash = req.path.slice(0, -1) + query;
-    
-    logger.debug("Normalized path with trailing slash", { 
-      originalPath: req.path, 
-      normalizedPath: req.path.slice(0, -1) 
+
+    logger.debug("Normalized path with trailing slash", {
+      originalPath: req.path,
+      normalizedPath: req.path.slice(0, -1),
     });
-    
+
     // Update the URL to remove trailing slash
     req.url = pathWithoutSlash;
   }
@@ -255,76 +350,90 @@ app.use((req, res, next) => {
 
 // Middleware to handle $details suffix
 app.use((req, res, next) => {
-  if (req.path.endsWith('$details')) {
+  if (req.path.endsWith("$details")) {
     // Log the original request
     logger.debug("$details detected in path", { originalPath: req.path });
-    
+
     // Remove $details suffix
     const basePath = req.path.substring(0, req.path.length - 8); // 8 is length of '$details'
     logger.debug("Forwarding to base path", { basePath });
-    
+
     // Update the URL to the base path
-    req.url = basePath + (req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '');
-    
+    req.url =
+      basePath +
+      (req.url.includes("?") ? req.url.substring(req.url.indexOf("?")) : "");
+
     // Set a header to indicate this was accessed via $details
-    res.set('X-XRegistry-Details', 'true');
+    res.set("X-XRegistry-Details", "true");
   }
   next();
 });
 
 // Middleware to handle content negotiation and check Accept headers
 app.use((req, res, next) => {
-  const acceptHeader = req.get('Accept');
-  
+  const acceptHeader = req.get("Accept");
+
   // Set default Content-Type with complete schema information
-  res.set('Content-Type', `application/json; charset=utf-8; schema="${SCHEMA_VERSION}"`);
-  
+  res.set(
+    "Content-Type",
+    `application/json; charset=utf-8; schema="${SCHEMA_VERSION}"`
+  );
+
   // If no Accept header or Accept is '*/*', proceed normally
-  if (!acceptHeader || acceptHeader === '*/*' || acceptHeader.includes('text/html')) {
+  if (
+    !acceptHeader ||
+    acceptHeader === "*/*" ||
+    acceptHeader.includes("text/html")
+  ) {
     // Ignore text/html and always proceed with JSON
     return next();
   }
-  
+
   // Parse Accept header for proper content negotiation
-  const acceptTypes = acceptHeader.split(',').map(type => type.trim());
-  
+  const acceptTypes = acceptHeader.split(",").map((type) => type.trim());
+
   // Check accepted types in order of precedence
-  const acceptsXRegistry = acceptTypes.some(type => 
-    type.startsWith('application/json') && type.includes(`schema="${SCHEMA_VERSION}"`)
+  const acceptsXRegistry = acceptTypes.some(
+    (type) =>
+      type.startsWith("application/json") &&
+      type.includes(`schema="${SCHEMA_VERSION}"`)
   );
-  
-  const acceptsJson = acceptTypes.some(type => 
-    type.startsWith('application/json') && !type.includes('schema=')
+
+  const acceptsJson = acceptTypes.some(
+    (type) => type.startsWith("application/json") && !type.includes("schema=")
   );
-  
+
   if (!acceptsXRegistry && !acceptsJson) {
     // Client doesn't accept application/json
-    return res.status(406).json(
-      createErrorResponse(
-        "not-acceptable",
-        "Not Acceptable",
-        406,
-        req.originalUrl,
-        `This endpoint only serves application/json with schema="${SCHEMA_VERSION}"`
-      )
-    );
+    return res
+      .status(406)
+      .json(
+        createErrorResponse(
+          "not-acceptable",
+          "Not Acceptable",
+          406,
+          req.originalUrl,
+          `This endpoint only serves application/json with schema="${SCHEMA_VERSION}"`
+        )
+      );
   }
-  
+
   next();
 });
 
 // Root route - Return registry information
-app.get('/', async (req, res) => {
+app.get("/", async (req, res) => {
   try {
     // Determine the base URL
-    const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
-    const now = new Date().toISOString();    let responseObj = {
+    const baseUrl = BASE_URL || `${req.protocol}://${req.get("host")}`;
+    const now = new Date().toISOString();
+    let responseObj = {
       ...xregistryCommonAttrs({
         id: REGISTRY_ID,
         name: "Maven Central xRegistry Wrapper",
         description: "xRegistry wrapper for Maven Central Repository",
         parentUrl: null,
-        type: "registry"
+        type: "registry",
       }),
       self: `${baseUrl}/`,
       registryid: REGISTRY_ID,
@@ -338,150 +447,170 @@ app.get('/', async (req, res) => {
         {
           name: GROUP_TYPE,
           self: `${baseUrl}/${GROUP_TYPE}`,
-          resources: [RESOURCE_TYPE]
-        }
-      ]
+          resources: [RESOURCE_TYPE],
+        },
+      ],
     };
-    
+
     // Add javaregistries endpoints for xRegistry tests
     responseObj.javaregistriesurl = `${baseUrl}/${GROUP_TYPE}`;
     responseObj.javaregistriescount = 1; // Maven Central
-      // Build minimal registry collection
+    // Build minimal registry collection
     const jr = {};
-    jr['maven-central'] = {
-      name: 'maven-central',
+    jr["maven-central"] = {
+      name: "maven-central",
       xid: `/${GROUP_TYPE}/maven-central`,
       self: `${baseUrl}/${GROUP_TYPE}/maven-central`,
-      packagesurl: `${baseUrl}/${GROUP_TYPE}/maven-central/packages`
+      packagesurl: `${baseUrl}/${GROUP_TYPE}/maven-central/packages`,
     };
     responseObj.javaregistries = jr;
-    
+
     // Set absolute URLs for docs fields
-    if (responseObj.docs && !responseObj.docs.startsWith('http')) {
+    if (responseObj.docs && !responseObj.docs.startsWith("http")) {
       responseObj.docs = `${baseUrl}${responseObj.docs}`;
     }
-    
+
     // Apply flag handlers
     responseObj = handleInlineFlag(req, responseObj);
-    
+
     // Set standard response headers
-    res.set('Cache-Control', 'no-cache');
+    res.set("Cache-Control", "no-cache");
     setXRegistryHeaders(res, responseObj);
-    
+
     res.json(responseObj);
   } catch (error) {
     console.error("Error in root route:", error);
-    res.status(500).json(
-      createErrorResponse(
-        "internal-server-error",
-        "Internal Server Error",
-        500,
-        req.originalUrl,
-        "An unexpected error occurred while processing the request"
-      )
-    );
+    res
+      .status(500)
+      .json(
+        createErrorResponse(
+          "internal-server-error",
+          "Internal Server Error",
+          500,
+          req.originalUrl,
+          "An unexpected error occurred while processing the request"
+        )
+      );
   }
 });
 
 // Capabilities endpoint
 app.get("/capabilities", (req, res) => {
-  const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
-  
+  const baseUrl = BASE_URL || `${req.protocol}://${req.get("host")}`;
+
   const response = {
     self: `${baseUrl}/capabilities`,
     capabilities: {
       apis: [
-        `${baseUrl}/`, 
-        `${baseUrl}/capabilities`, 
-        `${baseUrl}/model`, 
-        `${baseUrl}/${GROUP_TYPE}`, 
-        `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}`, 
-        `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`, 
+        `${baseUrl}/`,
+        `${baseUrl}/capabilities`,
+        `${baseUrl}/model`,
+        `${baseUrl}/${GROUP_TYPE}`,
+        `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}`,
+        `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`,
         `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageId`,
         `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageId$details`,
         `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageId/versions`,
         `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageId/versions/:version`,
         `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageId/versions/:version$details`,
         `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageId/meta`,
-        `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageId/doc`
-      ],      flags: [
-        "collections", "doc", "filter", "inline", "limit", "offset",
-        "epoch", "noepoch", "noreadonly", "specversion",
-        "nodefaultversionid", "nodefaultversionsticky", "schema", "xregistry"
+        `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageId/doc`,
+      ],
+      flags: [
+        "collections",
+        "doc",
+        "filter",
+        "inline",
+        "limit",
+        "offset",
+        "epoch",
+        "noepoch",
+        "noreadonly",
+        "specversion",
+        "nodefaultversionid",
+        "nodefaultversionsticky",
+        "schema",
+        "xregistry",
       ],
       mutable: [],
       pagination: true,
       schemas: ["xRegistry-json/1.0-rc1"],
       specversions: ["1.0-rc1"],
-      versionmodes: ["manual"]
+      versionmodes: ["manual"],
     },
-    description: "This registry supports read-only operations and model discovery."
+    description:
+      "This registry supports read-only operations and model discovery.",
   };
-  
+
   // Apply schema validation if requested
-  const validatedResponse = handleSchemaFlag(req, response, 'registry');
-  
+  const validatedResponse = handleSchemaFlag(req, response, "registry");
+
   // Apply response headers
   setXRegistryHeaders(res, validatedResponse);
-  
+
   res.json(validatedResponse);
 });
 
 // Model route - Return data model
-app.get('/model', async (req, res) => {
+app.get("/model", async (req, res) => {
   try {
     // Determine the base URL
-    const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
-    
+    const baseUrl = BASE_URL || `${req.protocol}://${req.get("host")}`;
+
     // Create a copy to avoid modifying the global model, e.g., when adding 'self'
-    let modelResponse = JSON.parse(JSON.stringify(registryModel)); 
-    
+    let modelResponse = JSON.parse(JSON.stringify(registryModel));
+
     // Add self URL to the model response (optional, but common for xRegistry self-description)
     // modelResponse.self = `${baseUrl}/model`; // Keep this commented unless explicitly desired for the response
-                                            // The core requirement is to return the model content itself.
+    // The core requirement is to return the model content itself.
 
     // Apply flag handlers if any are relevant to the model endpoint
-    modelResponse = handleSchemaFlag(req, modelResponse, 'model'); // Example
+    modelResponse = handleSchemaFlag(req, modelResponse, "model"); // Example
 
     setXRegistryHeaders(res, modelResponse);
     res.json(modelResponse);
   } catch (error) {
     console.error("Error in model route:", error);
-    res.status(500).json(
-      createErrorResponse(
-        "internal-server-error",
-        "Internal Server Error",
-        500,
-        req.originalUrl,
-        "An unexpected error occurred while processing the request"
-      )
-    );
+    res
+      .status(500)
+      .json(
+        createErrorResponse(
+          "internal-server-error",
+          "Internal Server Error",
+          500,
+          req.originalUrl,
+          "An unexpected error occurred while processing the request"
+        )
+      );
   }
 });
 
 // Implement javaregistries collection endpoint for basic tests
 app.get(`/${GROUP_TYPE}`, (req, res) => {
-  const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
+  const baseUrl = BASE_URL || `${req.protocol}://${req.get("host")}`;
   const limit = req.query.pagesize ? parseInt(req.query.pagesize, 10) : 1; // Only have one registry (Maven Central)
-    const data = {};
+  const data = {};
   if (limit > 0) {
-    data['maven-central'] = {
-      name: 'maven-central',
+    data["maven-central"] = {
+      name: "maven-central",
       xid: `/${GROUP_TYPE}/maven-central`,
       self: `${baseUrl}/${GROUP_TYPE}/maven-central`,
-      packagesurl: `${baseUrl}/${GROUP_TYPE}/maven-central/packages`
+      packagesurl: `${baseUrl}/${GROUP_TYPE}/maven-central/packages`,
     };
   }
-  
+
   // Add pagination headers if requested
   if (req.query.pagesize) {
-    res.set('Link', `<${baseUrl}/${GROUP_TYPE}?pagesize=${limit}&offset=0>; rel="first", <${baseUrl}/${GROUP_TYPE}?pagesize=${limit}&offset=0>; rel="last"`);
+    res.set(
+      "Link",
+      `<${baseUrl}/${GROUP_TYPE}?pagesize=${limit}&offset=0>; rel="first", <${baseUrl}/${GROUP_TYPE}?pagesize=${limit}&offset=0>; rel="last"`
+    );
   }
-  
+
   // Set standard headers
-  res.set('Cache-Control', 'no-cache');
+  res.set("Cache-Control", "no-cache");
   setXRegistryHeaders(res, { epoch: 1 });
-  
+
   res.json(data);
 });
 
@@ -489,392 +618,1002 @@ app.get(`/${GROUP_TYPE}`, (req, res) => {
 app.get(`/${GROUP_TYPE}/:groupId`, async (req, res) => {
   try {
     const { groupId } = req.params;
-    
+
     // Check if the groupId is valid
     if (groupId !== GROUP_ID) {
-      return res.status(404).json(
-        createErrorResponse(
-          "not-found",
-          "Group not found",
-          404,
-          req.originalUrl,
-          `Group '${groupId}' was not found`
-        )
-      );
+      return res
+        .status(404)
+        .json(
+          createErrorResponse(
+            "not-found",
+            "Group not found",
+            404,
+            req.originalUrl,
+            `Group '${groupId}' was not found`
+          )
+        );
     }
-    
+
     // Determine the base URL
-    const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
+    const baseUrl = BASE_URL || `${req.protocol}://${req.get("host")}`;
     const groupUrl = `${baseUrl}/${GROUP_TYPE}/${groupId}`;
-      // Build the response
+    // Build the response
     const responseObj = {
       ...xregistryCommonAttrs({
         id: groupId,
         name: "maven-central",
         description: "Maven Central Repository",
         parentUrl: `${baseUrl}/${GROUP_TYPE}`,
-        type: GROUP_TYPE_SINGULAR
+        type: GROUP_TYPE_SINGULAR,
       }),
       self: groupUrl,
       schema: SCHEMA_VERSION,
       resources: [
         {
           name: RESOURCE_TYPE,
-          self: `${groupUrl}/${RESOURCE_TYPE}`
-        }
-      ]
+          self: `${groupUrl}/${RESOURCE_TYPE}`,
+        },
+      ],
     };
-    
+
     // Set absolute URLs for docs fields
-    if (responseObj.docs && !responseObj.docs.startsWith('http')) {
+    if (responseObj.docs && !responseObj.docs.startsWith("http")) {
       responseObj.docs = `${baseUrl}${responseObj.docs}`;
     }
-    
+
     // Apply standard headers
     setXRegistryHeaders(res, responseObj);
-    
+
     res.json(responseObj);
   } catch (error) {
     console.error("Error in group detail route:", error);
-    res.status(500).json(
-      createErrorResponse(
-        "internal-server-error",
-        "Internal Server Error",
-        500,
-        req.originalUrl,
-        "An unexpected error occurred while processing the request"
-      )
-    );
+    res
+      .status(500)
+      .json(
+        createErrorResponse(
+          "internal-server-error",
+          "Internal Server Error",
+          500,
+          req.originalUrl,
+          "An unexpected error occurred while processing the request"
+        )
+      );
   }
 });
 
-// All packages with filtering
+// Route for listing all Maven artifacts (packages)
 app.get(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`, async (req, res) => {
-  const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
-  
-  try {
-    // Pagination parameters
-    const limit = req.query.limit ? parseInt(req.query.limit, 10) : DEFAULT_PAGE_LIMIT;
-    const offset = req.query.offset ? parseInt(req.query.offset, 10) : 0;
-    
-    if (limit <= 0) {
-      return res.status(400).json(
-        createErrorResponse("invalid_data", "Limit must be greater than 0", 400, req.originalUrl, "The limit parameter must be a positive integer", limit)
+  const operationId = req.correlationId || uuidv4();
+  logger.info("Maven: Get all artifacts", {
+    operationId,
+    path: req.path,
+    query: req.query,
+  });
+
+  // Ensure mavenPackageCoordinatesCache is loaded (objects like { groupId: '...', name: 'artifactId' })
+  if (
+    mavenPackageCoordinatesCache.length === 0 &&
+    (!lastIndexRefreshTime || Date.now() - lastIndexRefreshTime > 600000)
+  ) {
+    // Allow 10 min for initial load/refresh
+    logger.info(
+      "Maven: G:A cache is empty or stale, attempting synchronous refresh...",
+      { operationId }
+    );
+    await refreshMavenCoordinatesCache();
+    if (mavenPackageCoordinatesCache.length === 0) {
+      logger.error("Maven: G:A cache still empty after refresh.", {
+        operationId,
+      });
+      return res
+        .status(500)
+        .json(
+          createErrorResponse(
+            "server_error",
+            "Artifact list unavailable",
+            500,
+            req.originalUrl,
+            "The server was unable to load the list of Maven artifacts."
+          )
+        );
+    }
+  }
+
+  let allArtifactsFromCache = [...mavenPackageCoordinatesCache];
+  let finalFilteredResults = [];
+
+  if (req.query.filter) {
+    const filterParams = Array.isArray(req.query.filter)
+      ? req.query.filter
+      : [req.query.filter];
+    let orCombinedResults = [];
+    let atLeastOneClauseHadAValidNameFilterAndCouldProduceResults = false;
+
+    for (const filterString of filterParams) {
+      if (typeof filterString !== "string" || filterString.trim() === "") {
+        orCombinedResults.push(...allArtifactsFromCache);
+        atLeastOneClauseHadAValidNameFilterAndCouldProduceResults = true;
+        continue;
+      }
+
+      const currentExpressions = parseFilterExpression(filterString);
+      const hasNameFilterInClause = currentExpressions.some(
+        (e) => e.attribute === "name"
+      );
+
+      if (currentExpressions.length > 0 && !hasNameFilterInClause) {
+        logger.warn(
+          "Maven: A filter clause was provided without a 'name' (artifactId) attribute filter. This clause will be ignored.",
+          { operationId, filterClause: filterString }
+        );
+        continue;
+      }
+
+      atLeastOneClauseHadAValidNameFilterAndCouldProduceResults = true;
+
+      // For Maven, entity.name is artifactId
+      const filteredForThisClause = applyXRegistryFilters(
+        filterString,
+        [...allArtifactsFromCache],
+        (entity) => entity.name
+      );
+      orCombinedResults.push(...filteredForThisClause);
+    }
+
+    if (
+      filterParams.length > 0 &&
+      !atLeastOneClauseHadAValidNameFilterAndCouldProduceResults &&
+      filterParams.some((fs) => typeof fs === "string" && fs.trim() !== "")
+    ) {
+      logger.warn(
+        "Maven: Filter query provided, but no valid 'name' (artifactId) attribute filter found in any processed clause. Returning empty set.",
+        { operationId, filters: req.query.filter }
+      );
+      finalFilteredResults = [];
+    } else if (filterParams.length > 0) {
+      const uniqueResultsMap = new Map();
+      // Ensure uniqueness based on a composite key if name (artifactId) alone isn't unique across groups
+      orCombinedResults.forEach((art) =>
+        uniqueResultsMap.set(`${art.groupId}:${art.name}`, art)
+      );
+      finalFilteredResults = Array.from(uniqueResultsMap.values());
+    } else {
+      finalFilteredResults = allArtifactsFromCache;
+    }
+  } else {
+    finalFilteredResults = allArtifactsFromCache;
+  }
+
+  // Sorting (name refers to artifactId, could also sort by groupId)
+  if (req.query.sort) {
+    const sortParams = parseSortParam(req.query.sort);
+    if (sortParams.length > 0) {
+      // getFilterValue (getNestedValue) can access properties like 'name' or 'groupId'
+      finalFilteredResults = applySortFlag(
+        finalFilteredResults,
+        sortParams,
+        getFilterValue
       );
     }
-    
-    // Use a more reliable query for Maven Central
-    let searchUrl;
-    let finalSolrQuery;
-    let sortParam = "";
-
-    // Filtering support: ?filter=substring (case-insensitive substring match)
-    if (req.query.filter) {
-      // Escape special characters in filter for Maven search API
-      // The original query variable construction for Solr:
-      const filterText = req.query.filter.replace(/:/g, ' ').replace(/[+\-&|!(){}[\]^"~*?:\\]/g, '\\$&');
-      finalSolrQuery = `a:*${filterText}* OR g:*${filterText}*`;
-      // No specific sort when a filter is applied, rely on relevance or Maven Central's default for filtered queries.
-    } else {
-      // Default query if no filter is provided - searches for common libraries and sorts by recent.
-      finalSolrQuery = "g:junit AND a:junit"; 
-      sortParam = "&sort=timestamp desc";
-    }
-    
-    searchUrl = `${MAVEN_API_BASE_URL}?q=${encodeURIComponent(finalSolrQuery)}&core=gav&rows=${limit}&start=${offset}&wt=json${sortParam}`;
-    
-    if (!QUIET_MODE) {
-      console.log(`Querying Maven Central API: ${searchUrl}`);
-    }
-    
-    const response = await cachedGet(searchUrl);
-    
-    if (!response || !response.response || !response.response.docs) {
-      throw new Error("Invalid response format from Maven Central API");
-    }
-    
-    // Extract package names from the response
-    const packageNames = response.response.docs.map(doc => `${doc.g}:${doc.a}`);
-    
-    // Create resource objects for the paginated results
-    const resources = {};
-    
-    for (const packageName of packageNames) {
-      const [groupId, artifactId] = packageName.split(':');
-      const safePackageId = packageName.replace(/[^a-zA-Z0-9_.:-]/g, '_');
-      
-      resources[safePackageId] = {
-        ...xregistryCommonAttrs({
-          id: packageName,
-          name: packageName,
-          parentUrl: `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`,
-          type: RESOURCE_TYPE_SINGULAR,
-        }),
-        [`${RESOURCE_TYPE_SINGULAR}id`]: safePackageId,
-        self: `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${encodeURIComponent(packageName)}`,
-        groupId: groupId,
-        artifactId: artifactId
-      };
-    }
-    
-    // Apply flag handlers for each resource
-    for (const packageId in resources) {
-      resources[packageId] = handleDocFlag(req, resources[packageId]);
-      resources[packageId] = handleEpochFlag(req, resources[packageId]);
-      resources[packageId] = handleNoReadonlyFlag(req, resources[packageId]);
-    }
-    
-    // Add pagination links
-    const totalCount = response.response.numFound || packageNames.length;
-    const links = generatePaginationLinks(req, totalCount, offset, limit);
-    res.set('Link', links);
-    
-    // Apply schema headers
-    setXRegistryHeaders(res, { epoch: 1 });
-    
-    res.json(resources);
-  } catch (error) {
-    console.error("Error in package listing route:", error);
-    
-    // Return proper error response
-    return res.status(502).json(
-      createErrorResponse(
-        "bad_gateway", 
-        "Maven Central API error", 
-        502, 
-        req.originalUrl, 
-        `Unable to fetch package list from Maven Central: ${error.message}`
-      )
-    );
   }
+
+  const totalCount = finalFilteredResults.length;
+  const { offset, limit } = getPaginationParams(req, DEFAULT_PAGE_LIMIT);
+  const paginatedResults = finalFilteredResults.slice(offset, offset + limit);
+
+  const responseData = {
+    registry: REGISTRY_ID,
+    groupType: GROUP_TYPE,
+    group: GROUP_ID,
+    resourceType: RESOURCE_TYPE,
+    count: totalCount,
+    resources: paginatedResults.map((art) => ({
+      name: art.name, // artifactId
+      groupId: art.groupId,
+      // id: `${art.groupId}:${art.name}`,
+      // self: makeUrlAbsolute(req, `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${art.groupId.replace(/\./g, '/')}/${art.name}`)
+      // ... other required xRegistry attributes for a Maven artifact resource
+    })),
+    _links: generatePaginationLinks(req, totalCount, offset, limit),
+  };
+
+  // Inline handling placeholder - actual inlining would fetch POM, versions etc.
+  if (req.query.inline) {
+    const { parseInlineParams } = require("../shared/inline"); // Ensure this is available
+    const inlineParams = parseInlineParams(req.query.inline);
+    const inlineDepth = inlineParams ? inlineParams.depth : 0;
+    if (inlineDepth > 0) {
+      responseData.resources.forEach((r) => {
+        r._inlined = true;
+      });
+    }
+  }
+
+  setXRegistryHeaders(res, responseData);
+  return res.json(responseData);
 });
 
 // Package detail route
-app.get(`/${GROUP_TYPE}/:groupId/${RESOURCE_TYPE}/:packageId`, async (req, res) => {
-  try {
-    const { groupId, packageId } = req.params;
-    
-    // Check if the groupId is valid
-    if (groupId !== GROUP_ID) {
-      return res.status(404).json(
-        createErrorResponse(
-          "not-found",
-          "Group not found",
-          404,
-          req.originalUrl,
-          `Group '${groupId}' was not found`
-        )
-      );
-    }
-    
-    // Parse packageId (format should be groupId:artifactId)
-    const [pkgGroupId, artifactId] = packageId.split(':');
-    
-    if (!pkgGroupId || !artifactId) {
-      return res.status(400).json(
-        createErrorResponse(
-          "invalid-request",
-          "Invalid package ID",
-          400,
-          req.originalUrl,
-          "Package ID must be in the format 'groupId:artifactId'"
-        )
-      );
-    }
-    
-    // Check if the package exists
-    const exists = await packageExists(pkgGroupId, artifactId);
-    
-    if (!exists) {
-      return res.status(404).json(
-        createErrorResponse(
-          "not-found",
-          "Package not found",
-          404,
-          req.originalUrl,
-          `Package '${packageId}' was not found in Maven Central`
-        )
-      );
-    }
-    
-    // Query Maven Central for package details
-    const searchUrl = `${MAVEN_API_BASE_URL}?q=g:"${encodeURIComponent(pkgGroupId)}"+AND+a:"${encodeURIComponent(artifactId)}"&core=gav&rows=1&wt=json`;
-    const searchResults = await cachedGet(searchUrl);
-    const doc = searchResults.response.docs[0];
-    
-    // Get POM information for the latest version
-    const latestVersion = doc.latestVersion || doc.v;
-    const pomPath = pkgGroupId.replace(/\./g, '/') + '/' + artifactId + '/' + latestVersion + '/' + artifactId + '-' + latestVersion + '.pom';
-    const pomUrl = `${MAVEN_REPO_URL}/${pomPath}`;
-    const pom = await parsePom(pomUrl);
-    
-    // Determine the base URL
-    const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}`;
-    const resourcesUrl = `${baseUrl}/${GROUP_TYPE}/${groupId}/${RESOURCE_TYPE}`;
-    const packageUrl = `${resourcesUrl}/${encodeURIComponent(packageId)}`;
-    
-    // Extract dependencies from POM if available
-    let dependencies = [];
-    if (pom && pom.project && pom.project.dependencies && pom.project.dependencies.dependency) {
-      const deps = Array.isArray(pom.project.dependencies.dependency) 
-        ? pom.project.dependencies.dependency 
-        : [pom.project.dependencies.dependency];
-      
-      // Process dependencies using the new helper function
-      dependencies = await processMavenDependencies(deps, packageId);
-    }
-    
-    // Extract developers from POM if available
-    let developers = [];
-    if (pom && pom.project && pom.project.developers && pom.project.developers.developer) {
-      const devs = Array.isArray(pom.project.developers.developer) 
-        ? pom.project.developers.developer 
-        : [pom.project.developers.developer];
-      
-      developers = devs.map(dev => ({
-        id: dev.id,
-        name: dev.name,
-        email: dev.email,
-        url: dev.url
-      }));
-    }
-    
-    // Extract licenses from POM if available
-    let licenses = [];
-    if (pom && pom.project && pom.project.licenses && pom.project.licenses.license) {
-      const lics = Array.isArray(pom.project.licenses.license) 
-        ? pom.project.licenses.license 
-        : [pom.project.licenses.license];
-      
-      licenses = lics.map(lic => ({
-        name: lic.name,
-        url: lic.url
-      }));
-    }
-    
-    // Extract SCM info from POM if available
-    let scm = null;
-    if (pom && pom.project && pom.project.scm) {
-      scm = {
-        url: pom.project.scm.url,
-        connection: pom.project.scm.connection,
-        developerConnection: pom.project.scm.developerConnection
-      };
-    }
-    
-    // Extract organization info from POM if available
-    let organization = null;
-    if (pom && pom.project && pom.project.organization) {
-      organization = {
-        name: pom.project.organization.name,
-        url: pom.project.organization.url
-      };
-    }
-    
-    // Extract issue management info from POM if available
-    let issueManagement = null;
-    if (pom && pom.project && pom.project.issueManagement) {
-      issueManagement = {
-        system: pom.project.issueManagement.system,
-        url: pom.project.issueManagement.url
-      };
-    }
-    
-    // Build the response
-    const responseObj = {
-      ...xregistryCommonAttrs({
-        id: packageId,
+app.get(
+  `/${GROUP_TYPE}/:groupId/${RESOURCE_TYPE}/:packageId`,
+  async (req, res) => {
+    try {
+      const { groupId, packageId } = req.params;
+
+      // Check if the groupId is valid
+      if (groupId !== GROUP_ID) {
+        return res
+          .status(404)
+          .json(
+            createErrorResponse(
+              "not-found",
+              "Group not found",
+              404,
+              req.originalUrl,
+              `Group '${groupId}' was not found`
+            )
+          );
+      }
+
+      // Parse packageId (format should be groupId:artifactId)
+      const [pkgGroupId, artifactId] = packageId.split(":");
+
+      if (!pkgGroupId || !artifactId) {
+        return res
+          .status(400)
+          .json(
+            createErrorResponse(
+              "invalid-request",
+              "Invalid package ID",
+              400,
+              req.originalUrl,
+              "Package ID must be in the format 'groupId:artifactId'"
+            )
+          );
+      }
+
+      // Check if the package exists
+      const exists = await packageExists(pkgGroupId, artifactId);
+
+      if (!exists) {
+        return res
+          .status(404)
+          .json(
+            createErrorResponse(
+              "not-found",
+              "Package not found",
+              404,
+              req.originalUrl,
+              `Package '${packageId}' was not found in Maven Central`
+            )
+          );
+      }
+
+      // Query Maven Central for package details
+      const searchUrl = `${MAVEN_API_BASE_URL}?q=g:"${encodeURIComponent(
+        pkgGroupId
+      )}"+AND+a:"${encodeURIComponent(artifactId)}"&core=gav&rows=1&wt=json`;
+      const searchResults = await cachedGet(searchUrl);
+      const doc = searchResults.response.docs[0];
+
+      // Get POM information for the latest version
+      const latestVersion = doc.latestVersion || doc.v;
+      const pomPath =
+        pkgGroupId.replace(/\./g, "/") +
+        "/" +
+        artifactId +
+        "/" +
+        latestVersion +
+        "/" +
+        artifactId +
+        "-" +
+        latestVersion +
+        ".pom";
+      const pomUrl = `${MAVEN_REPO_URL}/${pomPath}`;
+      const pom = await parsePom(pomUrl);
+
+      // Determine the base URL
+      const baseUrl = BASE_URL || `${req.protocol}://${req.get("host")}`;
+      const resourcesUrl = `${baseUrl}/${GROUP_TYPE}/${groupId}/${RESOURCE_TYPE}`;
+      const packageUrl = `${resourcesUrl}/${encodeURIComponent(packageId)}`;
+
+      // Extract dependencies from POM if available
+      let dependencies = [];
+      if (
+        pom &&
+        pom.project &&
+        pom.project.dependencies &&
+        pom.project.dependencies.dependency
+      ) {
+        const deps = Array.isArray(pom.project.dependencies.dependency)
+          ? pom.project.dependencies.dependency
+          : [pom.project.dependencies.dependency];
+
+        // Process dependencies using the new helper function
+        dependencies = await processMavenDependencies(deps, packageId);
+      }
+
+      // Extract developers from POM if available
+      let developers = [];
+      if (
+        pom &&
+        pom.project &&
+        pom.project.developers &&
+        pom.project.developers.developer
+      ) {
+        const devs = Array.isArray(pom.project.developers.developer)
+          ? pom.project.developers.developer
+          : [pom.project.developers.developer];
+
+        developers = devs.map((dev) => ({
+          id: dev.id,
+          name: dev.name,
+          email: dev.email,
+          url: dev.url,
+        }));
+      }
+
+      // Extract licenses from POM if available
+      let licenses = [];
+      if (
+        pom &&
+        pom.project &&
+        pom.project.licenses &&
+        pom.project.licenses.license
+      ) {
+        const lics = Array.isArray(pom.project.licenses.license)
+          ? pom.project.licenses.license
+          : [pom.project.licenses.license];
+
+        licenses = lics.map((lic) => ({
+          name: lic.name,
+          url: lic.url,
+        }));
+      }
+
+      // Extract SCM info from POM if available
+      let scm = null;
+      if (pom && pom.project && pom.project.scm) {
+        scm = {
+          url: pom.project.scm.url,
+          connection: pom.project.scm.connection,
+          developerConnection: pom.project.scm.developerConnection,
+        };
+      }
+
+      // Extract organization info from POM if available
+      let organization = null;
+      if (pom && pom.project && pom.project.organization) {
+        organization = {
+          name: pom.project.organization.name,
+          url: pom.project.organization.url,
+        };
+      }
+
+      // Extract issue management info from POM if available
+      let issueManagement = null;
+      if (pom && pom.project && pom.project.issueManagement) {
+        issueManagement = {
+          system: pom.project.issueManagement.system,
+          url: pom.project.issueManagement.url,
+        };
+      }
+
+      // Build the response
+      const responseObj = {
+        ...xregistryCommonAttrs({
+          id: packageId,
+          name: artifactId,
+          description: pom?.project?.description || "Maven package",
+          parentUrl: resourcesUrl,
+          type: RESOURCE_TYPE_SINGULAR,
+          docsUrl: pom?.project?.url,
+        }),
+        self: packageUrl,
+        schema: SCHEMA_VERSION,
         name: artifactId,
-        description: pom?.project?.description || "Maven package",
-        parentUrl: resourcesUrl,
-        type: RESOURCE_TYPE_SINGULAR,
-        docsUrl: pom?.project?.url
-      }),
-      self: packageUrl,
-      schema: SCHEMA_VERSION,
-      name: artifactId,
-      description: pom?.project?.description || null,
-      groupId: pkgGroupId,
-      artifactId: artifactId,
-      version: latestVersion,
-      packaging: doc.p || "jar",
-      homepage: pom?.project?.url || null,
-      dependencies: dependencies.length > 0 ? dependencies : null,
-      developers: developers.length > 0 ? developers : null,
-      licenses: licenses.length > 0 ? licenses : null,
-      organization: organization,
-      scm: scm,
-      issueManagement: issueManagement
-    };
-    
-    // Set absolute URLs for docs fields
-    if (responseObj.docs && !responseObj.docs.startsWith('http')) {
-      responseObj.docs = `${baseUrl}${responseObj.docs}`;
+        description: pom?.project?.description || null,
+        groupId: pkgGroupId,
+        artifactId: artifactId,
+        version: latestVersion,
+        packaging: doc.p || "jar",
+        homepage: pom?.project?.url || null,
+        dependencies: dependencies.length > 0 ? dependencies : null,
+        developers: developers.length > 0 ? developers : null,
+        licenses: licenses.length > 0 ? licenses : null,
+        organization: organization,
+        scm: scm,
+        issueManagement: issueManagement,
+      };
+
+      // Set absolute URLs for docs fields
+      if (responseObj.docs && !responseObj.docs.startsWith("http")) {
+        responseObj.docs = `${baseUrl}${responseObj.docs}`;
+      }
+
+      res.json(responseObj);
+    } catch (error) {
+      console.error("Error in package detail route:", error);
+      res
+        .status(500)
+        .json(
+          createErrorResponse(
+            "internal-server-error",
+            "Internal Server Error",
+            500,
+            req.originalUrl,
+            "An unexpected error occurred while processing the request"
+          )
+        );
     }
-    
-    res.json(responseObj);
-  } catch (error) {
-    console.error("Error in package detail route:", error);
-    res.status(500).json(
-      createErrorResponse(
-        "internal-server-error",
-        "Internal Server Error",
-        500,
-        req.originalUrl,
-        "An unexpected error occurred while processing the request"
-      )
-    );
   }
-});
+);
+
+// Package versions collection endpoint
+app.get(
+  `/${GROUP_TYPE}/:groupId/${RESOURCE_TYPE}/:packageId/versions`,
+  async (req, res) => {
+    try {
+      const { groupId, packageId } = req.params;
+
+      // Check if the groupId is valid
+      if (groupId !== GROUP_ID) {
+        return res
+          .status(404)
+          .json(
+            createErrorResponse(
+              "not-found",
+              "Group not found",
+              404,
+              req.originalUrl,
+              `Group '${groupId}' was not found`
+            )
+          );
+      }
+
+      // Parse packageId (format should be groupId:artifactId)
+      const [pkgGroupId, artifactId] = packageId.split(":");
+
+      if (!pkgGroupId || !artifactId) {
+        return res
+          .status(400)
+          .json(
+            createErrorResponse(
+              "invalid-request",
+              "Invalid package ID",
+              400,
+              req.originalUrl,
+              "Package ID must be in the format 'groupId:artifactId'"
+            )
+          );
+      }
+
+      // Check if the package exists
+      const exists = await packageExists(pkgGroupId, artifactId);
+
+      if (!exists) {
+        return res
+          .status(404)
+          .json(
+            createErrorResponse(
+              "not-found",
+              "Package not found",
+              404,
+              req.originalUrl,
+              `Package '${packageId}' was not found in Maven Central`
+            )
+          );
+      }
+
+      // Fetch all versions for this package
+      const versions = await fetchMavenArtifactVersions(pkgGroupId, artifactId);
+
+      // Pagination parameters
+      const limit = req.query.limit
+        ? parseInt(req.query.limit, 10)
+        : DEFAULT_PAGE_LIMIT;
+      const offset = req.query.offset ? parseInt(req.query.offset, 10) : 0;
+
+      if (limit <= 0) {
+        return res
+          .status(400)
+          .json(
+            createErrorResponse(
+              "invalid-request",
+              "Invalid limit",
+              400,
+              req.originalUrl,
+              "Limit must be greater than 0"
+            )
+          );
+      }
+
+      // Sort versions
+      const sortedVersions = [...versions].sort((a, b) =>
+        compareMavenVersions(a, b)
+      );
+
+      // Apply sorting if requested
+      const sortParam = req.query.sort;
+      if (sortParam) {
+        const [sortField, sortOrder] = sortParam.split("=");
+        if (sortField === "versionid" && sortOrder === "desc") {
+          sortedVersions.reverse();
+        }
+      }
+
+      // Apply pagination
+      const paginatedVersions = sortedVersions.slice(offset, offset + limit);
+
+      // Determine the base URL
+      const baseUrl = BASE_URL || `${req.protocol}://${req.get("host")}`;
+      const resourcesUrl = `${baseUrl}/${GROUP_TYPE}/${groupId}/${RESOURCE_TYPE}`;
+      const packageUrl = `${resourcesUrl}/${encodeURIComponent(packageId)}`;
+
+      // Create version objects
+      const versionObjects = {};
+      for (const versionId of paginatedVersions) {
+        const normalizedVersionId = versionId.replace(/[^a-zA-Z0-9_.:-]/g, "_");
+
+        versionObjects[versionId] = {
+          ...xregistryCommonAttrs({
+            id: versionId,
+            name: versionId,
+            description: `Version ${versionId} of ${packageId}`,
+            parentUrl: `/${GROUP_TYPE}/${groupId}/${RESOURCE_TYPE}/${packageId}/versions`,
+            type: "version",
+          }),
+          versionid: normalizedVersionId,
+          self: `${packageUrl}/versions/${encodeURIComponent(versionId)}`,
+          groupId: pkgGroupId,
+          artifactId: artifactId,
+          version: versionId,
+        };
+      }
+
+      // Add pagination links
+      const links = generatePaginationLinks(
+        req,
+        versions.length,
+        offset,
+        limit
+      );
+      res.set("Link", links);
+
+      // Apply response headers
+      setXRegistryHeaders(res, { epoch: 1 });
+
+      res.json(versionObjects);
+    } catch (error) {
+      console.error("Error in package versions route:", error);
+      res
+        .status(500)
+        .json(
+          createErrorResponse(
+            "internal-server-error",
+            "Internal Server Error",
+            500,
+            req.originalUrl,
+            "An unexpected error occurred while processing the request"
+          )
+        );
+    }
+  }
+);
+
+// Specific version endpoint
+app.get(
+  `/${GROUP_TYPE}/:groupId/${RESOURCE_TYPE}/:packageId/versions/:versionId`,
+  async (req, res) => {
+    try {
+      const { groupId, packageId, versionId } = req.params;
+
+      // Check if the groupId is valid
+      if (groupId !== GROUP_ID) {
+        return res
+          .status(404)
+          .json(
+            createErrorResponse(
+              "not-found",
+              "Group not found",
+              404,
+              req.originalUrl,
+              `Group '${groupId}' was not found`
+            )
+          );
+      }
+
+      // Parse packageId (format should be groupId:artifactId)
+      const [pkgGroupId, artifactId] = packageId.split(":");
+
+      if (!pkgGroupId || !artifactId) {
+        return res
+          .status(400)
+          .json(
+            createErrorResponse(
+              "invalid-request",
+              "Invalid package ID",
+              400,
+              req.originalUrl,
+              "Package ID must be in the format 'groupId:artifactId'"
+            )
+          );
+      }
+
+      // Check if the package exists
+      const exists = await packageExists(pkgGroupId, artifactId);
+
+      if (!exists) {
+        return res
+          .status(404)
+          .json(
+            createErrorResponse(
+              "not-found",
+              "Package not found",
+              404,
+              req.originalUrl,
+              `Package '${packageId}' was not found in Maven Central`
+            )
+          );
+      }
+
+      // Fetch all versions and check if the requested version exists
+      const versions = await fetchMavenArtifactVersions(pkgGroupId, artifactId);
+      if (!versions.includes(versionId)) {
+        return res
+          .status(404)
+          .json(
+            createErrorResponse(
+              "not-found",
+              "Version not found",
+              404,
+              req.originalUrl,
+              `Version '${versionId}' of package '${packageId}' was not found`
+            )
+          );
+      }
+
+      // Get POM information for the specific version
+      const pomPath =
+        pkgGroupId.replace(/\./g, "/") +
+        "/" +
+        artifactId +
+        "/" +
+        versionId +
+        "/" +
+        artifactId +
+        "-" +
+        versionId +
+        ".pom";
+      const pomUrl = `${MAVEN_REPO_URL}/${pomPath}`;
+      const pom = await parsePom(pomUrl);
+
+      // Determine the base URL
+      const baseUrl = BASE_URL || `${req.protocol}://${req.get("host")}`;
+      const resourcesUrl = `${baseUrl}/${GROUP_TYPE}/${groupId}/${RESOURCE_TYPE}`;
+      const packageUrl = `${resourcesUrl}/${encodeURIComponent(packageId)}`;
+
+      // Extract dependencies from POM if available
+      let dependencies = [];
+      if (
+        pom &&
+        pom.project &&
+        pom.project.dependencies &&
+        pom.project.dependencies.dependency
+      ) {
+        const deps = Array.isArray(pom.project.dependencies.dependency)
+          ? pom.project.dependencies.dependency
+          : [pom.project.dependencies.dependency];
+
+        // Process dependencies using the existing helper function
+        dependencies = await processMavenDependencies(deps, packageId);
+      }
+
+      // Extract developers from POM if available
+      let developers = [];
+      if (
+        pom &&
+        pom.project &&
+        pom.project.developers &&
+        pom.project.developers.developer
+      ) {
+        const devs = Array.isArray(pom.project.developers.developer)
+          ? pom.project.developers.developer
+          : [pom.project.developers.developer];
+
+        developers = devs.map((dev) => ({
+          id: dev.id,
+          name: dev.name,
+          email: dev.email,
+          url: dev.url,
+        }));
+      }
+
+      // Extract licenses from POM if available
+      let licenses = [];
+      if (
+        pom &&
+        pom.project &&
+        pom.project.licenses &&
+        pom.project.licenses.license
+      ) {
+        const lics = Array.isArray(pom.project.licenses.license)
+          ? pom.project.licenses.license
+          : [pom.project.licenses.license];
+
+        licenses = lics.map((lic) => ({
+          name: lic.name,
+          url: lic.url,
+        }));
+      }
+
+      // Normalize version ID for xRegistry compliance
+      const normalizedVersionId = versionId.replace(/[^a-zA-Z0-9_.:-]/g, "_");
+
+      // Build the response
+      const versionResponse = {
+        ...xregistryCommonAttrs({
+          id: versionId,
+          name: versionId,
+          description:
+            pom?.project?.description || `Version ${versionId} of ${packageId}`,
+          parentUrl: `/${GROUP_TYPE}/${groupId}/${RESOURCE_TYPE}/${packageId}/versions`,
+          type: "version",
+        }),
+        versionid: normalizedVersionId,
+        self: `${packageUrl}/versions/${encodeURIComponent(versionId)}`,
+
+        // Version metadata from POM
+        name: pom?.project?.name || artifactId,
+        description: pom?.project?.description || "",
+        groupId: pkgGroupId,
+        artifactId: artifactId,
+        version: versionId,
+        packaging: pom?.project?.packaging || "jar",
+        homepage: pom?.project?.url || null,
+        dependencies: dependencies.length > 0 ? dependencies : null,
+        developers: developers.length > 0 ? developers : null,
+        licenses: licenses.length > 0 ? licenses : null,
+
+        // Parent information if available
+        parentGroupId: pom?.project?.parent?.groupId || null,
+        parentArtifactId: pom?.project?.parent?.artifactId || null,
+        parentVersion: pom?.project?.parent?.version || null,
+      };
+
+      // Apply flag handlers
+      let processedResponse = handleDocFlag(req, versionResponse);
+      processedResponse = handleEpochFlag(req, processedResponse);
+      processedResponse = handleNoReadonlyFlag(req, processedResponse);
+      processedResponse = handleSchemaFlag(req, processedResponse, "version");
+
+      // Apply response headers
+      setXRegistryHeaders(res, processedResponse);
+
+      res.json(processedResponse);
+    } catch (error) {
+      console.error("Error in specific version route:", error);
+      res
+        .status(500)
+        .json(
+          createErrorResponse(
+            "internal-server-error",
+            "Internal Server Error",
+            500,
+            req.originalUrl,
+            "An unexpected error occurred while processing the request"
+          )
+        );
+    }
+  }
+);
+
+// Package meta endpoint
+app.get(
+  `/${GROUP_TYPE}/:groupId/${RESOURCE_TYPE}/:packageId/meta`,
+  async (req, res) => {
+    try {
+      const { groupId, packageId } = req.params;
+
+      // Check if the groupId is valid
+      if (groupId !== GROUP_ID) {
+        return res
+          .status(404)
+          .json(
+            createErrorResponse(
+              "not-found",
+              "Group not found",
+              404,
+              req.originalUrl,
+              `Group '${groupId}' was not found`
+            )
+          );
+      }
+
+      // Parse packageId (format should be groupId:artifactId)
+      const [pkgGroupId, artifactId] = packageId.split(":");
+
+      if (!pkgGroupId || !artifactId) {
+        return res
+          .status(400)
+          .json(
+            createErrorResponse(
+              "invalid-request",
+              "Invalid package ID",
+              400,
+              req.originalUrl,
+              "Package ID must be in the format 'groupId:artifactId'"
+            )
+          );
+      }
+
+      // Check if the package exists
+      const exists = await packageExists(pkgGroupId, artifactId);
+
+      if (!exists) {
+        return res
+          .status(404)
+          .json(
+            createErrorResponse(
+              "not-found",
+              "Package not found",
+              404,
+              req.originalUrl,
+              `Package '${packageId}' was not found in Maven Central`
+            )
+          );
+      }
+
+      // Fetch all versions for this package to get version statistics
+      const versions = await fetchMavenArtifactVersions(pkgGroupId, artifactId);
+
+      // Query Maven Central for package details to get latest version
+      const searchUrl = `${MAVEN_API_BASE_URL}?q=g:"${encodeURIComponent(
+        pkgGroupId
+      )}"+AND+a:"${encodeURIComponent(artifactId)}"&core=gav&rows=1&wt=json`;
+      const searchResults = await cachedGet(searchUrl);
+      const doc = searchResults.response.docs[0];
+      const latestVersion = doc.latestVersion || doc.v;
+
+      // Determine the base URL
+      const baseUrl = BASE_URL || `${req.protocol}://${req.get("host")}`;
+      const resourcesUrl = `${baseUrl}/${GROUP_TYPE}/${groupId}/${RESOURCE_TYPE}`;
+      const packageUrl = `${resourcesUrl}/${encodeURIComponent(packageId)}`;
+
+      // Normalize package ID for xRegistry compliance
+      const normalizedPackageId = packageId.replace(/[^a-zA-Z0-9_.:-]/g, "_");
+
+      const metaResponse = {
+        [`${RESOURCE_TYPE_SINGULAR}id`]: normalizedPackageId,
+        self: `${packageUrl}/meta`,
+        xid: `/${GROUP_TYPE}/${groupId}/${RESOURCE_TYPE}/${packageId}/meta`,
+        epoch: 1,
+        createdat: new Date().toISOString(),
+        modifiedat: new Date().toISOString(),
+        readonly: true, // Maven wrapper is read-only
+        compatibility: "none",
+
+        // Version-related metadata
+        defaultversionid: latestVersion,
+        defaultversionurl: `${packageUrl}/versions/${encodeURIComponent(
+          latestVersion
+        )}`,
+        defaultversionsticky: true,
+
+        // Package statistics
+        versionscount: versions.length,
+        versionsurl: `${packageUrl}/versions`,
+      };
+
+      // Apply flag handlers
+      let processedResponse = handleEpochFlag(req, metaResponse);
+      processedResponse = handleNoReadonlyFlag(req, processedResponse);
+      processedResponse = handleSchemaFlag(req, processedResponse, "meta");
+
+      // Apply response headers
+      setXRegistryHeaders(res, processedResponse);
+
+      res.json(processedResponse);
+    } catch (error) {
+      console.error("Error in package meta route:", error);
+      res
+        .status(500)
+        .json(
+          createErrorResponse(
+            "internal-server-error",
+            "Internal Server Error",
+            500,
+            req.originalUrl,
+            "An unexpected error occurred while processing the request"
+          )
+        );
+    }
+  }
+);
 
 // Package documentation redirect route
-app.get(`/${GROUP_TYPE}/:groupId/${RESOURCE_TYPE}/:packageId/doc`, async (req, res) => {
-  try {
-    const { groupId, packageId } = req.params;
-    
-    // Parse packageId (format should be groupId:artifactId)
-    const [pkgGroupId, artifactId] = packageId.split(':');
-    
-    if (!pkgGroupId || !artifactId) {
-      return res.status(400).json(
-        createErrorResponse(
-          "invalid-request",
-          "Invalid package ID",
-          400,
-          req.originalUrl,
-          "Package ID must be in the format 'groupId:artifactId'"
-        )
-      );
+app.get(
+  `/${GROUP_TYPE}/:groupId/${RESOURCE_TYPE}/:packageId/doc`,
+  async (req, res) => {
+    try {
+      const { groupId, packageId } = req.params;
+
+      // Parse packageId (format should be groupId:artifactId)
+      const [pkgGroupId, artifactId] = packageId.split(":");
+
+      if (!pkgGroupId || !artifactId) {
+        return res
+          .status(400)
+          .json(
+            createErrorResponse(
+              "invalid-request",
+              "Invalid package ID",
+              400,
+              req.originalUrl,
+              "Package ID must be in the format 'groupId:artifactId'"
+            )
+          );
+      }
+
+      // Redirect to Maven Central search page for this package
+      const redirectUrl = `https://search.maven.org/artifact/${encodeURIComponent(
+        pkgGroupId
+      )}/${encodeURIComponent(artifactId)}`;
+      res.redirect(302, redirectUrl);
+    } catch (error) {
+      console.error("Error in package documentation route:", error);
+      res
+        .status(500)
+        .json(
+          createErrorResponse(
+            "internal-server-error",
+            "Internal Server Error",
+            500,
+            req.originalUrl,
+            "An unexpected error occurred while processing the request"
+          )
+        );
     }
-    
-    // Redirect to Maven Central search page for this package
-    const redirectUrl = `https://search.maven.org/artifact/${encodeURIComponent(pkgGroupId)}/${encodeURIComponent(artifactId)}`;
-    res.redirect(302, redirectUrl);
-  } catch (error) {
-    console.error("Error in package documentation route:", error);
-    res.status(500).json(
-      createErrorResponse(
-        "internal-server-error",
-        "Internal Server Error",
-        500,
-        req.originalUrl,
-        "An unexpected error occurred while processing the request"
-      )
-    );
   }
-});
+);
+
+// Performance monitoring endpoint (Phase III)
+app.get(
+  "/performance/stats",
+  asyncHandler(async (req, res) => {
+    const cacheStats = filterOptimizer.getCacheStats();
+    const performanceStats = {
+      timestamp: new Date().toISOString(),
+      packageCache: {
+        coordinatesSize: mavenPackageCoordinatesCache.length,
+        lastIndexRefresh: new Date(lastIndexRefreshTime).toISOString(),
+        searchCacheSize: mavenSearchCache.length,
+        lastSearchUpdate: lastMavenCacheUpdate
+          ? new Date(lastMavenCacheUpdate).toISOString()
+          : null,
+      },
+      filterOptimizer: cacheStats,
+      memory: process.memoryUsage(),
+      uptime: process.uptime(),
+    };
+
+    res.json(performanceStats);
+  })
+);
 
 // Catch-all route for 404 errors
 app.use((req, res) => {
-  res.status(404).json(
-    createErrorResponse(
-      "not-found",
-      "Resource not found",
-      404,
-      req.originalUrl,
-      "The requested resource was not found"
-    )
-  );
+  res
+    .status(404)
+    .json(
+      createErrorResponse(
+        "not-found",
+        "Resource not found",
+        404,
+        req.originalUrl,
+        "The requested resource was not found"
+      )
+    );
 });
 
 // Start the server
@@ -910,17 +1649,24 @@ process.on('SIGINT', () => {
 */
 
 // Generate RFC7807 compliant error responses
-function createErrorResponse(type, title, status, instance, detail = null, data = null) {
+function createErrorResponse(
+  type,
+  title,
+  status,
+  instance,
+  detail = null,
+  data = null
+) {
   const response = {
     type: `https://github.com/xregistry/spec/blob/main/core/spec.md#${type}`,
     title: title,
     status: status,
-    instance: instance
+    instance: instance,
   };
-  
+
   if (detail) response.detail = detail;
   if (data) response.data = data;
-  
+
   return response;
 }
 
@@ -929,7 +1675,7 @@ async function cachedGet(url, headers = {}) {
   const cacheFile = path.join(cacheDir, Buffer.from(url).toString("base64"));
   let etag = null;
   let cachedData = null;
-  
+
   if (fs.existsSync(cacheFile)) {
     const {
       etag: cachedEtag,
@@ -940,12 +1686,12 @@ async function cachedGet(url, headers = {}) {
     cachedData = data;
     // Cache expiration could be implemented here
   }
-  
+
   const axiosConfig = { url, method: "get", headers: { ...headers } };
   if (etag) {
     axiosConfig.headers["If-None-Match"] = etag;
   }
-  
+
   try {
     const response = await axios(axiosConfig);
     if (response.status === 200) {
@@ -967,7 +1713,7 @@ async function cachedGet(url, headers = {}) {
     }
     throw err;
   }
-  
+
   // Fallback to cached data if available
   if (cachedData) return cachedData;
   throw new Error("Failed to fetch and no cache available");
@@ -975,41 +1721,48 @@ async function cachedGet(url, headers = {}) {
 
 // Helper function to check if a package exists in Maven Central
 async function packageExists(groupId, artifactId, req = null) {
-  const { v4: uuidv4 } = require('uuid');
+  const { v4: uuidv4 } = require("uuid");
   const checkId = uuidv4().substring(0, 8);
-  
+
   try {
-    logger.debug("Checking package existence in Maven Central", { 
+    logger.debug("Checking package existence in Maven Central", {
       checkId,
       groupId,
       artifactId,
       traceId: req?.traceId,
-      correlationId: req?.correlationId
+      correlationId: req?.correlationId,
     });
-    
-    const searchUrl = `${MAVEN_API_BASE_URL}?q=g:"${encodeURIComponent(groupId)}"+AND+a:"${encodeURIComponent(artifactId)}"&core=gav&rows=1&wt=json`;
+
+    const searchUrl = `${MAVEN_API_BASE_URL}?q=g:"${encodeURIComponent(
+      groupId
+    )}"+AND+a:"${encodeURIComponent(artifactId)}"&core=gav&rows=1&wt=json`;
     const response = await cachedGet(searchUrl);
     const exists = response.response.numFound > 0;
-    
-    logger.debug(exists ? "Package found in Maven Central" : "Package not found in Maven Central", { 
-      checkId,
-      groupId,
-      artifactId,
-      exists,
-      numFound: response.response.numFound,
-      traceId: req?.traceId,
-      correlationId: req?.correlationId
-    });
-    
+
+    logger.debug(
+      exists
+        ? "Package found in Maven Central"
+        : "Package not found in Maven Central",
+      {
+        checkId,
+        groupId,
+        artifactId,
+        exists,
+        numFound: response.response.numFound,
+        traceId: req?.traceId,
+        correlationId: req?.correlationId,
+      }
+    );
+
     return exists;
   } catch (error) {
-    logger.debug("Error checking package existence", { 
+    logger.debug("Error checking package existence", {
       checkId,
       groupId,
       artifactId,
       error: error.message,
       traceId: req?.traceId,
-      correlationId: req?.correlationId
+      correlationId: req?.correlationId,
     });
     return false;
   }
@@ -1032,65 +1785,75 @@ async function parsePom(pomUrl) {
 function normalizePath(path) {
   if (!path) return path;
   // Replace multiple consecutive slashes with a single slash
-  return path.replace(/\/+/g, '/');
+  return path.replace(/\/+/g, "/");
 }
 
 // Utility to generate common xRegistry attributes
-function xregistryCommonAttrs({ id, name, description, parentUrl, type, labels = {}, docsUrl = null }) {
+function xregistryCommonAttrs({
+  id,
+  name,
+  description,
+  parentUrl,
+  type,
+  labels = {},
+  docsUrl = null,
+}) {
   const now = new Date().toISOString();
-  
+
   // Validate and format ID according to xRegistry spec
-  const safeId = id.replace(/[^a-zA-Z0-9_.:-]/g, '_');
-  
+  const safeId = id.replace(/[^a-zA-Z0-9_.:-]/g, "_");
+
   // Generate XID based on type - Always use path format
   let xid;
-  
+
   if (type === "registry") {
     // For registry, use path to root
-    xid = '/';
+    xid = "/";
   } else if (type === GROUP_TYPE_SINGULAR) {
     // For groups, use /groupType/groupId
     xid = normalizePath(`/${GROUP_TYPE}/${safeId}`);
   } else if (type === RESOURCE_TYPE_SINGULAR) {
     // For resources, extract group from parentUrl and use /groupType/groupId/resourceType/resourceId
-    const parts = parentUrl.split('/');
+    const parts = parentUrl.split("/");
     const groupId = parts[2];
     xid = normalizePath(`/${GROUP_TYPE}/${groupId}/${RESOURCE_TYPE}/${safeId}`);
   } else if (type === "version") {
     // For versions, use /groupType/group/resourceType/resource/versions/versionId
-    const parts = parentUrl.split('/');
+    const parts = parentUrl.split("/");
     const groupType = parts[1];
     const group = parts[2];
     const resourceType = parts[3];
     const resource = parts[4];
-    xid = normalizePath(`/${groupType}/${group}/${resourceType}/${resource}/versions/${safeId}`);
+    xid = normalizePath(
+      `/${groupType}/${group}/${resourceType}/${resource}/versions/${safeId}`
+    );
   } else {
     // Fallback for other types - should not be used in this implementation
     xid = normalizePath(`/${type}/${safeId}`);
   }
-  
+
   // The docs field must be a single absolute URL
   // If docsUrl is provided, use it for documentation link
   // Otherwise, for packages, use the new doc endpoint
   let docUrl = null;
-  
+
   // First check if an external docs URL was provided
   if (docsUrl) {
     docUrl = docsUrl;
-  } 
+  }
   // For packages, use the doc endpoint (needs to be an absolute URL)
   else if (type === RESOURCE_TYPE_SINGULAR) {
     // Use the new doc endpoint for packages, creating an absolute URL
-    const parts = parentUrl.split('/');
+    const parts = parentUrl.split("/");
     const groupId = parts[2];
     // This will be made absolute by the calling function using req.protocol and req.get('host')
     docUrl = `/${GROUP_TYPE}/${groupId}/${RESOURCE_TYPE}/${safeId}/doc`;
-  } 
+  }
   // Default behavior for other types
   else if (parentUrl) {
     docUrl = `${parentUrl}/docs/${safeId}`;
   }
-  
+
   return {
     xid: xid,
     name: name || id,
@@ -1107,61 +1870,70 @@ function xregistryCommonAttrs({ id, name, description, parentUrl, type, labels =
 // Utility function to generate pagination Link headers
 function generatePaginationLinks(req, totalCount, offset, limit) {
   const links = [];
-  const baseUrl = BASE_URL || `${req.protocol}://${req.get('host')}${req.path}`;
-  
+  const baseUrl = BASE_URL || `${req.protocol}://${req.get("host")}${req.path}`;
+
   // Add base query parameters from original request (except pagination ones)
-  const queryParams = {...req.query};
+  const queryParams = { ...req.query };
   delete queryParams.limit;
   delete queryParams.offset;
-  
+
   // Build the base query string
-  let queryString = Object.keys(queryParams).length > 0 ? 
-    '?' + Object.entries(queryParams).map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`).join('&') : 
-    '';
-  
+  let queryString =
+    Object.keys(queryParams).length > 0
+      ? "?" +
+        Object.entries(queryParams)
+          .map(
+            ([key, value]) =>
+              `${encodeURIComponent(key)}=${encodeURIComponent(value)}`
+          )
+          .join("&")
+      : "";
+
   // If we have any params already, use & to add more, otherwise start with ?
-  const paramPrefix = queryString ? '&' : '?';
-  
+  const paramPrefix = queryString ? "&" : "?";
+
   // Calculate totalPages (ceiling division)
   const totalPages = Math.ceil(totalCount / limit);
   const currentPage = Math.floor(offset / limit) + 1;
-  
+
   // First link
   const firstUrl = `${baseUrl}${queryString}${paramPrefix}limit=${limit}&offset=0`;
   links.push(`<${firstUrl}>; rel="first"`);
-  
+
   // Previous link (if not on the first page)
   if (offset > 0) {
     const prevOffset = Math.max(0, offset - limit);
     const prevUrl = `${baseUrl}${queryString}${paramPrefix}limit=${limit}&offset=${prevOffset}`;
     links.push(`<${prevUrl}>; rel="prev"`);
   }
-  
+
   // Next link (if not on the last page)
   if (offset + limit < totalCount) {
-    const nextUrl = `${baseUrl}${queryString}${paramPrefix}limit=${limit}&offset=${offset + limit}`;
+    const nextUrl = `${baseUrl}${queryString}${paramPrefix}limit=${limit}&offset=${
+      offset + limit
+    }`;
     links.push(`<${nextUrl}>; rel="next"`);
   }
-  
+
   // Last link
   const lastOffset = Math.max(0, (totalPages - 1) * limit);
   const lastUrl = `${baseUrl}${queryString}${paramPrefix}limit=${limit}&offset=${lastOffset}`;
   links.push(`<${lastUrl}>; rel="last"`);
-  
+
   // Add count and total-count as per RFC5988
   links.push(`count="${totalCount}"`);
   links.push(`per-page="${limit}"`);
-  
-  return links.join(', ');
+
+  return links.join(", ");
 }
 
 // Utility function to handle the collections flag
 function handleCollectionsFlag(req, data) {
-  if (req.query.collections === 'false') {
+  if (req.query.collections === "false") {
     // Remove collection URLs from the response when collections=false
-    const result = {...data};
-    Object.keys(result).forEach(key => {
-      if (key.endsWith('url') && !key.startsWith('self')) {
+    const result = { ...data };
+    Object.keys(result).forEach((key) => {
+      if (key.endsWith("url") && !key.startsWith("self")) {
         delete result[key];
       }
     });
@@ -1172,9 +1944,9 @@ function handleCollectionsFlag(req, data) {
 
 // Utility function to handle doc flag
 function handleDocFlag(req, data) {
-  if (req.query.doc === 'false') {
+  if (req.query.doc === "false") {
     // Remove documentation links
-    const result = {...data};
+    const result = { ...data };
     if (result.docs) {
       delete result.docs;
     }
@@ -1187,25 +1959,28 @@ function handleDocFlag(req, data) {
 
 // Utility function to handle epoch flag
 function handleEpochFlag(req, data) {
-  if (req.query.noepoch === 'true') {
+  if (req.query.noepoch === "true") {
     // Remove epoch from response when noepoch=true
-    const result = {...data};
-    if ('epoch' in result) {
+    const result = { ...data };
+    if ("epoch" in result) {
       delete result.epoch;
     }
     return result;
   }
-  
+
   // Handle epoch query parameter for specific epoch request
   if (req.query.epoch && !isNaN(parseInt(req.query.epoch, 10))) {
     const requestedEpoch = parseInt(req.query.epoch, 10);
     if (data.epoch !== requestedEpoch) {
       // In a real implementation, this would fetch the correct epoch version
       // For now, we just add a warning header
-      req.res.set('Warning', `299 - "Requested epoch ${requestedEpoch} not available, returning current epoch ${data.epoch}"`);
+      req.res.set(
+        "Warning",
+        `299 - "Requested epoch ${requestedEpoch} not available, returning current epoch ${data.epoch}"`
+      );
     }
   }
-  
+
   return data;
 }
 
@@ -1214,7 +1989,10 @@ function handleSpecVersionFlag(req, data) {
   if (req.query.specversion) {
     if (req.query.specversion !== SPEC_VERSION) {
       // If requested version is not supported, return a warning
-      req.res.set('Warning', `299 - "Requested spec version ${req.query.specversion} not supported, using ${SPEC_VERSION}"`);
+      req.res.set(
+        "Warning",
+        `299 - "Requested spec version ${req.query.specversion} not supported, using ${SPEC_VERSION}"`
+      );
     }
   }
   return data;
@@ -1222,7 +2000,7 @@ function handleSpecVersionFlag(req, data) {
 
 // Utility function to handle noreadonly flag
 function handleNoReadonlyFlag(req, data) {
-  if (req.query.noreadonly === 'true') {
+  if (req.query.noreadonly === "true") {
     // In a real implementation with read-only attributes, this would filter them
     // Since our implementation doesn't specifically mark attributes as read-only,
     // this is just a placeholder
@@ -1234,25 +2012,28 @@ function handleNoReadonlyFlag(req, data) {
 // Utility function to handle schema flag
 function handleSchemaFlag(req, data, entityType) {
   // If schema=true is specified, validate the data and add validation info
-  if (req.query.schema === 'true') {
+  if (req.query.schema === "true") {
     const validationErrors = validateAgainstSchema(data, entityType);
     if (validationErrors.length > 0) {
       // If there are validation errors, add a warning header
-      const errorSummary = validationErrors.join('; ');   
-      req.res.set('Warning', `299 - "Schema validation errors: ${errorSummary}"`);
+      const errorSummary = validationErrors.join("; ");
+      req.res.set(
+        "Warning",
+        `299 - "Schema validation errors: ${errorSummary}"`
+      );
     }
-    
+
     // Add schema information to response
     return {
       ...data,
       _schema: {
         valid: validationErrors.length === 0,
         version: SCHEMA_VERSION,
-        errors: validationErrors.length > 0 ? validationErrors : undefined
-      }
+        errors: validationErrors.length > 0 ? validationErrors : undefined,
+      },
     };
   }
-  
+
   return data;
 }
 
@@ -1260,18 +2041,26 @@ function handleSchemaFlag(req, data, entityType) {
 function validateAgainstSchema(data, entityType) {
   // This is a simplified schema validation
   // In a production implementation, use a proper JSON Schema validator
-  
+
   const errors = [];
-  
+
   // Required fields based on entity type
   const requiredFields = {
-    registry: ['specversion', 'registryid', 'xid', 'self', 'epoch', 'createdat', 'modifiedat'],
-    group: ['xid', 'self', 'epoch', 'createdat', 'modifiedat', 'name'],
-    resource: ['xid', 'self', 'epoch', 'createdat', 'modifiedat', 'name'],
-    version: ['xid', 'self', 'epoch', 'createdat', 'modifiedat', 'versionid'],
-    meta: ['xid', 'self', 'epoch', 'createdat', 'modifiedat', 'readonly']
+    registry: [
+      "specversion",
+      "registryid",
+      "xid",
+      "self",
+      "epoch",
+      "createdat",
+      "modifiedat",
+    ],
+    group: ["xid", "self", "epoch", "createdat", "modifiedat", "name"],
+    resource: ["xid", "self", "epoch", "createdat", "modifiedat", "name"],
+    version: ["xid", "self", "epoch", "createdat", "modifiedat", "versionid"],
+    meta: ["xid", "self", "epoch", "createdat", "modifiedat", "readonly"],
   };
-  
+
   // Check required fields
   if (requiredFields[entityType]) {
     for (const field of requiredFields[entityType]) {
@@ -1280,28 +2069,34 @@ function validateAgainstSchema(data, entityType) {
       }
     }
   }
-  
+
   // Validate specversion if present
-  if ('specversion' in data && data.specversion !== SPEC_VERSION) {
-    errors.push(`Invalid specversion: ${data.specversion}, expected: ${SPEC_VERSION}`);
+  if ("specversion" in data && data.specversion !== SPEC_VERSION) {
+    errors.push(
+      `Invalid specversion: ${data.specversion}, expected: ${SPEC_VERSION}`
+    );
   }
-  
+
   // Validate XID format if present
-  if ('xid' in data) {
+  if ("xid" in data) {
     // XID validation per spec: must start with / and follow the pattern /[GROUPS/gID[/RESOURCES/rID[/meta | /versions/vID]]]
-    
+
     // Root path for registry
-    if (data.xid === '/') {
+    if (data.xid === "/") {
       // Valid root path for registry
     }
     // Pattern for all other valid paths
-    else if (!/^\/([a-zA-Z0-9_.:-]+\/[a-zA-Z0-9_.:-]+)(\/[a-zA-Z0-9_.:-]+\/[a-zA-Z0-9_.:-]+)?(\/versions\/[a-zA-Z0-9_.:-]+)?$/.test(data.xid)) {
+    else if (
+      !/^\/([a-zA-Z0-9_.:-]+\/[a-zA-Z0-9_.:-]+)(\/[a-zA-Z0-9_.:-]+\/[a-zA-Z0-9_.:-]+)?(\/versions\/[a-zA-Z0-9_.:-]+)?$/.test(
+        data.xid
+      )
+    ) {
       errors.push(`Invalid xid format: ${data.xid}`);
     }
   }
-  
+
   // Validate timestamps
-  for (const field of ['createdat', 'modifiedat']) {
+  for (const field of ["createdat", "modifiedat"]) {
     if (field in data) {
       try {
         new Date(data[field]);
@@ -1310,46 +2105,55 @@ function validateAgainstSchema(data, entityType) {
       }
     }
   }
-  
+
   return errors;
 }
 
 // Utility function to set all appropriate response headers
 function setXRegistryHeaders(res, data) {
   // Set proper Content-Type with schema
-  res.set('Content-Type', `application/json; charset=utf-8; schema="${SCHEMA_VERSION}"`);
-  
+  res.set(
+    "Content-Type",
+    `application/json; charset=utf-8; schema="${SCHEMA_VERSION}"`
+  );
+
   // Set X-XRegistry-Epoch header if epoch exists in data
   if (data.epoch) {
-    res.set('X-XRegistry-Epoch', data.epoch.toString());
+    res.set("X-XRegistry-Epoch", data.epoch.toString());
   }
-  
+
   // Set X-XRegistry-SpecVersion header
-  res.set('X-XRegistry-SpecVersion', SPEC_VERSION);
-  
+  res.set("X-XRegistry-SpecVersion", SPEC_VERSION);
+
   // Generate and set ETag
   const etag = generateETag(data);
-  res.set('ETag', etag);
-  
+  res.set("ETag", etag);
+
   // Set Cache-Control
-  res.set('Cache-Control', 'no-cache');
-  
+  res.set("Cache-Control", "no-cache");
+
   // Add standard CORS headers
-  res.set('Access-Control-Allow-Origin', '*');
-  res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.set('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  res.set('Access-Control-Expose-Headers', 'Link, X-XRegistry-Epoch, X-XRegistry-SpecVersion');
-  
+  res.set("Access-Control-Allow-Origin", "*");
+  res.set("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.set(
+    "Access-Control-Allow-Headers",
+    "Origin, X-Requested-With, Content-Type, Accept, Authorization"
+  );
+  res.set(
+    "Access-Control-Expose-Headers",
+    "Link, X-XRegistry-Epoch, X-XRegistry-SpecVersion"
+  );
+
   // Set Last-Modified if modifiedat exists in data
   if (data.modifiedat) {
     try {
       const modifiedDate = new Date(data.modifiedat);
-      res.set('Last-Modified', modifiedDate.toUTCString());
+      res.set("Last-Modified", modifiedDate.toUTCString());
     } catch (e) {
       // Invalid date format, skip setting Last-Modified
     }
   }
-  
+
   return res;
 }
 
@@ -1361,7 +2165,7 @@ function generateETag(data) {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
+    hash = (hash << 5) - hash + char;
     hash = hash & hash; // Convert to 32bit integer
   }
   return `"${Math.abs(hash).toString(16)}"`;
@@ -1375,11 +2179,17 @@ function compareMavenVersions(v1, v2) {
 
   // Common qualifiers and their rough order (lower is "lesser" or "earlier")
   const qualifiersOrder = {
-    'alpha': 1, 'beta': 2, 'milestone': 3, 'm': 3, 
-    'rc': 4, 'cr': 4, 
-    'snapshot': 5, // SNAPSHOTs are dev versions
-    'ga': 6, 'final': 6, 'release': 6, // Generally, no qualifier implies release
-    'sp': 7
+    alpha: 1,
+    beta: 2,
+    milestone: 3,
+    m: 3,
+    rc: 4,
+    cr: 4,
+    snapshot: 5, // SNAPSHOTs are dev versions
+    ga: 6,
+    final: 6,
+    release: 6, // Generally, no qualifier implies release
+    sp: 7,
   };
 
   const parts1 = v1.toLowerCase().split(/([.-])/);
@@ -1388,8 +2198,8 @@ function compareMavenVersions(v1, v2) {
   const len = Math.max(parts1.length, parts2.length);
 
   for (let i = 0; i < len; i++) {
-    const p1 = parts1[i] || '';
-    const p2 = parts2[i] || '';
+    const p1 = parts1[i] || "";
+    const p2 = parts2[i] || "";
 
     if (p1 === p2) continue;
 
@@ -1405,15 +2215,18 @@ function compareMavenVersions(v1, v2) {
       return 1; // Number parts are considered greater than string parts like qualifiers if at same level
     } else if (!isNum1 && isNum2) {
       return -1;
-    } else { // Both are strings (qualifiers or separators)
+    } else {
+      // Both are strings (qualifiers or separators)
       // If they are separators, and one is '.' and other is '-', it's complex. Assume '.' is primary.
       // If one is a known qualifier and the other isn't, the non-qualifier might be like a "final" part.
-      const q1Order = qualifiersOrder[p1] || (isNum1 ? 0 : qualifiersOrder['ga']); // Default non-numeric to GA if not known
-      const q2Order = qualifiersOrder[p2] || (isNum2 ? 0 : qualifiersOrder['ga']);
-      
+      const q1Order =
+        qualifiersOrder[p1] || (isNum1 ? 0 : qualifiersOrder["ga"]); // Default non-numeric to GA if not known
+      const q2Order =
+        qualifiersOrder[p2] || (isNum2 ? 0 : qualifiersOrder["ga"]);
+
       if (q1Order > q2Order) return 1;
       if (q1Order < q2Order) return -1;
-      
+
       // If orders are same or both unknown, fallback to string comparison
       if (p1 > p2) return 1;
       if (p1 < p2) return -1;
@@ -1424,23 +2237,33 @@ function compareMavenVersions(v1, v2) {
 
 // Helper function to fetch all available versions for a Maven artifact
 async function fetchMavenArtifactVersions(groupId, artifactId) {
-  const metadataPath = `${groupId.replace(/\./g, '/')}/${artifactId}/maven-metadata.xml`;
+  const metadataPath = `${groupId.replace(
+    /\./g,
+    "/"
+  )}/${artifactId}/maven-metadata.xml`;
   const metadataUrl = `${MAVEN_REPO_URL}/${metadataPath}`;
   if (!QUIET_MODE) {
-    console.log(`[fetchMavenArtifactVersions] Fetching metadata: ${metadataUrl}`);
+    console.log(
+      `[fetchMavenArtifactVersions] Fetching metadata: ${metadataUrl}`
+    );
   }
   try {
     const xmlData = await cachedGet(metadataUrl);
     const parser = new xml2js.Parser({ explicitArray: false });
     const result = await parser.parseStringPromise(xmlData);
-    
-    if (result.metadata && result.metadata.versioning && result.metadata.versioning.versions && result.metadata.versioning.versions.version) {
+
+    if (
+      result.metadata &&
+      result.metadata.versioning &&
+      result.metadata.versioning.versions &&
+      result.metadata.versioning.versions.version
+    ) {
       let versions = result.metadata.versioning.versions.version;
       if (!Array.isArray(versions)) {
         versions = [versions];
       }
       // Filter out versions that might be malformed or just placeholders if any
-      versions = versions.filter(v => typeof v === 'string' && v.length > 0);
+      versions = versions.filter((v) => typeof v === "string" && v.length > 0);
       // Sort versions: latest first
       versions.sort((a, b) => compareMavenVersions(b, a));
       return versions;
@@ -1448,14 +2271,19 @@ async function fetchMavenArtifactVersions(groupId, artifactId) {
     return [];
   } catch (error) {
     if (!QUIET_MODE) {
-      console.warn(`[fetchMavenArtifactVersions] Failed to fetch or parse maven-metadata.xml for ${groupId}:${artifactId} from ${metadataUrl}: ${error.message}`);
+      console.warn(
+        `[fetchMavenArtifactVersions] Failed to fetch or parse maven-metadata.xml for ${groupId}:${artifactId} from ${metadataUrl}: ${error.message}`
+      );
     }
     return [];
   }
 }
 
 // Helper function to process Maven dependencies and resolve versions
-async function processMavenDependencies(pomDependencies, parentPackageXRegistryId) {
+async function processMavenDependencies(
+  pomDependencies,
+  parentPackageXRegistryId
+) {
   if (!pomDependencies || !Array.isArray(pomDependencies)) {
     return [];
   }
@@ -1464,7 +2292,10 @@ async function processMavenDependencies(pomDependencies, parentPackageXRegistryI
   for (const dep of pomDependencies) {
     if (!dep.groupId || !dep.artifactId || !dep.version) {
       if (!QUIET_MODE) {
-        console.warn(`[processMavenDependencies] Skipping incomplete dependency for ${parentPackageXRegistryId}:`, dep);
+        console.warn(
+          `[processMavenDependencies] Skipping incomplete dependency for ${parentPackageXRegistryId}:`,
+          dep
+        );
       }
       continue;
     }
@@ -1478,8 +2309,9 @@ async function processMavenDependencies(pomDependencies, parentPackageXRegistryI
       groupId: dep.groupId,
       artifactId: dep.artifactId,
       version: dep.version, // This is the range/specified version
-      scope: dep.scope || 'compile',
-      optional: dep.optional === 'true' || dep.optional === true ? true : undefined
+      scope: dep.scope || "compile",
+      optional:
+        dep.optional === "true" || dep.optional === true ? true : undefined,
     };
 
     let resolvedVersion = null;
@@ -1488,69 +2320,108 @@ async function processMavenDependencies(pomDependencies, parentPackageXRegistryI
     // 1. Check for exact version (e.g., "1.2.3" or "[1.2.3]")
     // Maven exact versions are typically just the string, or sometimes like [1.2.3]
     const exactVersionMatch = dep.version.match(/^\s*\[?([\w.-]+)\]?\s*$/);
-    if (exactVersionMatch && exactVersionMatch[1] && !dep.version.includes(',')) { // Avoid matching ranges like [1.0,)
+    if (
+      exactVersionMatch &&
+      exactVersionMatch[1] &&
+      !dep.version.includes(",")
+    ) {
+      // Avoid matching ranges like [1.0,)
       const potentialExactVersion = exactVersionMatch[1];
       versionResolutionAttempted = true;
       if (!QUIET_MODE) {
-        console.log(`[processMavenDependencies] Attempting to confirm exact version ${potentialExactVersion} for ${depXRegistryId} (parent: ${parentPackageXRegistryId})`);
+        console.log(
+          `[processMavenDependencies] Attempting to confirm exact version ${potentialExactVersion} for ${depXRegistryId} (parent: ${parentPackageXRegistryId})`
+        );
       }
       try {
-        const availableVersions = await fetchMavenArtifactVersions(dep.groupId, dep.artifactId);
+        const availableVersions = await fetchMavenArtifactVersions(
+          dep.groupId,
+          dep.artifactId
+        );
         if (availableVersions.includes(potentialExactVersion)) {
           resolvedVersion = potentialExactVersion;
-          depObj.package = `${depPackageBasePath}/versions/${encodeURIComponent(resolvedVersion)}`;
+          depObj.package = `${depPackageBasePath}/versions/${encodeURIComponent(
+            resolvedVersion
+          )}`;
           depObj.resolved_version = resolvedVersion;
           if (!QUIET_MODE) {
-            console.log(`[processMavenDependencies] Confirmed exact version ${resolvedVersion} for ${depXRegistryId}`);
+            console.log(
+              `[processMavenDependencies] Confirmed exact version ${resolvedVersion} for ${depXRegistryId}`
+            );
           }
         } else {
           if (!QUIET_MODE) {
-            console.log(`[processMavenDependencies] Exact version ${potentialExactVersion} for ${depXRegistryId} not found in available versions: [${availableVersions.join(', ')}]`);
+            console.log(
+              `[processMavenDependencies] Exact version ${potentialExactVersion} for ${depXRegistryId} not found in available versions: [${availableVersions.join(
+                ", "
+              )}]`
+            );
           }
         }
       } catch (err) {
         if (!QUIET_MODE) {
-          console.error(`[processMavenDependencies] Error fetching versions for ${depXRegistryId} to confirm exact version: ${err.message}`);
+          console.error(
+            `[processMavenDependencies] Error fetching versions for ${depXRegistryId} to confirm exact version: ${err.message}`
+          );
         }
       }
     }
 
     // 2. Check for Maven "at-least" range (e.g., "[1.2.3,)")
     if (!resolvedVersion) {
-      const minVersionMatch = dep.version.match(/^\s*\[\s*([\w.-]+)\s*,\s*\)\s*$/);
+      const minVersionMatch = dep.version.match(
+        /^\s*\[\s*([\w.-]+)\s*,\s*\)\s*$/
+      );
       if (minVersionMatch && minVersionMatch[1]) {
         const minVersion = minVersionMatch[1];
         versionResolutionAttempted = true;
         if (!QUIET_MODE) {
-          console.log(`[processMavenDependencies] Matched min version range for ${depXRegistryId}: >= ${minVersion} (parent: ${parentPackageXRegistryId})`);
+          console.log(
+            `[processMavenDependencies] Matched min version range for ${depXRegistryId}: >= ${minVersion} (parent: ${parentPackageXRegistryId})`
+          );
         }
         try {
-          const availableVersions = await fetchMavenArtifactVersions(dep.groupId, dep.artifactId);
+          const availableVersions = await fetchMavenArtifactVersions(
+            dep.groupId,
+            dep.artifactId
+          );
           let bestMatch = null;
-          for (const availableVer of availableVersions) { // availableVersions are sorted latest first
+          for (const availableVer of availableVersions) {
+            // availableVersions are sorted latest first
             if (compareMavenVersions(availableVer, minVersion) >= 0) {
-              if (!availableVer.toLowerCase().includes('snapshot')) { // Prefer non-snapshot for ranges
+              if (!availableVer.toLowerCase().includes("snapshot")) {
+                // Prefer non-snapshot for ranges
                 bestMatch = availableVer;
-                break; 
+                break;
               }
               if (!bestMatch) bestMatch = availableVer; // Fallback to snapshot if it's the only compliant
             }
           }
           if (bestMatch) {
             resolvedVersion = bestMatch;
-            depObj.package = `${depPackageBasePath}/versions/${encodeURIComponent(resolvedVersion)}`;
+            depObj.package = `${depPackageBasePath}/versions/${encodeURIComponent(
+              resolvedVersion
+            )}`;
             depObj.resolved_version = resolvedVersion;
             if (!QUIET_MODE) {
-              console.log(`[processMavenDependencies] Resolved ${depXRegistryId} range ${dep.version} to version ${resolvedVersion}`);
+              console.log(
+                `[processMavenDependencies] Resolved ${depXRegistryId} range ${dep.version} to version ${resolvedVersion}`
+              );
             }
           } else {
             if (!QUIET_MODE) {
-              console.log(`[processMavenDependencies] No version found for ${depXRegistryId} matching range ${dep.version}. Available: [${availableVersions.join(', ')}]`);
+              console.log(
+                `[processMavenDependencies] No version found for ${depXRegistryId} matching range ${
+                  dep.version
+                }. Available: [${availableVersions.join(", ")}]`
+              );
             }
           }
         } catch (err) {
-           if (!QUIET_MODE) {
-            console.error(`[processMavenDependencies] Error fetching versions for ${depXRegistryId} to resolve range: ${err.message}`);
+          if (!QUIET_MODE) {
+            console.error(
+              `[processMavenDependencies] Error fetching versions for ${depXRegistryId} to resolve range: ${err.message}`
+            );
           }
         }
       }
@@ -1559,7 +2430,9 @@ async function processMavenDependencies(pomDependencies, parentPackageXRegistryI
     // 3. Fallback: If no version resolved, link to base package if it exists
     if (!resolvedVersion) {
       if (!QUIET_MODE && versionResolutionAttempted) {
-        console.log(`[processMavenDependencies] Could not resolve version for ${depXRegistryId} with spec '${dep.version}'. Linking to base package.`);
+        console.log(
+          `[processMavenDependencies] Could not resolve version for ${depXRegistryId} with spec '${dep.version}'. Linking to base package.`
+        );
       }
       try {
         // Even if version resolution failed, the package itself might exist
@@ -1567,12 +2440,16 @@ async function processMavenDependencies(pomDependencies, parentPackageXRegistryI
           depObj.package = depPackageBasePath;
         } else {
           if (!QUIET_MODE) {
-            console.warn(`[processMavenDependencies] Dependent package ${depXRegistryId} itself does not seem to exist (referenced by ${parentPackageXRegistryId}).`);
+            console.warn(
+              `[processMavenDependencies] Dependent package ${depXRegistryId} itself does not seem to exist (referenced by ${parentPackageXRegistryId}).`
+            );
           }
         }
       } catch (pkgExistsError) {
-         if (!QUIET_MODE) {
-          console.error(`[processMavenDependencies] Error checking base package existence for ${depXRegistryId}: ${pkgExistsError.message}`);
+        if (!QUIET_MODE) {
+          console.error(
+            `[processMavenDependencies] Error checking base package existence for ${depXRegistryId}: ${pkgExistsError.message}`
+          );
         }
       }
     }
@@ -1584,11 +2461,11 @@ async function processMavenDependencies(pomDependencies, parentPackageXRegistryI
 
 // Export the attachToApp function for use as a module
 module.exports = {
-  attachToApp: function(sharedApp, options = {}) {
-    const pathPrefix = options.pathPrefix || '';
-    const baseUrl = options.baseUrl || '';
+  attachToApp: function (sharedApp, options = {}) {
+    const pathPrefix = options.pathPrefix || "";
+    const baseUrl = options.baseUrl || "";
     const quiet = options.quiet || false;
-    
+
     if (!quiet) {
       console.log(`Maven: Attaching routes at ${pathPrefix}`);
     }
@@ -1596,35 +2473,38 @@ module.exports = {
     // Mount all the existing routes from this server at the path prefix
     // We need to create a new router and copy all existing routes
     const router = express.Router();
-    
+
     // Copy all routes from the main app to the router, adjusting paths
     if (app._router && app._router.stack) {
-      app._router.stack.forEach(layer => {
+      app._router.stack.forEach((layer) => {
         if (layer.route) {
           // Copy route handlers
           const methods = Object.keys(layer.route.methods);
-          methods.forEach(method => {
+          methods.forEach((method) => {
             if (layer.route.path) {
               let routePath = layer.route.path;
-              
+
               // Skip the root route when mounting as a sub-server
-              if (routePath === '/') {
+              if (routePath === "/") {
                 return;
               }
-              
+
               // Adjust route paths for proper mounting
               if (routePath === `/${GROUP_TYPE}`) {
                 // The group collection endpoint should be at the root of the path prefix
-                routePath = '/';
+                routePath = "/";
               } else if (routePath.startsWith(`/${GROUP_TYPE}/`)) {
                 // Remove the GROUP_TYPE prefix from other routes
                 routePath = routePath.substring(GROUP_TYPE.length + 1);
               }
-              
-              router[method](routePath, ...layer.route.stack.map(l => l.handle));
+
+              router[method](
+                routePath,
+                ...layer.route.stack.map((l) => l.handle)
+              );
             }
           });
-        } else if (layer.name === 'router') {
+        } else if (layer.name === "router") {
           // Copy middleware
           router.use(layer.handle);
         }
@@ -1640,39 +2520,42 @@ module.exports = {
       groupType: GROUP_TYPE,
       resourceType: RESOURCE_TYPE,
       pathPrefix: pathPrefix,
-      getModel: () => registryModel
+      getModel: () => registryModel,
     };
-  }
+  },
 };
 
 // If running as standalone, start the server - ONLY if this file is run directly
 if (require.main === module) {
   // Create a new Express app only for standalone mode
   const standaloneApp = express();
-  
+
   // Add CORS
   standaloneApp.use((req, res, next) => {
-    res.set('Access-Control-Allow-Origin', '*');
-    res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.set('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
-    res.set('Access-Control-Expose-Headers', 'Link');
-    if (req.method === 'OPTIONS') {
+    res.set("Access-Control-Allow-Origin", "*");
+    res.set("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.set(
+      "Access-Control-Allow-Headers",
+      "Origin, X-Requested-With, Content-Type, Accept"
+    );
+    res.set("Access-Control-Expose-Headers", "Link");
+    if (req.method === "OPTIONS") {
       return res.status(204).end();
     }
-    
+
     next();
   });
-  
+
   // Use all the existing app routes by copying them to the standalone app
   standaloneApp._router = app._router;
   // Start the standalone server
   server = standaloneApp.listen(PORT, () => {
-    logger.logStartup(PORT, { 
+    logger.logStartup(PORT, {
       baseUrl: BASE_URL,
-      apiKeyEnabled: !!API_KEY 
+      apiKeyEnabled: !!API_KEY,
     });
   });
-    // Graceful shutdown function
+  // Graceful shutdown function
   function gracefulShutdown() {
     logger.info("Shutting down gracefully...");
     if (server) {
@@ -1683,7 +2566,9 @@ if (require.main === module) {
           const handles = process._getActiveHandles();
           if (handles.length > 0) {
             logger.warn(`Open handles on shutdown: ${handles.length}`);
-            handles.forEach((h, i) => logger.warn(`Handle[${i}]: ${h.constructor.name}`));
+            handles.forEach((h, i) =>
+              logger.warn(`Handle[${i}]: ${h.constructor.name}`)
+            );
           }
           setTimeout(() => process.exit(0), 1000);
           process.exit(0);
@@ -1697,6 +2582,6 @@ if (require.main === module) {
     }
   }
 
-  process.on('SIGINT', gracefulShutdown);
-  process.on('SIGTERM', gracefulShutdown);
+  process.on("SIGINT", gracefulShutdown);
+  process.on("SIGTERM", gracefulShutdown);
 }

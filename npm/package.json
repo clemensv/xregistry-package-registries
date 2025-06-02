@@ -4,6 +4,7 @@
   "description": "xRegistry API wrapper for NPM registry",
   "main": "server.js",
   "scripts": {
+    "build": "npm install && node -c server.js",
     "start": "node server.js",
     "dev": "nodemon server.js",
     "docker": "docker-compose up --build",
@@ -23,4 +24,4 @@
   "engines": {
     "node": ">=18.0.0"
   }
-} 
+}

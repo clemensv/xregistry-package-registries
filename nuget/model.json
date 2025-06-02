@@ -5,6 +5,7 @@
   "model": {
     "groups": {
       "dotnetregistries": {
+        "plural": "dotnetregistries",
         "singular": "dotnetregistry",
         "description": "Groups of .NET package registries",
         "resources": {
@@ -97,4 +98,4 @@
       }
     }
   }
-} 
+}

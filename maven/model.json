@@ -5,6 +5,7 @@
   "model": {
     "groups": {
       "javaregistries": {
+        "plural": "javaregistries",
         "singular": "javaregistry",
         "description": "Groups of Java package registries",
         "resources": {
@@ -175,4 +176,4 @@
       }
     }
   }
-} 
+}
