@@ -1974,24 +1974,15 @@ app.get(
     const baseUrl = BASE_URL || `${req.protocol}://${req.get("host")}`;
 
     try {
-      // Check if package exists in cache first
-      if (!isPackageInCache(packageId)) {
-        return res
-          .status(404)
-          .json(
-            createErrorResponse(
-              "not_found",
-              "Package not found",
-              404,
-              req.originalUrl,
-              `The package '${packageId}' could not be found`,
-              packageId
-            )
-          );
-      }
-
-      // Fetch package data from NuGet API
+      // Try to fetch package data from NuGet API regardless of cache status
+      // If the package doesn't exist, the API call will fail and we'll return 404
       const packageData = await fetchNuGetPackageData(packageId);
+
+      // If we successfully fetched the package but it's not in cache, add it
+      if (!isPackageInCache(packageId)) {
+        logger.info("Adding package to cache from direct fetch", { packageId });
+        addPackageToCache(packageId);
+      }
 
       // Normalize package ID for xRegistry compliance
       const normalizedPackageId = packageId.replace(/[^a-zA-Z0-9_.:-]/g, "_");
@@ -2117,20 +2108,30 @@ app.get(
     const baseUrl = BASE_URL || `${req.protocol}://${req.get("host")}`;
 
     try {
-      // Check if package exists in cache first
+      // Try to fetch package data from NuGet API regardless of cache status
+      // If we successfully fetch the package but it's not in cache, add it
       if (!isPackageInCache(packageId)) {
-        return res
-          .status(404)
-          .json(
-            createErrorResponse(
-              "not_found",
-              "Package not found",
-              404,
-              req.originalUrl,
-              `The package '${packageId}' could not be found`,
-              packageId
-            )
-          );
+        // Try to fetch package data to verify it exists
+        try {
+          await fetchNuGetPackageData(packageId);
+          logger.info("Adding package to cache from versions fetch", {
+            packageId,
+          });
+          addPackageToCache(packageId);
+        } catch (error) {
+          return res
+            .status(404)
+            .json(
+              createErrorResponse(
+                "not_found",
+                "Package not found",
+                404,
+                req.originalUrl,
+                `The package '${packageId}' could not be found`,
+                packageId
+              )
+            );
+        }
       }
 
       // Fetch package registration data from NuGet API for versions
