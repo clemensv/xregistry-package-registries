@@ -2693,9 +2693,7 @@ app.get(
               type: "version",
             }),
             versionid: versionId,
-            self: `${req.protocol}://${req.get(
-              "host"
-            )}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${encodePackageName(
+            self: `${getBaseUrl(req)}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${encodePackageName(
               packageName
             )}/versions/${encodeURIComponent(versionId)}`,
           };
@@ -2720,9 +2718,7 @@ app.get(
             type: "version",
           }),
           versionid: versionId,
-          self: `${req.protocol}://${req.get(
-            "host"
-          )}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${encodePackageName(
+          self: `${getBaseUrl(req)}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${encodePackageName(
             packageName
           )}/versions/${encodeURIComponent(versionId)}`,
         };
@@ -2876,9 +2872,7 @@ app.get(
           type: "version",
         }),
         versionid: version,
-        self: `${req.protocol}://${req.get(
-          "host"
-        )}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${encodePackageName(
+        self: `${getBaseUrl(req)}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${encodePackageName(
           packageName
         )}/versions/${encodeURIComponent(version)}`,
         // Version metadata
