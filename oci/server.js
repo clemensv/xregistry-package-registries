@@ -54,7 +54,7 @@ app.use((req, res, next) => {
 
 // Implement containerregistries collection endpoint for basic tests
 app.get(`/${GROUP_TYPE}`, (req, res) => {
-  const baseUrl = `${req.protocol}://${req.get("host")}`;
+  const baseUrl = BASE_URL || `${req.protocol}://${req.get("host")}`;
   // build registry map
   const data = {};
   OCI_BACKENDS.forEach((b, i) => {
