@@ -12,10 +12,10 @@
       "value": "ghcr.io"
     },
     "containerRegistryUsername": {
-      "value": "{{GITHUB_ACTOR}}"
+      "value": ""
     },
     "containerRegistryPassword": {
-      "value": "{{GITHUB_TOKEN}}"
+      "value": ""
     },
     "imageTag": {
       "value": "{{IMAGE_TAG}}"
@@ -33,4 +33,4 @@
       "value": true
     }
   }
-} 
+}

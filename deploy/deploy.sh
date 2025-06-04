@@ -67,8 +67,6 @@ OPTIONS:
     -e, --environment ENV           Environment name (default: $ENVIRONMENT)
     -t, --image-tag TAG             Container image tag (default: $IMAGE_TAG)
     -r, --repository REPO           GitHub repository name (required)
-    -u, --github-actor USER         GitHub username (required)
-    -p, --github-token TOKEN        GitHub token (required)
     -s, --subscription ID           Azure subscription ID (optional, uses current)
     -d, --dry-run                   Show what would be deployed without executing
     -v, --verbose                   Enable verbose output
@@ -78,18 +76,16 @@ OPTIONS:
 
 EXAMPLES:
     # Basic deployment
-    $0 -r microsoft/xregistry-package-registries -u myuser -p ghp_token123
+    $0 -r microsoft/xregistry-package-registries
 
     # Custom resource group and location
-    $0 -g my-rg -l eastus -r myrepo -u myuser -p token123
+    $0 -g my-rg -l eastus -r myrepo
 
     # Dry run to see what would be deployed
-    $0 --dry-run -r myrepo -u myuser -p token123
+    $0 --dry-run -r myrepo
 
 ENVIRONMENT VARIABLES:
     AZURE_SUBSCRIPTION             Azure subscription ID
-    GITHUB_TOKEN                   GitHub token for container registry
-    GITHUB_ACTOR                   GitHub username
     REPOSITORY_NAME                GitHub repository name
 
 EOF
@@ -117,14 +113,6 @@ parse_args() {
                 ;;
             -r|--repository)
                 REPOSITORY_NAME="$2"
-                shift 2
-                ;;
-            -u|--github-actor)
-                GITHUB_ACTOR="$2"
-                shift 2
-                ;;
-            -p|--github-token)
-                GITHUB_TOKEN="$2"
                 shift 2
                 ;;
             -s|--subscription)
@@ -161,8 +149,6 @@ parse_args() {
 
     # Get values from environment if not provided
     REPOSITORY_NAME="${REPOSITORY_NAME:-${REPOSITORY_NAME_ENV:-}}"
-    GITHUB_ACTOR="${GITHUB_ACTOR:-${GITHUB_ACTOR_ENV:-}}"
-    GITHUB_TOKEN="${GITHUB_TOKEN:-${GITHUB_TOKEN_ENV:-}}"
     AZURE_SUBSCRIPTION="${AZURE_SUBSCRIPTION:-${AZURE_SUBSCRIPTION_ENV:-}}"
     
     # Strip 'v' prefix from image tag if present (Git tags use v1.0.0, container tags use 1.0.0)
@@ -181,15 +167,7 @@ validate_params() {
         ((errors++))
     fi
 
-    if [[ -z "$GITHUB_ACTOR" ]]; then
-        log_error "GitHub actor is required (-u/--github-actor)"
-        ((errors++))
-    fi
 
-    if [[ -z "$GITHUB_TOKEN" ]]; then
-        log_error "GitHub token is required (-p/--github-token)"
-        ((errors++))
-    fi
 
     if [[ ! -f "$BICEP_FILE" ]]; then
         log_error "Bicep template not found: $BICEP_FILE"
@@ -358,43 +336,22 @@ create_parameters_file() {
             registry_server="ghcr.io"
             image_repository="$REPOSITORY_NAME"
         
-        # For public repositories, we can use GHCR without authentication
-        # Check if we have a valid token, otherwise use empty credentials
-        if [[ -n "$GITHUB_TOKEN" ]] && [[ -n "$GITHUB_ACTOR" ]]; then
-            # Test if the token is valid by making a simple API call
-            local token_test=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
-                                   -H "Accept: application/vnd.github.v3+json" \
-                                       "https://api.github.com/user" 2>/dev/null)
-            
-            if [[ $? -eq 0 ]] && [[ -n "$token_test" ]] && [[ $(echo "$token_test" | jq -r '.message // "valid"') != "Bad credentials" ]]; then
-                log_info "Using GHCR with authentication: $registry_server (user: $GITHUB_ACTOR)"
-                registry_username="$GITHUB_ACTOR"
-                registry_password="$GITHUB_TOKEN"
-            else
-                log_info "Using GHCR without authentication for public repository: $registry_server"
-                registry_username=""
-                registry_password=""
-            fi
-        else
-            log_info "Using GHCR without authentication for public repository: $registry_server"
-            registry_username=""
-            registry_password=""
-        fi
+        # For public repositories, use GHCR without authentication
+        log_info "Using GHCR without authentication for public repository: $registry_server"
+        registry_username=""
+        registry_password=""
     fi
     
     # Read template and substitute values with error handling
     # Force useCustomDomain to false to avoid baseURL bootstrap issues
     log_info "🔍 Checkpoint: Starting parameter substitution..."
-    log_verbose "Registry username: ${registry_username:-'(empty)'}"
-    log_verbose "Registry server: ${registry_server:-'(empty)'}"
+    log_verbose "Registry server: ${registry_server:-'(empty)'} (public, no authentication)"
     log_verbose "Image tag: ${IMAGE_TAG:-'(empty)'}"
     log_verbose "Repository: ${image_repository:-'(empty)'}"
     
     # Use explicit error handling for parameter substitution
     set +e
     if cat "$PARAMS_FILE" | \
-        sed "s|{{GITHUB_ACTOR}}|$registry_username|g" | \
-        sed "s|{{GITHUB_TOKEN}}|$registry_password|g" | \
         sed "s|{{IMAGE_TAG}}|$IMAGE_TAG|g" | \
         sed "s|{{REPOSITORY_NAME}}|$image_repository|g" | \
         sed "s|ghcr.io|$registry_server|g" | \

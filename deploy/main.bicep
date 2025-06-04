@@ -281,40 +281,45 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
               passwordSecretRef: 'registry-password'
             }
           ]
-      secrets: [
-        {
-          name: 'registry-password'
-          value: containerRegistryPassword
-        }
-        {
-          name: 'npm-api-key'
-          value: npmApiKey
-        }
-        {
-          name: 'pypi-api-key'
-          value: pypiApiKey
-        }
-        {
-          name: 'maven-api-key'
-          value: mavenApiKey
-        }
-        {
-          name: 'nuget-api-key'
-          value: nugetApiKey
-        }
-        {
-          name: 'oci-api-key'
-          value: ociApiKey
-        }
-        {
-          name: 'app-insights-connection-string'
-          value: appInsights.properties.ConnectionString
-        }
-        {
-          name: 'app-insights-instrumentation-key'
-          value: appInsights.properties.InstrumentationKey
-        }
-      ]
+      secrets: concat(
+        // Only include registry password secret if authentication is needed (username is not empty)
+        empty(containerRegistryUsername) ? [] : [
+          {
+            name: 'registry-password'
+            value: containerRegistryPassword
+          }
+        ],
+        [
+          {
+            name: 'npm-api-key'
+            value: npmApiKey
+          }
+          {
+            name: 'pypi-api-key'
+            value: pypiApiKey
+          }
+          {
+            name: 'maven-api-key'
+            value: mavenApiKey
+          }
+          {
+            name: 'nuget-api-key'
+            value: nugetApiKey
+          }
+          {
+            name: 'oci-api-key'
+            value: ociApiKey
+          }
+          {
+            name: 'app-insights-connection-string'
+            value: appInsights.properties.ConnectionString
+          }
+          {
+            name: 'app-insights-instrumentation-key'
+            value: appInsights.properties.InstrumentationKey
+          }
+        ]
+      )
     }
     template: {
       containers: [

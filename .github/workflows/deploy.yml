@@ -2,62 +2,69 @@ name: Build & Deploy xRegistry to Azure Container Apps
 
 on:
   push:
-    branches: [ "main" ]
-    tags: [ 'v*.*.*' ]
+    branches: ["main"]
+    tags: ["v*.*.*"]
     paths:
-      - 'bridge/**'
-      - 'npm/**'
-      - 'pypi/**'
-      - 'maven/**'
-      - 'nuget/**'
-      - 'oci/**'
-      - 'deploy/**'
-      - 'docker-compose.yml'
-      - '*.Dockerfile'
-      - '.github/workflows/deploy.yml'
+      - "bridge/**"
+      - "npm/**"
+      - "pypi/**"
+      - "maven/**"
+      - "nuget/**"
+      - "oci/**"
+      - "deploy/**"
+      - "docker-compose.yml"
+      - "*.Dockerfile"
+      - ".github/workflows/deploy.yml"
   workflow_run:
-    workflows: ["Build NPM xRegistry", "Build PyPI xRegistry", "Build Maven xRegistry", "Build NuGet xRegistry", "Build OCI xRegistry", "Build Bridge xRegistry"]
+    workflows:
+      [
+        "Build NPM xRegistry",
+        "Build PyPI xRegistry",
+        "Build Maven xRegistry",
+        "Build NuGet xRegistry",
+        "Build OCI xRegistry",
+        "Build Bridge xRegistry",
+      ]
     types: [completed]
-    branches: [ "main" ]
+    branches: ["main"]
   workflow_dispatch:
     inputs:
       deploy:
-        description: 'Deploy to Azure Container Apps'
+        description: "Deploy to Azure Container Apps"
         required: false
         default: true
         type: boolean
       resource_group:
-        description: 'Azure Resource Group'
+        description: "Azure Resource Group"
         required: false
-        default: 'xregistry-package-registries'
+        default: "xregistry-package-registries"
         type: string
       location:
-        description: 'Azure Region'
+        description: "Azure Region"
         required: false
-        default: 'westeurope'
+        default: "westeurope"
         type: string
       env_name:
-        description: 'Container App Environment Name'
+        description: "Container App Environment Name"
         required: false
-        default: 'xregistry-package-registries'
+        default: "xregistry-package-registries"
         type: string
       app_name:
-        description: 'Container App Name (all services)'
+        description: "Container App Name (all services)"
         required: false
-        default: 'xregistry-package-registries'
+        default: "xregistry-package-registries"
         type: string
 
 env:
-    REGISTRY: ghcr.io
-    PYPI_IMAGE_NAME: ${{ github.repository }}/xregistry-pypi-bridge
-    OCI_IMAGE_NAME: ${{ github.repository }}/xregistry-oci-bridge
-    NPM_IMAGE_NAME: ${{ github.repository }}/xregistry-npm-bridge
-    MAVEN_IMAGE_NAME: ${{ github.repository }}/xregistry-maven-bridge
-    NUGET_IMAGE_NAME: ${{ github.repository }}/xregistry-nuget-bridge
-    BRIDGE_IMAGE_NAME: ${{ github.repository }}/xregistry-bridge
+  REGISTRY: ghcr.io
+  PYPI_IMAGE_NAME: ${{ github.repository }}/xregistry-pypi-bridge
+  OCI_IMAGE_NAME: ${{ github.repository }}/xregistry-oci-bridge
+  NPM_IMAGE_NAME: ${{ github.repository }}/xregistry-npm-bridge
+  MAVEN_IMAGE_NAME: ${{ github.repository }}/xregistry-maven-bridge
+  NUGET_IMAGE_NAME: ${{ github.repository }}/xregistry-nuget-bridge
+  BRIDGE_IMAGE_NAME: ${{ github.repository }}/xregistry-bridge
 
 jobs:
-  
   build-pypi:
     runs-on: ubuntu-latest
     permissions:
@@ -109,7 +116,7 @@ jobs:
         run: |
           REF="${{ env.REGISTRY }}/${{ env.PYPI_IMAGE_NAME }}@${{ steps.build-pypi.outputs.digest }}"
           cosign sign "${REF}"
-# ──────────────────────────────────────────────────────── verify ─────
+  # ──────────────────────────────────────────────────────── verify ─────
   verify-pypi:
     needs: build-pypi
     runs-on: ubuntu-latest
@@ -131,7 +138,7 @@ jobs:
           cosign verify \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             --certificate-identity "https://github.com/${{ github.workflow_ref }}" \
-            "${REF}" 
+            "${REF}"
 
   build-npm:
     needs: build-pypi
@@ -177,7 +184,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
-          cache-to:   type=gha,mode=max
+          cache-to: type=gha,mode=max
           provenance: mode=max
 
       - name: Sign image (OIDC)
@@ -187,7 +194,7 @@ jobs:
         run: |
           REF="${{ env.REGISTRY }}/${{ env.NPM_IMAGE_NAME }}@${{ steps.build-npm.outputs.digest }}"
           cosign sign "${REF}"
-# ──────────────────────────────────────────────────────── verify ─────
+  # ──────────────────────────────────────────────────────── verify ─────
   verify-npm:
     needs: build-npm
     runs-on: ubuntu-latest
@@ -209,8 +216,8 @@ jobs:
           cosign verify \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             --certificate-identity "https://github.com/${{ github.workflow_ref }}" \
-            "${REF}"     
-  
+            "${REF}"
+
   build-oci:
     needs: build-npm
     runs-on: ubuntu-latest
@@ -255,7 +262,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
-          cache-to:   type=gha,mode=max
+          cache-to: type=gha,mode=max
           provenance: mode=max
 
       - name: Sign image (OIDC)
@@ -265,7 +272,7 @@ jobs:
         run: |
           REF="${{ env.REGISTRY }}/${{ env.OCI_IMAGE_NAME }}@${{ steps.build-oci.outputs.digest }}"
           cosign sign "${REF}"
-# ──────────────────────────────────────────────────────── verify ─────
+  # ──────────────────────────────────────────────────────── verify ─────
   verify-oci:
     needs: build-oci
     runs-on: ubuntu-latest
@@ -287,8 +294,8 @@ jobs:
           cosign verify \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             --certificate-identity "https://github.com/${{ github.workflow_ref }}" \
-            "${REF}" 
-  
+            "${REF}"
+
   build-nuget:
     needs: build-oci
     runs-on: ubuntu-latest
@@ -333,7 +340,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
-          cache-to:   type=gha,mode=max
+          cache-to: type=gha,mode=max
           provenance: mode=max
 
       - name: Sign image (OIDC)
@@ -343,7 +350,7 @@ jobs:
         run: |
           REF="${{ env.REGISTRY }}/${{ env.NUGET_IMAGE_NAME }}@${{ steps.build-nuget.outputs.digest }}"
           cosign sign "${REF}"
-# ──────────────────────────────────────────────────────── verify ─────
+  # ──────────────────────────────────────────────────────── verify ─────
   verify-nuget:
     needs: build-nuget
     runs-on: ubuntu-latest
@@ -365,8 +372,7 @@ jobs:
           cosign verify \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             --certificate-identity "https://github.com/${{ github.workflow_ref }}" \
-            "${REF}"           
-
+            "${REF}"
 
   build-maven:
     needs: build-nuget
@@ -412,7 +418,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
-          cache-to:   type=gha,mode=max
+          cache-to: type=gha,mode=max
           provenance: mode=max
 
       - name: Sign image (OIDC)
@@ -422,7 +428,7 @@ jobs:
         run: |
           REF="${{ env.REGISTRY }}/${{ env.MAVEN_IMAGE_NAME }}@${{ steps.build-maven.outputs.digest }}"
           cosign sign "${REF}"
-# ──────────────────────────────────────────────────────── verify ─────
+  # ──────────────────────────────────────────────────────── verify ─────
   verify-maven:
     needs: build-maven
     runs-on: ubuntu-latest
@@ -444,8 +450,8 @@ jobs:
           cosign verify \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             --certificate-identity "https://github.com/${{ github.workflow_ref }}" \
-            "${REF}"            
-  
+            "${REF}"
+
   build-bridge:
     needs: build-maven
     runs-on: ubuntu-latest
@@ -490,7 +496,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
-          cache-to:   type=gha,mode=max
+          cache-to: type=gha,mode=max
           provenance: mode=max
 
       - name: Sign image (OIDC)
@@ -500,7 +506,7 @@ jobs:
         run: |
           REF="${{ env.REGISTRY }}/${{ env.BRIDGE_IMAGE_NAME }}@${{ steps.build-bridge.outputs.digest }}"
           cosign sign "${REF}"
-# ──────────────────────────────────────────────────────── verify ─────
+  # ──────────────────────────────────────────────────────── verify ─────
   verify-bridge:
     needs: build-bridge
     runs-on: ubuntu-latest
@@ -522,10 +528,18 @@ jobs:
           cosign verify \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             --certificate-identity "https://github.com/${{ github.workflow_ref }}" \
-            "${REF}" 
+            "${REF}"
 
   deploy:
-    needs: [verify-pypi, verify-npm, verify-oci, verify-nuget, verify-maven, verify-bridge]
+    needs:
+      [
+        verify-pypi,
+        verify-npm,
+        verify-oci,
+        verify-nuget,
+        verify-maven,
+        verify-bridge,
+      ]
     if: ${{ github.event.inputs.deploy == 'true' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') }}
     runs-on: ubuntu-latest
     permissions:
@@ -535,11 +549,9 @@ jobs:
 
     env:
       RESOURCE_GROUP: ${{ github.event.inputs.resource_group || 'xregistry-package-registries' }}
-      LOCATION:       ${{ github.event.inputs.location       || 'westeurope' }}
-      ENV_NAME:       ${{ github.event.inputs.env_name       || 'xregistry-package-registries' }}
-      APP_NAME:       ${{ github.event.inputs.app_name       || 'xregistry-package-registries' }}
-      
-
+      LOCATION: ${{ github.event.inputs.location       || 'westeurope' }}
+      ENV_NAME: ${{ github.event.inputs.env_name       || 'xregistry-package-registries' }}
+      APP_NAME: ${{ github.event.inputs.app_name       || 'xregistry-package-registries' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -614,13 +626,13 @@ jobs:
           MAVEN_API_KEY="maven-$(openssl rand -hex 16)"
           NUGET_API_KEY="nuget-$(openssl rand -hex 16)"
           OCI_API_KEY="oci-$(openssl rand -hex 16)"
-          
+
           echo "NPM_API_KEY=$NPM_API_KEY" >> $GITHUB_ENV
           echo "PYPI_API_KEY=$PYPI_API_KEY" >> $GITHUB_ENV
           echo "MAVEN_API_KEY=$MAVEN_API_KEY" >> $GITHUB_ENV
           echo "NUGET_API_KEY=$NUGET_API_KEY" >> $GITHUB_ENV
           echo "OCI_API_KEY=$OCI_API_KEY" >> $GITHUB_ENV
-          
+
           echo "✅ Generated unique API keys for all services"
 
       - name: Verify GitHub Token Permissions
@@ -628,11 +640,11 @@ jobs:
           echo "🔍 Verifying GitHub token permissions..."
           echo "GitHub Actor: ${{ github.actor }}"
           echo "Repository: ${{ github.repository }}"
-          
+
           # Test token with package registry
           echo "Testing GHCR authentication..."
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io --username ${{ github.actor }} --password-stdin
-          
+
           if [ $? -ne 0 ]; then
             echo "❌ GHCR authentication failed"
             echo "🔧 Token may lack packages:read scope"
@@ -644,6 +656,7 @@ jobs:
       - name: Deploy xRegistry Container App (All Services)
         run: |
           # Run the deployment script with parameters
+          # Note: Not passing GitHub credentials since GHCR images are public
           chmod +x ./deploy/deploy.sh
           ./deploy/deploy.sh \
             --resource-group "$RESOURCE_GROUP" \
@@ -651,8 +664,6 @@ jobs:
             --environment "prod" \
             --image-tag "$IMAGE_TAG" \
             --repository "${{ github.repository }}" \
-            --github-actor "${{ github.actor }}" \
-            --github-token "${{ secrets.GITHUB_TOKEN }}" \
             --enable-custom-domain \
             --verbose
 
@@ -660,4 +671,4 @@ jobs:
         run: |
           echo "🎉 Deployment completed successfully!"
           echo "The deployment script has handled all setup, testing, and verification."
-          echo "Check the script output above for service endpoints and status." 
+          echo "Check the script output above for service endpoints and status."
