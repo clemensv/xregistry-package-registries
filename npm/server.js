@@ -2420,42 +2420,47 @@ app.get(
       // Apply pagination to the results
       const paginatedResults = results.slice(offset, offset + limit);
 
-      const responseData = {
-        registry: REGISTRY_ID,
-        groupType: GROUP_TYPE,
-        group: GROUP_ID,
-        resourceType: RESOURCE_TYPE,
-        count: totalCount,
-        resources: paginatedResults.map((pkg) => {
-          // Build resource object - check if it has metadata from two-step filtering
-          const resource = {
+      // Build xRegistry conformant response - flat object with packages as direct properties
+      const responseData = {};
+      const baseUrl = BASE_URL || `${req.protocol}://${req.get("host")}`;
+
+      paginatedResults.forEach((pkg) => {
+        const encodedName = encodePackageNameForPath(pkg.name);
+        responseData[pkg.name] = {
+          ...xregistryCommonAttrs({
+            id: pkg.name,
             name: pkg.name,
-            // self: makeUrlAbsolute(req, `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${encodePackageNameForPath(pkg.name)}`)
-          };
+            description: pkg.description || "",
+            parentUrl: `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`,
+            type: RESOURCE_TYPE_SINGULAR,
+          }),
+          self: `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${encodedName}`,
+          packageid: normalizePackageId(pkg.name),
+        };
 
-          // Add metadata if available from two-step filtering
-          if (pkg.description !== undefined)
-            resource.description = pkg.description;
-          if (pkg.author !== undefined) resource.author = pkg.author;
-          if (pkg.license !== undefined) resource.license = pkg.license;
-          if (pkg.homepage !== undefined) resource.homepage = pkg.homepage;
-          if (pkg.version !== undefined) resource.version = pkg.version;
-          if (pkg.keywords !== undefined && Array.isArray(pkg.keywords))
-            resource.keywords = pkg.keywords;
-          if (pkg.repository !== undefined)
-            resource.repository = pkg.repository;
-
-          return resource;
-        }),
-        _links: generatePaginationLinks(req, totalCount, offset, limit),
-      };
+        // Add metadata if available from two-step filtering
+        if (pkg.description !== undefined)
+          responseData[pkg.name].description = pkg.description;
+        if (pkg.author !== undefined)
+          responseData[pkg.name].author = pkg.author;
+        if (pkg.license !== undefined)
+          responseData[pkg.name].license = pkg.license;
+        if (pkg.homepage !== undefined)
+          responseData[pkg.name].homepage = pkg.homepage;
+        if (pkg.version !== undefined)
+          responseData[pkg.name].version = pkg.version;
+        if (pkg.keywords !== undefined && Array.isArray(pkg.keywords))
+          responseData[pkg.name].keywords = pkg.keywords;
+        if (pkg.repository !== undefined)
+          responseData[pkg.name].repository = pkg.repository;
+      });
 
       // Apply inline handling if requested for the collection
       if (req.query.inline) {
         const inlineDepth = parseInlineParams(req.query.inline).depth;
         if (inlineDepth > 0) {
-          responseData.resources.forEach((r) => {
-            r._inlined = true;
+          Object.values(responseData).forEach((pkg) => {
+            pkg._inlined = true;
           });
         }
       }
@@ -2472,7 +2477,7 @@ app.get(
         cacheStats: filterOptimizer.getCacheStats(),
       });
 
-      // Add pagination links to response headers
+      // Add pagination links to response headers (xRegistry conformant)
       const links = generatePaginationLinks(req, totalCount, offset, limit);
       if (links) {
         res.set("Link", links);

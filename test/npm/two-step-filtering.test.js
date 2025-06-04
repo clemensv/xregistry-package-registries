@@ -252,25 +252,26 @@ describe("NPM Two-Step Filtering", function () {
       const response = await axios.get(
         `${baseUrl}${ENDPOINT}?filter=${encodeURIComponent(
           "name=*react*"
-        )}&limit=10`,
+        )}&limit=200`,
         { timeout: REQUEST_TIMEOUT }
       );
       const duration = Date.now() - startTime;
 
       expect(response.status).to.equal(200);
-      expect(response.data).to.have.property("count");
-      expect(response.data.count).to.be.greaterThan(100);
       expect(duration).to.be.lessThan(1000); // Should be fast
 
+      // xRegistry conformant format: packages are direct properties
+      const packageNames = Object.keys(response.data);
+      expect(packageNames.length).to.be.greaterThan(100);
+
       // Results should contain only name (no metadata)
-      const resources = Object.values(response.data.resources || {});
-      if (resources.length > 0) {
-        const firstResult = resources[0];
+      if (packageNames.length > 0) {
+        const firstResult = response.data[packageNames[0]];
         expect(firstResult).to.have.property("name");
-        // Name-only results shouldn't have enriched metadata
-        expect(firstResult.description).to.be.undefined;
-        expect(firstResult.author).to.be.undefined;
-        expect(firstResult.license).to.be.undefined;
+        // Name-only results shouldn't have enriched metadata (undefined or empty string)
+        expect(firstResult.description || undefined).to.be.undefined;
+        expect(firstResult.author || undefined).to.be.undefined;
+        expect(firstResult.license || undefined).to.be.undefined;
       }
     });
 
@@ -292,7 +293,10 @@ describe("NPM Two-Step Filtering", function () {
 
         expect(response.status).to.equal(200);
         expect(duration).to.be.lessThan(1000);
-        expect(response.data).to.have.property("count");
+
+        // xRegistry conformant format: packages are direct properties
+        const packageNames = Object.keys(response.data);
+        expect(packageNames.length).to.be.greaterThan(0);
       }
     });
   });
@@ -306,14 +310,13 @@ describe("NPM Two-Step Filtering", function () {
       );
 
       expect(response.status).to.equal(200);
-      expect(response.data).to.have.property("count");
-      expect(response.data.count).to.be.greaterThan(0);
 
-      const resources = Object.values(response.data.resources || {});
-      expect(resources.length).to.be.greaterThan(0);
+      // xRegistry conformant format: packages are direct properties
+      const packageNames = Object.keys(response.data);
+      expect(packageNames.length).to.be.greaterThan(0);
 
       // Verify results have enriched metadata
-      const firstResult = resources[0];
+      const firstResult = response.data[packageNames[0]];
       expect(firstResult).to.have.property("name");
       expect(firstResult).to.have.property("description");
       expect(firstResult).to.have.property("author");
@@ -334,8 +337,10 @@ describe("NPM Two-Step Filtering", function () {
 
       expect(response.status).to.equal(200);
 
-      const resources = Object.values(response.data.resources || {});
-      resources.forEach((pkg) => {
+      // xRegistry conformant format: packages are direct properties
+      const packageNames = Object.keys(response.data);
+      packageNames.forEach((packageName) => {
+        const pkg = response.data[packageName];
         expect(pkg.name.toLowerCase()).to.include("react");
         if (pkg.author) {
           expect(pkg.author.toLowerCase()).to.include("facebook");
@@ -355,8 +360,10 @@ describe("NPM Two-Step Filtering", function () {
 
       expect(response.status).to.equal(200);
 
-      const resources = Object.values(response.data.resources || {});
-      resources.forEach((pkg) => {
+      // xRegistry conformant format: packages are direct properties
+      const packageNames = Object.keys(response.data);
+      packageNames.forEach((packageName) => {
+        const pkg = response.data[packageName];
         expect(pkg.name.toLowerCase()).to.include("util");
         if (pkg.license) {
           expect(pkg.license.toLowerCase()).to.include("mit");
@@ -376,8 +383,10 @@ describe("NPM Two-Step Filtering", function () {
 
       expect(response.status).to.equal(200);
 
-      const resources = Object.values(response.data.resources || {});
-      resources.forEach((pkg) => {
+      // xRegistry conformant format: packages are direct properties
+      const packageNames = Object.keys(response.data);
+      packageNames.forEach((packageName) => {
+        const pkg = response.data[packageName];
         expect(pkg.name.toLowerCase()).to.include("typescript");
         if (pkg.description) {
           expect(pkg.description.toLowerCase()).to.include("type");
@@ -414,26 +423,26 @@ describe("NPM Two-Step Filtering", function () {
       expect(twoStepDuration).to.be.greaterThan(nameOnlyDuration); // Two-step is slower
       expect(twoStepDuration).to.be.lessThan(30000); // But still reasonable
 
-      // Result quality expectations
-      expect(nameOnlyResponse.data.count).to.be.greaterThan(
-        twoStepResponse.data.count
+      // Result quality expectations (xRegistry conformant format)
+      const nameOnlyPackageNames = Object.keys(nameOnlyResponse.data);
+      const twoStepPackageNames = Object.keys(twoStepResponse.data);
+      expect(nameOnlyPackageNames.length).to.be.greaterThan(
+        twoStepPackageNames.length
       );
 
       // Metadata enrichment verification
-      const nameOnlyResources = Object.values(
-        nameOnlyResponse.data.resources || {}
-      );
-      const twoStepResources = Object.values(
-        twoStepResponse.data.resources || {}
-      );
-
-      if (nameOnlyResources.length > 0) {
-        expect(nameOnlyResources[0].description).to.be.undefined;
+      if (nameOnlyPackageNames.length > 0) {
+        const nameOnlyPkg = nameOnlyResponse.data[nameOnlyPackageNames[0]];
+        expect(nameOnlyPkg.description || undefined).to.be.undefined;
       }
 
-      if (twoStepResources.length > 0) {
-        expect(twoStepResources[0]).to.have.property("description");
-        expect(twoStepResources[0]).to.have.property("author");
+      if (twoStepPackageNames.length > 0) {
+        expect(twoStepResponse.data[twoStepPackageNames[0]]).to.have.property(
+          "description"
+        );
+        expect(twoStepResponse.data[twoStepPackageNames[0]]).to.have.property(
+          "author"
+        );
       }
     });
 
@@ -456,8 +465,10 @@ describe("NPM Two-Step Filtering", function () {
       );
 
       expect(response.status).to.equal(200);
-      expect(response.data.count).to.equal(0);
-      expect(response.data.resources).to.be.empty;
+
+      // xRegistry conformant format: empty response should be empty object
+      const packageNames = Object.keys(response.data);
+      expect(packageNames.length).to.equal(0);
     });
 
     it("should require name filter for metadata filtering", async function () {
@@ -469,7 +480,10 @@ describe("NPM Two-Step Filtering", function () {
       );
 
       expect(response.status).to.equal(200);
-      expect(response.data.count).to.equal(0); // Should return empty set
+
+      // xRegistry conformant format: empty response should be empty object
+      const packageNames = Object.keys(response.data);
+      expect(packageNames.length).to.equal(0); // Should return empty set
     });
 
     it("should handle invalid filter expressions gracefully", async function () {
@@ -507,7 +521,10 @@ describe("NPM Two-Step Filtering", function () {
         );
 
         expect(response.status).to.equal(200);
-        expect(response.data).to.have.property("count");
+
+        // xRegistry conformant format: packages are direct properties
+        const packageNames = Object.keys(response.data);
+        expect(packageNames.length).to.be.greaterThanOrEqual(0);
       }
     });
 
@@ -524,7 +541,10 @@ describe("NPM Two-Step Filtering", function () {
       const response = await axios.get(url, { timeout: REQUEST_TIMEOUT });
 
       expect(response.status).to.equal(200);
-      expect(response.data.count).to.be.greaterThan(0);
+
+      // xRegistry conformant format: packages are direct properties
+      const packageNames = Object.keys(response.data);
+      expect(packageNames.length).to.be.greaterThan(0);
     });
 
     it("should not accept filters without name constraint", async function () {
@@ -542,7 +562,10 @@ describe("NPM Two-Step Filtering", function () {
         );
 
         expect(response.status).to.equal(200);
-        expect(response.data.count).to.equal(0); // Should return empty set
+
+        // xRegistry conformant format: empty response should be empty object
+        const packageNames = Object.keys(response.data);
+        expect(packageNames.length).to.equal(0); // Should return empty set
       }
     });
   });
@@ -558,7 +581,11 @@ describe("NPM Two-Step Filtering", function () {
 
       expect(response.status).to.equal(200);
       expect(response.headers.link).to.be.a("string");
-      expect(response.data).to.have.property("_links");
+
+      // xRegistry conformant format: packages are direct properties, no _links property
+      const packageNames = Object.keys(response.data);
+      expect(packageNames.length).to.be.greaterThanOrEqual(0);
+      expect(response.data).to.not.have.property("_links");
     });
 
     it("should work with sorting", async function () {
@@ -571,19 +598,15 @@ describe("NPM Two-Step Filtering", function () {
 
       expect(response.status).to.equal(200);
 
-      // Handle both response formats:
-      // 1. Optimized path: returns just resources object
-      // 2. Standard path: returns { count, resources, _links }
-      let actualCount;
-      if (response.data.resources) {
-        // Standard format
-        actualCount = response.data.count;
-        expect(actualCount).to.be.a("number");
-        expect(actualCount).to.be.greaterThan(0);
-      } else {
-        // Optimized format - response.data is the resources object directly
-        actualCount = Object.keys(response.data).length;
-        expect(actualCount).to.be.greaterThan(0);
+      // xRegistry conformant format: packages are always direct properties
+      const packageNames = Object.keys(response.data);
+      expect(packageNames.length).to.be.greaterThan(0);
+
+      // Verify packages are properly sorted
+      for (let i = 0; i < packageNames.length - 1; i++) {
+        const current = packageNames[i];
+        const next = packageNames[i + 1];
+        expect(current.localeCompare(next)).to.be.lessThanOrEqual(0);
       }
     });
 
@@ -596,7 +619,10 @@ describe("NPM Two-Step Filtering", function () {
       );
 
       expect(response.status).to.equal(200);
-      expect(response.data.count).to.be.greaterThan(0);
+
+      // xRegistry conformant format: packages are direct properties
+      const packageNames = Object.keys(response.data);
+      expect(packageNames.length).to.be.greaterThan(0);
     });
   });
 });

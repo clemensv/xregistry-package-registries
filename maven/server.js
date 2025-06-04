@@ -801,21 +801,27 @@ app.get(
 
       const paginatedResults = versions.slice(offset, offset + limit);
 
-      const responseData = {
-        registry: REGISTRY_ID,
-        groupType: GROUP_TYPE,
-        group: GROUP_ID,
-        resourceType: RESOURCE_TYPE,
-        count: versions.length,
-        resources: paginatedResults.map((version) => ({
-          name: version,
+      // Build xRegistry conformant response - flat object with versions as direct properties
+      const responseData = {};
+      const baseUrl = BASE_URL || `${req.protocol}://${req.get("host")}`;
+
+      paginatedResults.forEach((version) => {
+        responseData[version] = {
+          ...xregistryCommonAttrs({
+            id: version,
+            name: version,
+            description: `Version ${version} of ${artifactId}`,
+            parentUrl: `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageId}/versions`,
+            type: "version",
+          }),
           groupId: pkgGroupId,
           artifactId: artifactId,
           version: version,
-          // Add any other required xRegistry attributes for a Maven artifact version resource
-        })),
-        _links: generatePaginationLinks(req, versions.length, offset, limit),
-      };
+          self: `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${encodeURIComponent(
+            packageId
+          )}/versions/${encodeURIComponent(version)}`,
+        };
+      });
 
       // Inline handling placeholder - actual inlining would fetch POM, versions etc.
       if (req.query.inline) {
@@ -823,10 +829,21 @@ app.get(
         const inlineParams = parseInlineParams(req.query.inline);
         const inlineDepth = inlineParams ? inlineParams.depth : 0;
         if (inlineDepth > 0) {
-          responseData.resources.forEach((r) => {
-            r._inlined = true;
+          Object.values(responseData).forEach((version) => {
+            version._inlined = true;
           });
         }
+      }
+
+      // Add pagination links to response headers (xRegistry conformant)
+      const links = generatePaginationLinks(
+        req,
+        versions.length,
+        offset,
+        limit
+      );
+      if (links) {
+        res.set("Link", links);
       }
 
       setXRegistryHeaders(res, responseData);

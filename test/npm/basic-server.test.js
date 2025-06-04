@@ -145,13 +145,23 @@ describe("Basic Server Functionality", function () {
 
       expect(response.status).to.equal(200);
       expect(response.data).to.be.an("object");
-      expect(response.data).to.have.property("resources");
-      expect(response.data).to.have.property("count");
 
-      const packageCount = response.data.resources.length;
-      expect(packageCount).to.be.at.most(5);
+      // xRegistry conformant format: packages are direct properties of response.data
+      const packageNames = Object.keys(response.data);
+      expect(packageNames.length).to.be.at.most(5);
+      expect(packageNames.length).to.be.greaterThan(0);
 
-      // Check Link header for pagination
+      // Each package should have required xRegistry properties
+      const firstPackage = response.data[packageNames[0]];
+      expect(firstPackage).to.have.property("name");
+      expect(firstPackage).to.have.property("xid");
+      expect(firstPackage).to.have.property("self");
+      expect(firstPackage).to.have.property("packageid");
+      expect(firstPackage).to.have.property("epoch");
+      expect(firstPackage).to.have.property("createdat");
+      expect(firstPackage).to.have.property("modifiedat");
+
+      // Check Link header for pagination (xRegistry conformant)
       expect(response.headers).to.have.property("link");
     });
 
@@ -162,11 +172,24 @@ describe("Basic Server Functionality", function () {
 
       expect(response.status).to.equal(200);
       expect(response.data).to.be.an("object");
-      expect(response.data).to.have.property("resources");
+
+      // xRegistry conformant format: packages are direct properties
+      const packageNames = Object.keys(response.data);
+      expect(packageNames.length).to.be.greaterThan(0);
 
       // Should find at least one package with 'express' in the name
-      const packages = response.data.resources;
-      expect(packages.length).to.be.greaterThan(0);
+      const hasExpressPackage = packageNames.some((name) =>
+        name.includes("express")
+      );
+      expect(hasExpressPackage).to.be.true;
+
+      // Verify package structure
+      if (packageNames.length > 0) {
+        const firstPackage = response.data[packageNames[0]];
+        expect(firstPackage).to.have.property("name");
+        expect(firstPackage).to.have.property("xid");
+        expect(firstPackage).to.have.property("self");
+      }
     });
 
     it("should support xRegistry filter operators", async function () {
@@ -185,7 +208,17 @@ describe("Basic Server Functionality", function () {
 
         expect(response.status).to.equal(200);
         expect(response.data).to.be.an("object");
-        expect(response.data).to.have.property("resources");
+
+        // xRegistry conformant format: packages are direct properties
+        const packageNames = Object.keys(response.data);
+
+        // Verify structure of returned packages
+        if (packageNames.length > 0) {
+          const firstPackage = response.data[packageNames[0]];
+          expect(firstPackage).to.have.property("name");
+          expect(firstPackage).to.have.property("xid");
+          expect(firstPackage).to.have.property("self");
+        }
       }
     });
 
@@ -207,9 +240,9 @@ describe("Basic Server Functionality", function () {
         expect(response.status).to.equal(200);
         expect(response.data).to.be.an("object");
 
-        // Should return empty set since no name filter is present
-        const packages = response.data.resources || [];
-        expect(packages.length).to.equal(0);
+        // Should return empty set since no name filter is present (xRegistry conformant)
+        const packageNames = Object.keys(response.data);
+        expect(packageNames.length).to.equal(0);
       }
     });
 
@@ -229,11 +262,19 @@ describe("Basic Server Functionality", function () {
 
         expect(response.status).to.equal(200);
         expect(response.data).to.be.an("object");
-        expect(response.data).to.have.property("resources");
+
+        // xRegistry conformant format: packages are direct properties
+        const packageNames = Object.keys(response.data);
 
         // Log results for debugging
-        const packages = response.data.resources || [];
-        console.log(`${testCase.name}: found ${packages.length} packages`);
+        console.log(`${testCase.name}: found ${packageNames.length} packages`);
+
+        // Verify structure if packages found
+        if (packageNames.length > 0) {
+          const firstPackage = response.data[packageNames[0]];
+          expect(firstPackage).to.have.property("name");
+          expect(firstPackage).to.have.property("xid");
+        }
       }
     });
 
@@ -285,6 +326,55 @@ describe("Basic Server Functionality", function () {
           throw error;
         }
       }
+    });
+
+    it("should return xRegistry conformant packages collection format", async function () {
+      const response = await axios.get(
+        `${baseUrl}/noderegistries/npmjs.org/packages?limit=3`
+      );
+
+      expect(response.status).to.equal(200);
+      expect(response.data).to.be.an("object");
+      expect(response.data).to.not.be.an("array");
+
+      // xRegistry conformant: packages as direct properties, not nested under "resources"
+      expect(response.data).to.not.have.property("resources");
+      expect(response.data).to.not.have.property("count");
+      expect(response.data).to.not.have.property("_links");
+
+      const packageNames = Object.keys(response.data);
+      expect(packageNames.length).to.be.greaterThan(0);
+      expect(packageNames.length).to.be.at.most(3);
+
+      // Verify each package follows xRegistry spec
+      for (const packageName of packageNames) {
+        const pkg = response.data[packageName];
+
+        // Core xRegistry properties
+        expect(pkg).to.have.property("name", packageName);
+        expect(pkg).to.have.property("xid").that.is.a("string");
+        expect(pkg).to.have.property("self").that.is.a("string");
+        expect(pkg).to.have.property("epoch").that.is.a("number");
+        expect(pkg).to.have.property("createdat").that.is.a("string");
+        expect(pkg).to.have.property("modifiedat").that.is.a("string");
+        expect(pkg).to.have.property("packageid").that.is.a("string");
+
+        // Verify xid format
+        expect(pkg.xid).to.match(/^\/noderegistries\/npmjs\.org\/packages\//);
+
+        // Verify self URL
+        expect(pkg.self).to.include(`/noderegistries/npmjs.org/packages/`);
+
+        // Verify timestamp formats (ISO 8601)
+        expect(new Date(pkg.createdat).toISOString()).to.equal(pkg.createdat);
+        expect(new Date(pkg.modifiedat).toISOString()).to.equal(pkg.modifiedat);
+      }
+
+      // Verify pagination via HTTP Link headers (xRegistry conformant)
+      expect(response.headers).to.have.property("link");
+      const linkHeader = response.headers.link;
+      expect(linkHeader).to.be.a("string");
+      expect(linkHeader).to.include('rel="next"');
     });
   });
 
@@ -374,29 +464,11 @@ describe("Basic Server Functionality", function () {
       );
       expect(response.status).to.equal(200);
 
-      // The NPM server returns different formats based on optimization:
-      // 1. For large datasets with sorting: returns resources object directly
-      // 2. For standard requests: returns { count, resources, _links }
-      let packageNames;
+      // xRegistry conformant format: packages are always direct properties of response.data
+      expect(response.data).to.be.an("object");
+      expect(response.data).to.not.be.an("array");
 
-      if (response.data.resources && Array.isArray(response.data.resources)) {
-        // Standard format with resources array
-        packageNames = response.data.resources.map((pkg) => pkg.name);
-      } else if (
-        response.data.resources &&
-        typeof response.data.resources === "object"
-      ) {
-        // Standard format with resources object
-        packageNames = Object.keys(response.data.resources);
-      } else if (
-        typeof response.data === "object" &&
-        !Array.isArray(response.data)
-      ) {
-        // Optimized format - response.data is the resources object directly
-        packageNames = Object.keys(response.data);
-      } else {
-        throw new Error("Unexpected response format");
-      }
+      const packageNames = Object.keys(response.data);
 
       expect(packageNames).to.be.an("array");
       expect(packageNames.length).to.be.greaterThan(0);
