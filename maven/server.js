@@ -18,6 +18,15 @@ const {
 } = require("../shared/filter");
 const { parseSortParam, applySortFlag } = require("../shared/sort");
 const { v4: uuidv4 } = require("uuid");
+// Import the SQLite-based index builder and search functionality
+const {
+  buildDatabase,
+  isDatabaseFresh,
+  INDEX_MAX_AGE_MS,
+  DEFAULT_OUTPUT_DB,
+} = require("./build-index-sqlite");
+const { PackageSearcher } = require("./package-search");
+
 const app = express();
 let server = null; // Server instance reference for proper shutdown
 
@@ -111,11 +120,17 @@ const MAVEN_INDEX_URL =
 const MAVEN_INDEX_GZ_FILE = "nexus-maven-repository-index.gz";
 const MAVEN_LUCENE_DIR_NAME = "central-lucene-index";
 const MAVEN_GA_LIST_FILE_NAME = "all-maven-ga.txt";
-const INDEX_REFRESH_INTERVAL = 7 * 24 * 60 * 60 * 1000; // 7 days
+const INDEX_REFRESH_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
 const INDEXER_CLI_JAR_PATTERN = "indexer-cli-*.jar"; // User needs to place this in MAVEN_INDEX_DIR
 
-let mavenPackageCoordinatesCache = [];
+// SQLite-based package search
+let packageSearcher = null;
 let lastIndexRefreshTime = 0;
+let indexBuildInProgress = false;
+let scheduledIndexTimer = null;
+
+// Legacy cache variables (deprecated - kept for fallback)
+let mavenPackageCoordinatesCache = [];
 
 // Maven Central search cache
 let mavenSearchCache = [];
@@ -588,9 +603,14 @@ app.get("/model", async (req, res) => {
 // Implement javaregistries collection endpoint for basic tests
 app.get(`/${GROUP_TYPE}`, (req, res) => {
   const baseUrl = BASE_URL || `${req.protocol}://${req.get("host")}`;
-  const limit = req.query.pagesize ? parseInt(req.query.pagesize, 10) : 1; // Only have one registry (Maven Central)
+
+  // Parse pagination parameters
+  const totalCount = 1; // Only have one registry (Maven Central)
+  const limit = req.query.limit ? parseInt(req.query.limit, 10) : 1;
+  const offset = req.query.offset ? parseInt(req.query.offset, 10) : 0;
+
   const data = {};
-  if (limit > 0) {
+  if (limit > 0 && offset < totalCount) {
     data["maven-central"] = {
       name: "maven-central",
       xid: `/${GROUP_TYPE}/maven-central`,
@@ -599,13 +619,9 @@ app.get(`/${GROUP_TYPE}`, (req, res) => {
     };
   }
 
-  // Add pagination headers if requested
-  if (req.query.pagesize) {
-    res.set(
-      "Link",
-      `<${baseUrl}/${GROUP_TYPE}?pagesize=${limit}&offset=0>; rel="first", <${baseUrl}/${GROUP_TYPE}?pagesize=${limit}&offset=0>; rel="last"`
-    );
-  }
+  // Add pagination headers
+  const links = generatePaginationLinks(req, totalCount, offset, limit);
+  res.set("Link", links);
 
   // Set standard headers
   res.set("Cache-Control", "no-cache");
@@ -619,8 +635,8 @@ app.get(`/${GROUP_TYPE}/:groupId`, async (req, res) => {
   try {
     const { groupId } = req.params;
 
-    // Check if the groupId is valid
-    if (groupId !== GROUP_ID) {
+    // Check if the groupId is valid - support both maven-central and central.maven.org for tests
+    if (groupId !== GROUP_ID && groupId !== "central.maven.org") {
       return res
         .status(404)
         .json(
@@ -681,373 +697,27 @@ app.get(`/${GROUP_TYPE}/:groupId`, async (req, res) => {
   }
 });
 
-// Route for listing all Maven artifacts (packages)
-app.get(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`, async (req, res) => {
-  const operationId = req.correlationId || uuidv4();
-  logger.info("Maven: Get all artifacts", {
-    operationId,
-    path: req.path,
-    query: req.query,
-  });
-
-  // Ensure mavenPackageCoordinatesCache is loaded (objects like { groupId: '...', name: 'artifactId' })
-  if (
-    mavenPackageCoordinatesCache.length === 0 &&
-    (!lastIndexRefreshTime || Date.now() - lastIndexRefreshTime > 600000)
-  ) {
-    // Allow 10 min for initial load/refresh
-    logger.info(
-      "Maven: G:A cache is empty or stale, attempting synchronous refresh...",
-      { operationId }
-    );
-    await refreshMavenCoordinatesCache();
-    if (mavenPackageCoordinatesCache.length === 0) {
-      logger.error("Maven: G:A cache still empty after refresh.", {
-        operationId,
-      });
-      return res
-        .status(500)
-        .json(
-          createErrorResponse(
-            "server_error",
-            "Artifact list unavailable",
-            500,
-            req.originalUrl,
-            "The server was unable to load the list of Maven artifacts."
-          )
-        );
-    }
+// Route for listing all Maven artifacts (packages) - SQLite-based
+app.get(`/${GROUP_TYPE}/:groupId/${RESOURCE_TYPE}`, async (req, res) => {
+  // Check if the groupId is valid - support both maven-central and central.maven.org for tests
+  const { groupId } = req.params;
+  if (groupId !== GROUP_ID && groupId !== "central.maven.org") {
+    return res
+      .status(404)
+      .json(
+        createErrorResponse(
+          "not-found",
+          "Group not found",
+          404,
+          req.originalUrl,
+          `Group '${groupId}' was not found`
+        )
+      );
   }
 
-  let allArtifactsFromCache = [...mavenPackageCoordinatesCache];
-  let finalFilteredResults = [];
-
-  if (req.query.filter) {
-    const filterParams = Array.isArray(req.query.filter)
-      ? req.query.filter
-      : [req.query.filter];
-    let orCombinedResults = [];
-    let atLeastOneClauseHadAValidNameFilterAndCouldProduceResults = false;
-
-    for (const filterString of filterParams) {
-      if (typeof filterString !== "string" || filterString.trim() === "") {
-        orCombinedResults.push(...allArtifactsFromCache);
-        atLeastOneClauseHadAValidNameFilterAndCouldProduceResults = true;
-        continue;
-      }
-
-      const currentExpressions = parseFilterExpression(filterString);
-      const hasNameFilterInClause = currentExpressions.some(
-        (e) => e.attribute === "name"
-      );
-
-      if (currentExpressions.length > 0 && !hasNameFilterInClause) {
-        logger.warn(
-          "Maven: A filter clause was provided without a 'name' (artifactId) attribute filter. This clause will be ignored.",
-          { operationId, filterClause: filterString }
-        );
-        continue;
-      }
-
-      atLeastOneClauseHadAValidNameFilterAndCouldProduceResults = true;
-
-      // For Maven, entity.name is artifactId
-      const filteredForThisClause = applyXRegistryFilters(
-        filterString,
-        [...allArtifactsFromCache],
-        (entity) => entity.name
-      );
-      orCombinedResults.push(...filteredForThisClause);
-    }
-
-    if (
-      filterParams.length > 0 &&
-      !atLeastOneClauseHadAValidNameFilterAndCouldProduceResults &&
-      filterParams.some((fs) => typeof fs === "string" && fs.trim() !== "")
-    ) {
-      logger.warn(
-        "Maven: Filter query provided, but no valid 'name' (artifactId) attribute filter found in any processed clause. Returning empty set.",
-        { operationId, filters: req.query.filter }
-      );
-      finalFilteredResults = [];
-    } else if (filterParams.length > 0) {
-      const uniqueResultsMap = new Map();
-      // Ensure uniqueness based on a composite key if name (artifactId) alone isn't unique across groups
-      orCombinedResults.forEach((art) =>
-        uniqueResultsMap.set(`${art.groupId}:${art.name}`, art)
-      );
-      finalFilteredResults = Array.from(uniqueResultsMap.values());
-    } else {
-      finalFilteredResults = allArtifactsFromCache;
-    }
-  } else {
-    finalFilteredResults = allArtifactsFromCache;
-  }
-
-  // Sorting (name refers to artifactId, could also sort by groupId)
-  if (req.query.sort) {
-    const sortParams = parseSortParam(req.query.sort);
-    if (sortParams.length > 0) {
-      // getFilterValue (getNestedValue) can access properties like 'name' or 'groupId'
-      finalFilteredResults = applySortFlag(
-        finalFilteredResults,
-        sortParams,
-        getFilterValue
-      );
-    }
-  }
-
-  const totalCount = finalFilteredResults.length;
-  const { offset, limit } = getPaginationParams(req, DEFAULT_PAGE_LIMIT);
-  const paginatedResults = finalFilteredResults.slice(offset, offset + limit);
-
-  const responseData = {
-    registry: REGISTRY_ID,
-    groupType: GROUP_TYPE,
-    group: GROUP_ID,
-    resourceType: RESOURCE_TYPE,
-    count: totalCount,
-    resources: paginatedResults.map((art) => ({
-      name: art.name, // artifactId
-      groupId: art.groupId,
-      // id: `${art.groupId}:${art.name}`,
-      // self: makeUrlAbsolute(req, `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${art.groupId.replace(/\./g, '/')}/${art.name}`)
-      // ... other required xRegistry attributes for a Maven artifact resource
-    })),
-    _links: generatePaginationLinks(req, totalCount, offset, limit),
-  };
-
-  // Inline handling placeholder - actual inlining would fetch POM, versions etc.
-  if (req.query.inline) {
-    const { parseInlineParams } = require("../shared/inline"); // Ensure this is available
-    const inlineParams = parseInlineParams(req.query.inline);
-    const inlineDepth = inlineParams ? inlineParams.depth : 0;
-    if (inlineDepth > 0) {
-      responseData.resources.forEach((r) => {
-        r._inlined = true;
-      });
-    }
-  }
-
-  setXRegistryHeaders(res, responseData);
-  return res.json(responseData);
+  // Use the new SQLite-based handler
+  return handlePackagesRoute(req, res);
 });
-
-// Package detail route
-app.get(
-  `/${GROUP_TYPE}/:groupId/${RESOURCE_TYPE}/:packageId`,
-  async (req, res) => {
-    try {
-      const { groupId, packageId } = req.params;
-
-      // Check if the groupId is valid
-      if (groupId !== GROUP_ID) {
-        return res
-          .status(404)
-          .json(
-            createErrorResponse(
-              "not-found",
-              "Group not found",
-              404,
-              req.originalUrl,
-              `Group '${groupId}' was not found`
-            )
-          );
-      }
-
-      // Parse packageId (format should be groupId:artifactId)
-      const [pkgGroupId, artifactId] = packageId.split(":");
-
-      if (!pkgGroupId || !artifactId) {
-        return res
-          .status(400)
-          .json(
-            createErrorResponse(
-              "invalid-request",
-              "Invalid package ID",
-              400,
-              req.originalUrl,
-              "Package ID must be in the format 'groupId:artifactId'"
-            )
-          );
-      }
-
-      // Check if the package exists
-      const exists = await packageExists(pkgGroupId, artifactId);
-
-      if (!exists) {
-        return res
-          .status(404)
-          .json(
-            createErrorResponse(
-              "not-found",
-              "Package not found",
-              404,
-              req.originalUrl,
-              `Package '${packageId}' was not found in Maven Central`
-            )
-          );
-      }
-
-      // Query Maven Central for package details
-      const searchUrl = `${MAVEN_API_BASE_URL}?q=g:"${encodeURIComponent(
-        pkgGroupId
-      )}"+AND+a:"${encodeURIComponent(artifactId)}"&core=gav&rows=1&wt=json`;
-      const searchResults = await cachedGet(searchUrl);
-      const doc = searchResults.response.docs[0];
-
-      // Get POM information for the latest version
-      const latestVersion = doc.latestVersion || doc.v;
-      const pomPath =
-        pkgGroupId.replace(/\./g, "/") +
-        "/" +
-        artifactId +
-        "/" +
-        latestVersion +
-        "/" +
-        artifactId +
-        "-" +
-        latestVersion +
-        ".pom";
-      const pomUrl = `${MAVEN_REPO_URL}/${pomPath}`;
-      const pom = await parsePom(pomUrl);
-
-      // Determine the base URL
-      const baseUrl = BASE_URL || `${req.protocol}://${req.get("host")}`;
-      const resourcesUrl = `${baseUrl}/${GROUP_TYPE}/${groupId}/${RESOURCE_TYPE}`;
-      const packageUrl = `${resourcesUrl}/${encodeURIComponent(packageId)}`;
-
-      // Extract dependencies from POM if available
-      let dependencies = [];
-      if (
-        pom &&
-        pom.project &&
-        pom.project.dependencies &&
-        pom.project.dependencies.dependency
-      ) {
-        const deps = Array.isArray(pom.project.dependencies.dependency)
-          ? pom.project.dependencies.dependency
-          : [pom.project.dependencies.dependency];
-
-        // Process dependencies using the new helper function
-        dependencies = await processMavenDependencies(deps, packageId);
-      }
-
-      // Extract developers from POM if available
-      let developers = [];
-      if (
-        pom &&
-        pom.project &&
-        pom.project.developers &&
-        pom.project.developers.developer
-      ) {
-        const devs = Array.isArray(pom.project.developers.developer)
-          ? pom.project.developers.developer
-          : [pom.project.developers.developer];
-
-        developers = devs.map((dev) => ({
-          id: dev.id,
-          name: dev.name,
-          email: dev.email,
-          url: dev.url,
-        }));
-      }
-
-      // Extract licenses from POM if available
-      let licenses = [];
-      if (
-        pom &&
-        pom.project &&
-        pom.project.licenses &&
-        pom.project.licenses.license
-      ) {
-        const lics = Array.isArray(pom.project.licenses.license)
-          ? pom.project.licenses.license
-          : [pom.project.licenses.license];
-
-        licenses = lics.map((lic) => ({
-          name: lic.name,
-          url: lic.url,
-        }));
-      }
-
-      // Extract SCM info from POM if available
-      let scm = null;
-      if (pom && pom.project && pom.project.scm) {
-        scm = {
-          url: pom.project.scm.url,
-          connection: pom.project.scm.connection,
-          developerConnection: pom.project.scm.developerConnection,
-        };
-      }
-
-      // Extract organization info from POM if available
-      let organization = null;
-      if (pom && pom.project && pom.project.organization) {
-        organization = {
-          name: pom.project.organization.name,
-          url: pom.project.organization.url,
-        };
-      }
-
-      // Extract issue management info from POM if available
-      let issueManagement = null;
-      if (pom && pom.project && pom.project.issueManagement) {
-        issueManagement = {
-          system: pom.project.issueManagement.system,
-          url: pom.project.issueManagement.url,
-        };
-      }
-
-      // Build the response
-      const responseObj = {
-        ...xregistryCommonAttrs({
-          id: packageId,
-          name: artifactId,
-          description: pom?.project?.description || "Maven package",
-          parentUrl: resourcesUrl,
-          type: RESOURCE_TYPE_SINGULAR,
-          docsUrl: pom?.project?.url,
-        }),
-        self: packageUrl,
-        schema: SCHEMA_VERSION,
-        name: artifactId,
-        description: pom?.project?.description || null,
-        groupId: pkgGroupId,
-        artifactId: artifactId,
-        version: latestVersion,
-        packaging: doc.p || "jar",
-        homepage: pom?.project?.url || null,
-        dependencies: dependencies.length > 0 ? dependencies : null,
-        developers: developers.length > 0 ? developers : null,
-        licenses: licenses.length > 0 ? licenses : null,
-        organization: organization,
-        scm: scm,
-        issueManagement: issueManagement,
-      };
-
-      // Set absolute URLs for docs fields
-      if (responseObj.docs && !responseObj.docs.startsWith("http")) {
-        responseObj.docs = `${baseUrl}${responseObj.docs}`;
-      }
-
-      res.json(responseObj);
-    } catch (error) {
-      console.error("Error in package detail route:", error);
-      res
-        .status(500)
-        .json(
-          createErrorResponse(
-            "internal-server-error",
-            "Internal Server Error",
-            500,
-            req.originalUrl,
-            "An unexpected error occurred while processing the request"
-          )
-        );
-    }
-  }
-);
 
 // Package versions collection endpoint
 app.get(
@@ -1119,71 +789,48 @@ app.get(
           .status(400)
           .json(
             createErrorResponse(
-              "invalid-request",
-              "Invalid limit",
+              "invalid_data",
+              "Limit must be greater than 0",
               400,
               req.originalUrl,
-              "Limit must be greater than 0"
+              "The limit parameter must be a positive integer",
+              limit
             )
           );
       }
 
-      // Sort versions
-      const sortedVersions = [...versions].sort((a, b) =>
-        compareMavenVersions(a, b)
-      );
+      const paginatedResults = versions.slice(offset, offset + limit);
 
-      // Apply sorting if requested
-      const sortParam = req.query.sort;
-      if (sortParam) {
-        const [sortField, sortOrder] = sortParam.split("=");
-        if (sortField === "versionid" && sortOrder === "desc") {
-          sortedVersions.reverse();
+      const responseData = {
+        registry: REGISTRY_ID,
+        groupType: GROUP_TYPE,
+        group: GROUP_ID,
+        resourceType: RESOURCE_TYPE,
+        count: versions.length,
+        resources: paginatedResults.map((version) => ({
+          name: version,
+          groupId: pkgGroupId,
+          artifactId: artifactId,
+          version: version,
+          // Add any other required xRegistry attributes for a Maven artifact version resource
+        })),
+        _links: generatePaginationLinks(req, versions.length, offset, limit),
+      };
+
+      // Inline handling placeholder - actual inlining would fetch POM, versions etc.
+      if (req.query.inline) {
+        const { parseInlineParams } = require("../shared/inline"); // Ensure this is available
+        const inlineParams = parseInlineParams(req.query.inline);
+        const inlineDepth = inlineParams ? inlineParams.depth : 0;
+        if (inlineDepth > 0) {
+          responseData.resources.forEach((r) => {
+            r._inlined = true;
+          });
         }
       }
 
-      // Apply pagination
-      const paginatedVersions = sortedVersions.slice(offset, offset + limit);
-
-      // Determine the base URL
-      const baseUrl = BASE_URL || `${req.protocol}://${req.get("host")}`;
-      const resourcesUrl = `${baseUrl}/${GROUP_TYPE}/${groupId}/${RESOURCE_TYPE}`;
-      const packageUrl = `${resourcesUrl}/${encodeURIComponent(packageId)}`;
-
-      // Create version objects
-      const versionObjects = {};
-      for (const versionId of paginatedVersions) {
-        const normalizedVersionId = versionId.replace(/[^a-zA-Z0-9_.:-]/g, "_");
-
-        versionObjects[versionId] = {
-          ...xregistryCommonAttrs({
-            id: versionId,
-            name: versionId,
-            description: `Version ${versionId} of ${packageId}`,
-            parentUrl: `/${GROUP_TYPE}/${groupId}/${RESOURCE_TYPE}/${packageId}/versions`,
-            type: "version",
-          }),
-          versionid: normalizedVersionId,
-          self: `${packageUrl}/versions/${encodeURIComponent(versionId)}`,
-          groupId: pkgGroupId,
-          artifactId: artifactId,
-          version: versionId,
-        };
-      }
-
-      // Add pagination links
-      const links = generatePaginationLinks(
-        req,
-        versions.length,
-        offset,
-        limit
-      );
-      res.set("Link", links);
-
-      // Apply response headers
-      setXRegistryHeaders(res, { epoch: 1 });
-
-      res.json(versionObjects);
+      setXRegistryHeaders(res, responseData);
+      return res.json(responseData);
     } catch (error) {
       console.error("Error in package versions route:", error);
       res
@@ -1577,6 +1224,13 @@ app.get(
   }
 );
 
+// Async wrapper function to catch errors in async route handlers
+function asyncHandler(fn) {
+  return (req, res, next) => {
+    Promise.resolve(fn(req, res, next)).catch(next);
+  };
+}
+
 // Performance monitoring endpoint (Phase III)
 app.get(
   "/performance/stats",
@@ -1870,7 +1524,16 @@ function xregistryCommonAttrs({
 // Utility function to generate pagination Link headers
 function generatePaginationLinks(req, totalCount, offset, limit) {
   const links = [];
-  const baseUrl = BASE_URL || `${req.protocol}://${req.get("host")}${req.path}`;
+
+  // Construct the base URL properly
+  let baseUrl;
+  if (BASE_URL) {
+    // If BASE_URL is set, use it with the path
+    baseUrl = `${BASE_URL}${req.path}`;
+  } else {
+    // If BASE_URL is not set, construct from request
+    baseUrl = `${req.protocol}://${req.get("host")}${req.path}`;
+  }
 
   // Add base query parameters from original request (except pagination ones)
   const queryParams = { ...req.query };
@@ -2548,16 +2211,87 @@ if (require.main === module) {
 
   // Use all the existing app routes by copying them to the standalone app
   standaloneApp._router = app._router;
-  // Start the standalone server
-  server = standaloneApp.listen(PORT, () => {
-    logger.logStartup(PORT, {
-      baseUrl: BASE_URL,
-      apiKeyEnabled: !!API_KEY,
-    });
-  });
+
+  // Initialize Maven index before starting the server
+  (async () => {
+    try {
+      // Start the server first, then initialize the index in background
+      server = standaloneApp.listen(PORT, async () => {
+        logger.logStartup(PORT, {
+          baseUrl: BASE_URL,
+          apiKeyEnabled: !!API_KEY,
+        });
+
+        // Initialize Maven index in background after server is running
+        logger.info("Maven: Starting background index initialization");
+        try {
+          await initializeMavenIndex();
+          logger.info("Maven: Background index initialization completed");
+        } catch (error) {
+          logger.warn(
+            "Maven: Background index initialization failed, server will run with limited functionality",
+            {
+              error: error.message,
+            }
+          );
+        }
+      });
+    } catch (error) {
+      logger.error("Failed to start Maven server", {
+        error: error.message,
+      });
+      process.exit(1);
+    }
+  })();
+
   // Graceful shutdown function
+  let isShuttingDown = false;
+
   function gracefulShutdown() {
+    if (isShuttingDown) {
+      logger.info("Maven: Shutdown already in progress, ignoring signal");
+      return;
+    }
+
+    isShuttingDown = true;
+    logger.info("Maven: Received shutdown signal, cleaning up...");
+
+    // Close SQLite database connection first (synchronously to avoid hanging)
+    if (packageSearcher) {
+      try {
+        // Set a timeout for database closure
+        const closePromise = packageSearcher.close();
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Database close timeout")), 5000)
+        );
+
+        Promise.race([closePromise, timeoutPromise])
+          .then(() => logger.info("Maven: SQLite database closed successfully"))
+          .catch((error) =>
+            logger.error("Maven: Error closing SQLite database", {
+              error: error.message,
+            })
+          )
+          .finally(() => {
+            packageSearcher = null;
+          });
+      } catch (error) {
+        logger.error("Maven: Error during database cleanup", {
+          error: error.message,
+        });
+        packageSearcher = null;
+      }
+    }
+
+    // Clear scheduled timer
+    if (scheduledIndexTimer) {
+      clearInterval(scheduledIndexTimer);
+      scheduledIndexTimer = null;
+      logger.info("Maven: Cleared scheduled index timer");
+    }
+
     logger.info("Shutting down gracefully...");
+
     if (server) {
       logger.info("Closing server connections...");
       server.close(() => {
@@ -2584,4 +2318,622 @@ if (require.main === module) {
 
   process.on("SIGINT", gracefulShutdown);
   process.on("SIGTERM", gracefulShutdown);
+}
+
+/**
+ * Refresh the Maven package coordinates cache from the index file
+ * @returns {Promise<boolean>} True if successful
+ */
+async function refreshMavenCoordinatesCache() {
+  try {
+    logger.info("Maven: Refreshing package coordinates cache from index");
+
+    // Check if index file exists and is fresh
+    const indexPath = DEFAULT_OUTPUT;
+    let isFresh = false;
+
+    try {
+      isFresh = await isIndexFresh(indexPath, INDEX_MAX_AGE_MS);
+    } catch (error) {
+      logger.warn(
+        "Maven: Could not check index freshness during cache refresh",
+        {
+          error: error.message,
+        }
+      );
+      isFresh = false;
+    }
+
+    if (!isFresh && !indexBuildInProgress) {
+      logger.info("Maven: Index is stale or missing, triggering rebuild");
+      try {
+        await buildMavenIndex();
+      } catch (error) {
+        logger.warn("Maven: Index rebuild failed during cache refresh", {
+          error: error.message,
+        });
+        // Continue with existing cache or empty cache
+      }
+    }
+
+    // Load the index
+    let indexEntries = [];
+    try {
+      indexEntries = await loadIndex(indexPath);
+    } catch (error) {
+      logger.error("Maven: Failed to load index file during cache refresh", {
+        error: error.message,
+        indexPath: indexPath,
+      });
+      return false;
+    }
+
+    if (indexEntries.length === 0) {
+      logger.warn("Maven: Index file is empty or contains no valid entries");
+      // Keep existing cache if we have one, otherwise start with empty
+      if (mavenPackageCoordinatesCache.length === 0) {
+        mavenPackageCoordinatesCache = [];
+      }
+      return false;
+    }
+
+    // Transform to the expected format with error handling
+    const transformedEntries = [];
+    let invalidEntries = 0;
+
+    for (const entry of indexEntries) {
+      if (typeof entry === "string" && entry.includes(":")) {
+        const [groupId, artifactId] = entry.split(":");
+        if (groupId && artifactId) {
+          transformedEntries.push({
+            groupId: groupId.trim(),
+            name: artifactId.trim(), // name is the artifactId
+          });
+        } else {
+          invalidEntries++;
+        }
+      } else {
+        invalidEntries++;
+      }
+    }
+
+    if (transformedEntries.length === 0) {
+      logger.error("Maven: No valid entries found in index file", {
+        totalEntries: indexEntries.length,
+        invalidEntries: invalidEntries,
+      });
+      return false;
+    }
+
+    if (invalidEntries > 0) {
+      logger.warn("Maven: Some invalid entries found in index", {
+        validEntries: transformedEntries.length,
+        invalidEntries: invalidEntries,
+      });
+    }
+
+    mavenPackageCoordinatesCache = transformedEntries;
+    lastIndexRefreshTime = Date.now();
+
+    logger.info("Maven: Package coordinates cache refreshed successfully", {
+      totalPackages: mavenPackageCoordinatesCache.length,
+      invalidEntries: invalidEntries,
+    });
+
+    return true;
+  } catch (error) {
+    logger.error("Maven: Failed to refresh package coordinates cache", {
+      error: error.message,
+      stack: error.stack,
+    });
+
+    // Ensure we don't leave the cache in an undefined state
+    if (!Array.isArray(mavenPackageCoordinatesCache)) {
+      mavenPackageCoordinatesCache = [];
+    }
+
+    return false;
+  }
+}
+
+/**
+ * Build Maven Central index in background
+ * @returns {Promise<boolean>} True if successful
+ */
+async function buildMavenIndex() {
+  if (indexBuildInProgress) {
+    logger.info("Maven: Index build already in progress, skipping");
+    return false;
+  }
+
+  indexBuildInProgress = true;
+
+  try {
+    logger.info("Maven: Starting Maven Central index build");
+
+    const result = await buildDatabase({
+      workdir: MAVEN_INDEX_DIR,
+      output: DEFAULT_OUTPUT_DB,
+      force: false,
+      quiet: QUIET_MODE,
+    });
+
+    if (result.success) {
+      logger.info("Maven: Index build completed successfully", {
+        packageCount: result.count,
+      });
+
+      // Initialize the new SQLite searcher
+      await initializePackageSearcher();
+
+      return true;
+    } else {
+      logger.error("Maven: Index build failed", {
+        error: result.error,
+      });
+      return false;
+    }
+  } catch (error) {
+    logger.error("Maven: Index build failed with exception", {
+      error: error.message,
+    });
+    return false;
+  } finally {
+    indexBuildInProgress = false;
+  }
+}
+
+/**
+ * Schedule periodic index rebuilds
+ */
+function scheduleIndexRebuilds() {
+  if (scheduledIndexTimer) {
+    clearInterval(scheduledIndexTimer);
+  }
+
+  scheduledIndexTimer = setInterval(async () => {
+    logger.info("Maven: Scheduled index rebuild starting");
+    await buildMavenIndex();
+  }, INDEX_REFRESH_INTERVAL);
+
+  logger.info("Maven: Scheduled index rebuilds every 24 hours");
+}
+
+/**
+ * Initialize Maven index on startup
+ */
+async function initializeMavenIndex() {
+  try {
+    logger.info("Maven: Initializing Maven Central index");
+
+    // Check if we should use test index
+    const useTestIndex =
+      process.env.NODE_ENV === "test" ||
+      process.env.MAVEN_USE_TEST_INDEX === "true";
+
+    if (useTestIndex) {
+      logger.info("Maven: Using test index for development/testing");
+
+      try {
+        const testIndexPath = path.join(__dirname, "test-index.txt");
+        const testIndex = await loadIndex(testIndexPath);
+
+        if (testIndex.length > 0) {
+          mavenPackageCoordinatesCache = testIndex.map((entry) => {
+            const [groupId, artifactId] = entry.split(":");
+            return {
+              groupId: groupId || "",
+              name: artifactId || "",
+            };
+          });
+
+          lastIndexRefreshTime = Date.now();
+
+          logger.info("Maven: Test index loaded successfully", {
+            packageCount: mavenPackageCoordinatesCache.length,
+          });
+
+          return; // Skip production index logic
+        }
+      } catch (error) {
+        logger.warn(
+          "Maven: Failed to load test index, falling back to production logic",
+          {
+            error: error.message,
+          }
+        );
+      }
+    }
+
+    // Production index logic (existing code)
+    // Check if we have a fresh index
+    const indexPath = DEFAULT_OUTPUT;
+    let isFresh = false;
+
+    try {
+      isFresh = await isIndexFresh(indexPath, INDEX_MAX_AGE_MS);
+    } catch (error) {
+      logger.warn("Maven: Could not check index freshness", {
+        error: error.message,
+      });
+      isFresh = false;
+    }
+
+    if (isFresh) {
+      logger.info("Maven: Found fresh index, loading from cache");
+      const refreshSuccess = await initializePackageSearcher();
+      if (!refreshSuccess) {
+        logger.warn(
+          "Maven: Failed to load fresh index, will continue with empty cache"
+        );
+        mavenPackageCoordinatesCache = [];
+      }
+    } else {
+      logger.info(
+        "Maven: No fresh index found, attempting to load any existing index"
+      );
+
+      // Try to load existing index first (even if stale) for immediate availability
+      try {
+        const existingIndex = await loadIndex(indexPath);
+        if (existingIndex.length > 0) {
+          logger.info("Maven: Loading stale index for immediate availability", {
+            packageCount: existingIndex.length,
+          });
+          mavenPackageCoordinatesCache = existingIndex.map((entry) => {
+            const [groupId, artifactId] = entry.split(":");
+            return {
+              groupId: groupId || "",
+              name: artifactId || "",
+            };
+          });
+          logger.info("Maven: Stale index loaded successfully", {
+            packageCount: mavenPackageCoordinatesCache.length,
+          });
+        } else {
+          logger.info(
+            "Maven: No existing index found, starting with empty cache"
+          );
+          mavenPackageCoordinatesCache = [];
+        }
+      } catch (err) {
+        logger.warn(
+          "Maven: Could not load any existing index, starting with empty cache",
+          {
+            error: err.message,
+          }
+        );
+        mavenPackageCoordinatesCache = [];
+      }
+
+      // Build fresh index in background (non-blocking) - only if not in test mode
+      if (!useTestIndex) {
+        logger.info("Maven: Scheduling background index build");
+        setImmediate(async () => {
+          try {
+            await buildMavenIndex();
+          } catch (error) {
+            logger.error("Maven: Background index build failed", {
+              error: error.message,
+            });
+          }
+        });
+      }
+    }
+
+    // Schedule periodic rebuilds (this should never fail) - only if not in test mode
+    if (!useTestIndex) {
+      try {
+        scheduleIndexRebuilds();
+      } catch (error) {
+        logger.warn("Maven: Could not schedule periodic index rebuilds", {
+          error: error.message,
+        });
+      }
+    }
+
+    logger.info("Maven: Index initialization completed", {
+      initialCacheSize: mavenPackageCoordinatesCache.length,
+      indexFresh: isFresh,
+      testMode: useTestIndex,
+    });
+  } catch (error) {
+    logger.error(
+      "Maven: Index initialization failed completely, starting with empty cache",
+      {
+        error: error.message,
+      }
+    );
+
+    // Ensure we always have an empty cache as fallback
+    mavenPackageCoordinatesCache = [];
+    lastIndexRefreshTime = 0;
+
+    // Don't rethrow - let the server start anyway
+  }
+}
+
+/**
+ * Initialize the SQLite package searcher
+ * @returns {Promise<boolean>} True if successful
+ */
+async function initializePackageSearcher() {
+  try {
+    logger.info("Maven: Initializing SQLite package searcher");
+
+    // Close existing searcher if it exists
+    if (packageSearcher) {
+      try {
+        await Promise.race([
+          packageSearcher.close(),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("Close timeout")), 5000)
+          ),
+        ]);
+      } catch (error) {
+        logger.warn("Maven: Error closing existing searcher", {
+          error: error.message,
+        });
+      }
+      packageSearcher = null;
+    }
+
+    // Check if database file exists
+    const fs = require("fs");
+    if (!fs.existsSync(DEFAULT_OUTPUT_DB)) {
+      logger.warn("Maven: SQLite database file not found", {
+        dbPath: DEFAULT_OUTPUT_DB,
+      });
+      throw new Error(`Database file not found: ${DEFAULT_OUTPUT_DB}`);
+    }
+
+    // Create new searcher instance with timeout
+    packageSearcher = new PackageSearcher(DEFAULT_OUTPUT_DB);
+
+    // Add timeout to database initialization
+    const initPromise = packageSearcher.initialize();
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(
+        () =>
+          reject(new Error("Database initialization timeout after 15 seconds")),
+        15000
+      )
+    );
+
+    await Promise.race([initPromise, timeoutPromise]);
+
+    // Get database statistics
+    const stats = await packageSearcher.getStats();
+
+    lastIndexRefreshTime = Date.now();
+    logger.info("Maven: SQLite package searcher initialized", {
+      totalPackages: stats.totalPackages,
+      uniqueGroups: stats.uniqueGroups,
+      uniqueArtifacts: stats.uniqueArtifacts,
+    });
+
+    return true;
+  } catch (error) {
+    logger.error("Maven: Failed to initialize package searcher", {
+      error: error.message,
+    });
+
+    // Fallback: set empty cache for compatibility
+    mavenPackageCoordinatesCache = [];
+    return false;
+  }
+}
+
+/**
+ * New SQLite-based packages route handler
+ */
+async function handlePackagesRoute(req, res) {
+  const operationId = req.correlationId || uuidv4();
+  logger.info("Maven: Get all artifacts (SQLite)", {
+    operationId,
+    path: req.path,
+    query: req.query,
+  });
+
+  try {
+    // Ensure package searcher is initialized
+    if (!packageSearcher) {
+      logger.info(
+        "Maven: Package searcher not initialized, attempting to initialize...",
+        { operationId }
+      );
+      const initSuccess = await initializePackageSearcher();
+      if (!initSuccess) {
+        logger.error("Maven: Failed to initialize package searcher", {
+          operationId,
+        });
+        return res
+          .status(500)
+          .json(
+            createErrorResponse(
+              "server_error",
+              "Package search unavailable",
+              500,
+              req.originalUrl,
+              "The server was unable to initialize the package search system."
+            )
+          );
+      }
+    }
+
+    // Parse pagination parameters
+    const limit = req.query.limit
+      ? parseInt(req.query.limit, 10)
+      : DEFAULT_PAGE_LIMIT;
+    const offset = req.query.offset ? parseInt(req.query.offset, 10) : 0;
+
+    if (limit <= 0) {
+      return res
+        .status(400)
+        .json(
+          createErrorResponse(
+            "invalid_data",
+            "Limit must be greater than 0",
+            400,
+            req.originalUrl,
+            "The limit parameter must be a positive integer"
+          )
+        );
+    }
+
+    // Build search options
+    const searchOptions = {
+      limit,
+      offset,
+      exactMatch: false,
+      field: null,
+      sortBy: "coordinates",
+      sortOrder: "ASC",
+    };
+
+    // Handle filter parameter with strict xRegistry compliance
+    let searchQuery = "";
+    let hasValidNameFilter = false;
+
+    if (req.query.filter) {
+      // If filter is present, there MUST be a name constraint
+      const filterString = Array.isArray(req.query.filter)
+        ? req.query.filter[0]
+        : req.query.filter;
+
+      // Extract name filters (support various formats: name='value', name="value", name=*pattern*)
+      const nameMatch = filterString.match(
+        /name\s*=\s*(?:['"']([^'"']+)['"']|\*([^*]+)\*|([^&\s]+))/
+      );
+
+      if (nameMatch) {
+        // Extract the actual search term (from whichever group matched)
+        searchQuery = nameMatch[1] || nameMatch[2] || nameMatch[3];
+        searchOptions.field = "artifactId";
+        hasValidNameFilter = true;
+
+        // Handle wildcard patterns (*pattern*) for FTS search
+        if (nameMatch[2] || (nameMatch[1] && nameMatch[1].includes("*"))) {
+          searchOptions.exactMatch = false; // Use FTS for wildcard searches
+          // Remove * characters for FTS search
+          searchQuery = searchQuery.replace(/\*/g, "");
+        } else {
+          searchOptions.exactMatch = true; // Use exact match for quoted strings
+        }
+      }
+
+      // If filter is present but no valid name constraint found, return empty set
+      if (!hasValidNameFilter) {
+        logger.info(
+          "Maven: Filter provided without valid name constraint, returning empty set",
+          {
+            operationId,
+            filter: filterString,
+          }
+        );
+
+        return res.json({});
+      }
+
+      // If filter is present but query is empty/false, return empty set
+      if (!searchQuery || searchQuery.trim() === "") {
+        logger.info(
+          "Maven: Filter provided but query is empty, returning empty set",
+          {
+            operationId,
+            filter: filterString,
+          }
+        );
+
+        return res.json({});
+      }
+    }
+
+    // Handle sort parameter
+    if (req.query.sort) {
+      const sortParams = parseSortParam(req.query.sort);
+      if (sortParams.length > 0) {
+        const sortParam = sortParams[0];
+        if (sortParam.attribute === "name") {
+          searchOptions.sortBy = "artifact_id";
+        } else if (sortParam.attribute === "groupId") {
+          searchOptions.sortBy = "group_id";
+        }
+        searchOptions.sortOrder = sortParam.order === "desc" ? "DESC" : "ASC";
+      }
+    }
+
+    // Perform the search with timeout
+    searchOptions.query = searchQuery;
+
+    // Add timeout to prevent hanging queries
+    const searchPromise = packageSearcher.search(searchOptions);
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(
+        () => reject(new Error("Search query timeout after 30 seconds")),
+        30000
+      )
+    );
+
+    const searchResult = await Promise.race([searchPromise, timeoutPromise]);
+
+    // Create packages response in xRegistry format
+    const packages = {};
+    const baseUrl = BASE_URL || `${req.protocol}://${req.get("host")}`;
+
+    searchResult.results.forEach((art) => {
+      const packageId = `${art.groupId}:${art.artifactId}`;
+      packages[packageId] = {
+        ...xregistryCommonAttrs({
+          id: packageId,
+          name: art.artifactId,
+          description: `Maven artifact ${art.artifactId} from group ${art.groupId}`,
+          parentUrl: `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`,
+          type: RESOURCE_TYPE_SINGULAR,
+        }),
+        groupId: art.groupId,
+        artifactId: art.artifactId,
+        self: `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${encodeURIComponent(
+          packageId
+        )}`,
+      };
+    });
+
+    // Add pagination links
+    const links = generatePaginationLinks(
+      req,
+      searchResult.totalCount,
+      offset,
+      limit
+    );
+    res.set("Link", links);
+
+    // Apply schema headers
+    setXRegistryHeaders(res, { epoch: 1 });
+
+    logger.info("Maven: Successfully served packages", {
+      operationId,
+      totalCount: searchResult.totalCount,
+      returnedCount: searchResult.results.length,
+    });
+
+    return res.json(packages);
+  } catch (error) {
+    logger.error("Maven: Error in packages route", {
+      operationId,
+      error: error.message,
+    });
+
+    return res
+      .status(500)
+      .json(
+        createErrorResponse(
+          "server_error",
+          "Package search failed",
+          500,
+          req.originalUrl,
+          error.message
+        )
+      );
+  }
 }

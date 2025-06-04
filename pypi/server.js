@@ -15,6 +15,7 @@ const {
   optimizedPagination,
 } = require("../shared/filter");
 const { parseInlineParams } = require("../shared/inline");
+const { handleInlineFlag } = require("./inline");
 const { parseSortParam, applySortFlag } = require("../shared/sort");
 
 console.log("Loaded shared utilities:", ["filter", "inline", "sort"]);
@@ -437,6 +438,13 @@ function createErrorResponse(
   return response;
 }
 
+// Async wrapper function to catch errors in async route handlers
+function asyncHandler(fn) {
+  return (req, res, next) => {
+    Promise.resolve(fn(req, res, next)).catch(next);
+  };
+}
+
 // Simple file-backed cache for HTTP GET requests
 const cacheDir = path.join(__dirname, "cache");
 if (!fs.existsSync(cacheDir)) {
@@ -637,7 +645,16 @@ function normalizePath(path) {
 // Utility function to generate pagination Link headers
 function generatePaginationLinks(req, totalCount, offset, limit) {
   const links = [];
-  const baseUrl = BASE_URL || `${req.protocol}://${req.get("host")}${req.path}`;
+
+  // Construct the base URL properly
+  let baseUrl;
+  if (BASE_URL) {
+    // If BASE_URL is set, use it with the path
+    baseUrl = `${BASE_URL}${req.path}`;
+  } else {
+    // If BASE_URL is not set, construct from request
+    baseUrl = `${req.protocol}://${req.get("host")}${req.path}`;
+  }
 
   // Add base query parameters from original request (except pagination ones)
   const queryParams = { ...req.query };
@@ -792,6 +809,13 @@ app.use((req, res, next) => {
 });
 
 // Middleware to handle conditional requests (If-None-Match and If-Modified-Since)
+// TEMPORARILY DISABLED FOR DEBUGGING
+app.use((req, res, next) => {
+  // Just pass through without modifying res.json
+  next();
+});
+
+/*
 app.use((req, res, next) => {
   // Store the original json method to intercept it
   const originalJson = res.json;
@@ -842,6 +866,7 @@ app.use((req, res, next) => {
 
   next();
 });
+*/
 
 // Utility function to handle schema flag
 function handleSchemaFlag(req, data, entityType) {
@@ -1041,66 +1066,6 @@ function makeAllUrlsAbsolute(req, obj) {
   return obj;
 }
 
-// Utility function to generate pagination Link headers
-function generatePaginationLinks(req, totalCount, offset, limit) {
-  const links = [];
-  const baseUrl = BASE_URL || `${req.protocol}://${req.get("host")}${req.path}`;
-
-  // Add base query parameters from original request (except pagination ones)
-  const queryParams = { ...req.query };
-  delete queryParams.limit;
-  delete queryParams.offset;
-
-  // Build the base query string
-  let queryString =
-    Object.keys(queryParams).length > 0
-      ? "?" +
-        Object.entries(queryParams)
-          .map(
-            ([key, value]) =>
-              `${encodeURIComponent(key)}=${encodeURIComponent(value)}`
-          )
-          .join("&")
-      : "";
-
-  // If we have any params already, use & to add more, otherwise start with ?
-  const paramPrefix = queryString ? "&" : "?";
-
-  // Calculate totalPages (ceiling division)
-  const totalPages = Math.ceil(totalCount / limit);
-  const currentPage = Math.floor(offset / limit) + 1;
-
-  // First link
-  const firstUrl = `${baseUrl}${queryString}${paramPrefix}limit=${limit}&offset=0`;
-  links.push(`<${firstUrl}>; rel="first"`);
-
-  // Previous link (if not on the first page)
-  if (offset > 0) {
-    const prevOffset = Math.max(0, offset - limit);
-    const prevUrl = `${baseUrl}${queryString}${paramPrefix}limit=${limit}&offset=${prevOffset}`;
-    links.push(`<${prevUrl}>; rel="prev"`);
-  }
-
-  // Next link (if not on the last page)
-  if (offset + limit < totalCount) {
-    const nextUrl = `${baseUrl}${queryString}${paramPrefix}limit=${limit}&offset=${
-      offset + limit
-    }`;
-    links.push(`<${nextUrl}>; rel="next"`);
-  }
-
-  // Last link
-  const lastOffset = Math.max(0, (totalPages - 1) * limit);
-  const lastUrl = `${baseUrl}${queryString}${paramPrefix}limit=${limit}&offset=${lastOffset}`;
-  links.push(`<${lastUrl}>; rel="last"`);
-
-  // Add count and total-count as per RFC5988
-  links.push(`count="${totalCount}"`);
-  links.push(`per-page="${limit}"`);
-
-  return links.join(", ");
-}
-
 // Group collection
 app.get(`/${GROUP_TYPE}`, (req, res) => {
   const baseUrl = BASE_URL || `${req.protocol}://${req.get("host")}`;
@@ -1261,7 +1226,7 @@ app.get(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`, async (req, res) => {
             (entity) => entity.name,
             logger
           );
-          orResults.push(...optimizedResults);
+          orResults = orResults.concat(optimizedResults);
           usedOptimizedFiltering = true;
           logger.debug("Used optimized filtering", {
             operationId,
@@ -1279,7 +1244,7 @@ app.get(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`, async (req, res) => {
             packageNamesCache,
             (entity) => entity.name
           );
-          orResults.push(...filteredForThisClause);
+          orResults = orResults.concat(filteredForThisClause);
         }
       } else {
         // Use two-step filtering for metadata queries or standard filtering for complex filters
@@ -1289,7 +1254,7 @@ app.get(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`, async (req, res) => {
             (entity) => entity.name,
             logger
           );
-          orResults.push(...optimizedResults);
+          orResults = orResults.concat(optimizedResults);
           usedOptimizedFiltering = true;
 
           // Check if two-step filtering was used
@@ -1320,7 +1285,7 @@ app.get(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`, async (req, res) => {
             packageNamesCache,
             (entity) => entity.name
           );
-          orResults.push(...filteredForThisClause);
+          orResults = orResults.concat(filteredForThisClause);
         }
       }
     }
@@ -2055,8 +2020,6 @@ function handleDocFlag(req, data) {
   return data;
 }
 
-// Moved the inline implementation to its own file: inline.js
-
 // Utility function to handle epoch flag
 function handleEpochFlag(req, data) {
   if (req.query.noepoch === "true") {
@@ -2452,6 +2415,27 @@ function gracefulShutdown() {
 process.on("SIGINT", gracefulShutdown);
 process.on("SIGTERM", gracefulShutdown);
 
+// Performance monitoring endpoint (Phase III)
+app.get(
+  "/performance/stats",
+  asyncHandler(async (req, res) => {
+    const cacheStats = filterOptimizer.getCacheStats();
+    const performanceStats = {
+      timestamp: new Date().toISOString(),
+      packageCache: {
+        size: packageNamesCache.length,
+        lastRefresh: new Date(lastRefreshTime).toISOString(),
+        refreshAge: Date.now() - lastRefreshTime,
+      },
+      filterOptimizer: cacheStats,
+      memory: process.memoryUsage(),
+      uptime: process.uptime(),
+    };
+
+    res.json(performanceStats);
+  })
+);
+
 // Export the attachToApp function for use as a module
 module.exports = {
   attachToApp: function (sharedApp, options = {}) {
@@ -2531,6 +2515,7 @@ if (require.main === module) {
         logger.logStartup(PORT, {
           baseUrl: BASE_URL,
         });
+        console.log(`Server listening on port ${PORT}`);
         console.log(
           `Package cache loaded successfully with ${packageNamesCache.length} packages`
         );
@@ -2550,30 +2535,10 @@ if (require.main === module) {
         logger.logStartup(PORT, {
           baseUrl: BASE_URL,
         });
+        console.log(`Server listening on port ${PORT}`);
         console.log(
           `Server started with ${packageNamesCache.length} packages in cache`
         );
       });
     });
 }
-
-// Performance monitoring endpoint (Phase III)
-app.get(
-  "/performance/stats",
-  asyncHandler(async (req, res) => {
-    const cacheStats = filterOptimizer.getCacheStats();
-    const performanceStats = {
-      timestamp: new Date().toISOString(),
-      packageCache: {
-        size: packageNamesCache.length,
-        lastRefresh: new Date(lastRefreshTime).toISOString(),
-        refreshAge: Date.now() - lastRefreshTime,
-      },
-      filterOptimizer: cacheStats,
-      memory: process.memoryUsage(),
-      uptime: process.uptime(),
-    };
-
-    res.json(performanceStats);
-  })
-);

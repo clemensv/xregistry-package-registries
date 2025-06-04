@@ -1179,7 +1179,16 @@ function handleCollectionsFlag(req, data) {
 // Utility function to generate pagination Link headers
 function generatePaginationLinks(req, totalCount, offset, limit) {
   const links = [];
-  const baseUrl = BASE_URL || `${req.protocol}://${req.get("host")}${req.path}`;
+
+  // Construct the base URL properly
+  let baseUrl;
+  if (BASE_URL) {
+    // If BASE_URL is set, use it with the path
+    baseUrl = `${BASE_URL}${req.path}`;
+  } else {
+    // If BASE_URL is not set, construct from request
+    baseUrl = `${req.protocol}://${req.get("host")}${req.path}`;
+  }
 
   // Add base query parameters from original request (except pagination ones)
   const queryParams = { ...req.query };
@@ -2321,11 +2330,13 @@ app.get(
     }
 
     // Handle sorting with optimization
+    let useOptimizedPath = false;
     if (req.query.sort) {
       const sortParams = parseSortParam(req.query.sort);
       if (sortParams.attribute) {
         // Phase III: Use optimized pagination for large result sets
         if (results.length > 10000) {
+          useOptimizedPath = true;
           const limit = req.query.limit
             ? parseInt(req.query.limit, 10)
             : DEFAULT_PAGE_LIMIT;
@@ -2350,12 +2361,13 @@ app.get(
             cacheStats: filterOptimizer.getCacheStats(),
           });
 
-          // Build response objects
+          // Build response objects in the sorted order
           const resources = {};
           const baseUrl = BASE_URL || `${req.protocol}://${req.get("host")}`;
 
+          // The optimizedPagination should have already sorted the items correctly
+          // Build the response object by adding items in the order returned by optimizedPagination
           paginationResult.items.forEach((pkg) => {
-            // Actual resource object construction will happen here
             resources[pkg.name] = {
               name: pkg.name,
               self: `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${encodePackageNameForPath(
@@ -2382,89 +2394,93 @@ app.get(
       }
     }
 
-    const totalCount = results.length;
-    const limit = req.query.limit
-      ? parseInt(req.query.limit, 10)
-      : DEFAULT_PAGE_LIMIT;
-    const offset = req.query.offset ? parseInt(req.query.offset, 10) : 0;
+    // Only proceed with standard response format if we didn't already return from optimized path
+    if (!useOptimizedPath) {
+      const totalCount = results.length;
+      const limit = req.query.limit
+        ? parseInt(req.query.limit, 10)
+        : DEFAULT_PAGE_LIMIT;
+      const offset = req.query.offset ? parseInt(req.query.offset, 10) : 0;
 
-    if (limit <= 0) {
-      return res
-        .status(400)
-        .json(
-          createErrorResponse(
-            "invalid_data",
-            "Limit must be greater than 0",
-            400,
-            req.originalUrl,
-            "The limit parameter must be a positive integer",
-            limit
-          )
-        );
-    }
-
-    // Apply pagination to the results
-    const paginatedResults = results.slice(offset, offset + limit);
-
-    const responseData = {
-      registry: REGISTRY_ID,
-      groupType: GROUP_TYPE,
-      group: GROUP_ID,
-      resourceType: RESOURCE_TYPE,
-      count: totalCount,
-      resources: paginatedResults.map((pkg) => {
-        // Build resource object - check if it has metadata from two-step filtering
-        const resource = {
-          name: pkg.name,
-          // self: makeUrlAbsolute(req, `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${encodePackageNameForPath(pkg.name)}`)
-        };
-
-        // Add metadata if available from two-step filtering
-        if (pkg.description !== undefined)
-          resource.description = pkg.description;
-        if (pkg.author !== undefined) resource.author = pkg.author;
-        if (pkg.license !== undefined) resource.license = pkg.license;
-        if (pkg.homepage !== undefined) resource.homepage = pkg.homepage;
-        if (pkg.version !== undefined) resource.version = pkg.version;
-        if (pkg.keywords !== undefined && Array.isArray(pkg.keywords))
-          resource.keywords = pkg.keywords;
-        if (pkg.repository !== undefined) resource.repository = pkg.repository;
-
-        return resource;
-      }),
-      _links: generatePaginationLinks(req, totalCount, offset, limit),
-    };
-
-    // Apply inline handling if requested for the collection
-    if (req.query.inline) {
-      const inlineDepth = parseInlineParams(req.query.inline).depth;
-      if (inlineDepth > 0) {
-        responseData.resources.forEach((r) => {
-          r._inlined = true;
-        });
+      if (limit <= 0) {
+        return res
+          .status(400)
+          .json(
+            createErrorResponse(
+              "invalid_data",
+              "Limit must be greater than 0",
+              400,
+              req.originalUrl,
+              "The limit parameter must be a positive integer",
+              limit
+            )
+          );
       }
+
+      // Apply pagination to the results
+      const paginatedResults = results.slice(offset, offset + limit);
+
+      const responseData = {
+        registry: REGISTRY_ID,
+        groupType: GROUP_TYPE,
+        group: GROUP_ID,
+        resourceType: RESOURCE_TYPE,
+        count: totalCount,
+        resources: paginatedResults.map((pkg) => {
+          // Build resource object - check if it has metadata from two-step filtering
+          const resource = {
+            name: pkg.name,
+            // self: makeUrlAbsolute(req, `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${encodePackageNameForPath(pkg.name)}`)
+          };
+
+          // Add metadata if available from two-step filtering
+          if (pkg.description !== undefined)
+            resource.description = pkg.description;
+          if (pkg.author !== undefined) resource.author = pkg.author;
+          if (pkg.license !== undefined) resource.license = pkg.license;
+          if (pkg.homepage !== undefined) resource.homepage = pkg.homepage;
+          if (pkg.version !== undefined) resource.version = pkg.version;
+          if (pkg.keywords !== undefined && Array.isArray(pkg.keywords))
+            resource.keywords = pkg.keywords;
+          if (pkg.repository !== undefined)
+            resource.repository = pkg.repository;
+
+          return resource;
+        }),
+        _links: generatePaginationLinks(req, totalCount, offset, limit),
+      };
+
+      // Apply inline handling if requested for the collection
+      if (req.query.inline) {
+        const inlineDepth = parseInlineParams(req.query.inline).depth;
+        if (inlineDepth > 0) {
+          responseData.resources.forEach((r) => {
+            r._inlined = true;
+          });
+        }
+      }
+
+      logger.info("NPM: Optimized request completed", {
+        operationId,
+        totalCount,
+        filteredCount: results.length,
+        returnedCount: paginatedResults.length,
+        offset,
+        limit,
+        usedOptimizedFiltering,
+        duration: Date.now() - startTime,
+        cacheStats: filterOptimizer.getCacheStats(),
+      });
+
+      // Add pagination links to response headers
+      const links = generatePaginationLinks(req, totalCount, offset, limit);
+      if (links) {
+        res.set("Link", links);
+      }
+
+      setXRegistryHeaders(res, responseData);
+      return res.json(responseData);
     }
-
-    logger.info("NPM: Optimized request completed", {
-      operationId,
-      totalCount,
-      filteredCount: results.length,
-      returnedCount: paginatedResults.length,
-      offset,
-      limit,
-      usedOptimizedFiltering,
-      duration: Date.now() - startTime,
-      cacheStats: filterOptimizer.getCacheStats(),
-    });
-
-    // Add pagination links to response headers
-    const links = generatePaginationLinks(req, totalCount, offset, limit);
-    if (links) {
-      res.set("Link", links);
-    }
-
-    setXRegistryHeaders(res, responseData);
-    return res.json(responseData);
   })
 );
 

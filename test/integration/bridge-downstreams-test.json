@@ -1,11 +1,11 @@
 {
   "servers": [
     {
-      "url": "http://npm-registry:3100",
+      "url": "http://npm-registry:3000",
       "apiKey": "npm-api-key-test-123"
     },
     {
-      "url": "http://pypi-registry:3000",
+      "url": "http://pypi-registry:3100",
       "apiKey": "pypi-api-key-test-123"
     },
     {
@@ -21,4 +21,4 @@
       "apiKey": "oci-api-key-test-123"
     }
   ]
-} 
+}

@@ -3,14 +3,14 @@
 // Parse filter expressions like ATTRIBUTE, ATTRIBUTE=VALUE, ATTRIBUTE<VALUE, etc.
 function parseFilterExpression(filterStr) {
   const expressions = [];
-  const parts = filterStr.split(',');
+  const parts = filterStr.split(",");
   for (const part of parts) {
     const match = part.match(/^(.+?)(!=|<>|>=|<=|=|<|>)(.*)$/);
     if (match) {
       const [, attribute, operator, value] = match;
       expressions.push({ attribute, operator, value });
     } else {
-      expressions.push({ attribute: part, operator: 'exists', value: null });
+      expressions.push({ attribute: part, operator: "exists", value: null });
     }
   }
   return expressions;
@@ -18,7 +18,9 @@ function parseFilterExpression(filterStr) {
 
 // Get nested attribute value by path (e.g. labels.stage)
 function getNestedValue(obj, path) {
-  return path.split('.').reduce((o, key) => (o && key in o ? o[key] : undefined), obj);
+  return path
+    .split(".")
+    .reduce((o, key) => (o && key in o ? o[key] : undefined), obj);
 }
 
 // Compare attribute value against filter value with operator
@@ -29,15 +31,15 @@ function compareValues(attrValue, filterValue, operator) {
   // This means if attrValue is undefined, it generally won't match most operators,
   // specific logic below handles exceptions like 'name=null' or 'name!=null'.
 
-  if (operator === 'exists') {
+  if (operator === "exists") {
     return attrValue !== undefined && attrValue !== null;
   }
 
-  if (operator === '=') {
+  if (operator === "=") {
     const filterValueStr = String(filterValue);
 
     // Handle 'name=null' (attribute is null or undefined)
-    if (filterValueStr.toLowerCase() === 'null') {
+    if (filterValueStr.toLowerCase() === "null") {
       return attrValue === undefined || attrValue === null;
     }
 
@@ -49,16 +51,21 @@ function compareValues(attrValue, filterValue, operator) {
     const attrValueStr = String(attrValue);
 
     // Handle 'name=*' (attribute exists and is not null, can be empty string)
-    if (filterValueStr === '*') {
+    if (filterValueStr === "*") {
       return true; // Already checked attrValue is not undefined/null
     }
 
     // Handle wildcards (e.g. name=*foo*, name=foo*bar, name=*foo*)
-    if (filterValueStr.includes('*')) {
+    if (filterValueStr.includes("*")) {
       // Escape regex special characters in the filterValue, then convert xRegistry '*' to '.*?'
-      const regexPattern = '^' + filterValueStr.replace(/[\.\+\?\^\[\]\(\)\{\}\$\-\=\!\|]/g, '\\$&').replace(/\*/g, '.*?') + '$';
+      const regexPattern =
+        "^" +
+        filterValueStr
+          .replace(/[\.\+\?\^\[\]\(\)\{\}\$\-\=\!\|]/g, "\\$&")
+          .replace(/\*/g, ".*?") +
+        "$";
       try {
-        const regex = new RegExp(regexPattern, 'i'); // case-insensitive
+        const regex = new RegExp(regexPattern, "i"); // case-insensitive
         return regex.test(attrValueStr);
       } catch (e) {
         // Invalid regex pattern, treat as no match
@@ -69,11 +76,11 @@ function compareValues(attrValue, filterValue, operator) {
     return attrValueStr.toLowerCase() === filterValueStr.toLowerCase();
   }
 
-  if (operator === '!=' || operator === '<>') {
+  if (operator === "!=" || operator === "<>") {
     const filterValueStr = String(filterValue);
 
     // Handle 'name!=null' or 'name<>null' (attribute exists and is not null)
-    if (filterValueStr.toLowerCase() === 'null') {
+    if (filterValueStr.toLowerCase() === "null") {
       return attrValue !== undefined && attrValue !== null;
     }
 
@@ -88,15 +95,20 @@ function compareValues(attrValue, filterValue, operator) {
     // This is equivalent to NOT (attrValue exists and is not null), so it means attrValue must be null or undefined.
     // However, we already handled (attrValue === undefined || attrValue === null) above, returning true.
     // If attrValue is not null/undefined here, it means it exists, so it should NOT match 'name!=*'
-    if (filterValueStr === '*') {
+    if (filterValueStr === "*") {
       return false; // attrValue exists and is not null, so it does not satisfy 'not equals *'
     }
 
     // Handle wildcards (e.g. name!=*foo*)
-    if (filterValueStr.includes('*')) {
-      const regexPattern = '^' + filterValueStr.replace(/[\.\+\?\^\[\]\(\)\{\}\$\-\=\!\|]/g, '\\$&').replace(/\*/g, '.*?') + '$';
+    if (filterValueStr.includes("*")) {
+      const regexPattern =
+        "^" +
+        filterValueStr
+          .replace(/[\.\+\?\^\[\]\(\)\{\}\$\-\=\!\|]/g, "\\$&")
+          .replace(/\*/g, ".*?") +
+        "$";
       try {
-        const regex = new RegExp(regexPattern, 'i');
+        const regex = new RegExp(regexPattern, "i");
         return !regex.test(attrValueStr);
       } catch (e) {
         // Invalid regex pattern, treat as match (as it's a NOT equals)
@@ -109,15 +121,15 @@ function compareValues(attrValue, filterValue, operator) {
     return attrValueStr.toLowerCase() !== filterValueStr.toLowerCase();
   }
 
-  if (['<', '<=', '>', '>='].includes(operator)) {
+  if (["<", "<=", ">", ">="].includes(operator)) {
     // Attribute must exist for comparison
     if (attrValue === undefined || attrValue === null) {
       return false;
     }
     const filterValueStr = String(filterValue);
     // filterValue must not be null for these operators as per spec
-    if (filterValueStr.toLowerCase() === 'null') {
-      return false; 
+    if (filterValueStr.toLowerCase() === "null") {
+      return false;
     }
 
     // Try numeric comparison first
@@ -126,20 +138,28 @@ function compareValues(attrValue, filterValue, operator) {
 
     if (!isNaN(numAttrValue) && !isNaN(numFilterValue)) {
       switch (operator) {
-        case '<': return numAttrValue < numFilterValue;
-        case '<=': return numAttrValue <= numFilterValue;
-        case '>': return numAttrValue > numFilterValue;
-        case '>=': return numAttrValue >= numFilterValue;
+        case "<":
+          return numAttrValue < numFilterValue;
+        case "<=":
+          return numAttrValue <= numFilterValue;
+        case ">":
+          return numAttrValue > numFilterValue;
+        case ">=":
+          return numAttrValue >= numFilterValue;
       }
     }
     // If not purely numeric, spec allows for string comparison for these operators (e.g. for versions, timestamps)
     // Using case-insensitive string comparison for this fallback.
     const attrValueStr = String(attrValue);
     switch (operator) {
-      case '<': return attrValueStr.toLowerCase() < filterValueStr.toLowerCase();
-      case '<=': return attrValueStr.toLowerCase() <= filterValueStr.toLowerCase();
-      case '>': return attrValueStr.toLowerCase() > filterValueStr.toLowerCase();
-      case '>=': return attrValueStr.toLowerCase() >= filterValueStr.toLowerCase();
+      case "<":
+        return attrValueStr.toLowerCase() < filterValueStr.toLowerCase();
+      case "<=":
+        return attrValueStr.toLowerCase() <= filterValueStr.toLowerCase();
+      case ">":
+        return attrValueStr.toLowerCase() > filterValueStr.toLowerCase();
+      case ">=":
+        return attrValueStr.toLowerCase() >= filterValueStr.toLowerCase();
     }
   }
   return false;
@@ -147,23 +167,34 @@ function compareValues(attrValue, filterValue, operator) {
 
 // Apply xRegistry filter with name constraint then other conditions
 // getEntityValue: optional function to extract comparable value from entity (e.g., string packageName)
-async function applyXRegistryFilterWithNameConstraint(filterParams, entities, req, getEntityValue = e => e) {
+async function applyXRegistryFilterWithNameConstraint(
+  filterParams,
+  entities,
+  req,
+  getEntityValue = (e) => e
+) {
   // DEPRECATED in favor of applyXRegistryFilters - to be removed later
-  const filterArray = Array.isArray(filterParams) ? filterParams : [filterParams];
+  const filterArray = Array.isArray(filterParams)
+    ? filterParams
+    : [filterParams];
   let results = [];
   for (const filterParam of filterArray) {
     const expressions = parseFilterExpression(filterParam);
-    const nameExpr = expressions.filter(e => e.attribute === 'name');
+    const nameExpr = expressions.filter((e) => e.attribute === "name");
     // Use getEntityValue for name comparison
-    let subset = entities.filter(e => nameExpr.every(expr =>
-      compareValues(getEntityValue(e), expr.value, expr.operator)
-    ));
-    const otherExpr = expressions.filter(e => e.attribute !== 'name');
+    let subset = entities.filter((e) =>
+      nameExpr.every((expr) =>
+        compareValues(getEntityValue(e), expr.value, expr.operator)
+      )
+    );
+    const otherExpr = expressions.filter((e) => e.attribute !== "name");
     if (otherExpr.length) {
-      subset = subset.filter(entity => otherExpr.every(expr => {
-        const val = getNestedValue(entity, expr.attribute);
-        return compareValues(val, expr.value, expr.operator);
-      }));
+      subset = subset.filter((entity) =>
+        otherExpr.every((expr) => {
+          const val = getNestedValue(entity, expr.attribute);
+          return compareValues(val, expr.value, expr.operator);
+        })
+      );
     }
     results = results.concat(subset);
   }
@@ -173,8 +204,16 @@ async function applyXRegistryFilterWithNameConstraint(filterParams, entities, re
 // New function to apply filters according to xRegistry spec with mandatory name filter
 // Processes a single filter string (e.g., from one ?filter=name=foo,version>1 query param)
 // The OR logic for multiple ?filter params is handled by the caller.
-function applyXRegistryFilters(filterQueryString, entities, getEntityNameValue = entity => entity.name) {
-  if (!filterQueryString || typeof filterQueryString !== 'string' || filterQueryString.trim() === '') {
+function applyXRegistryFilters(
+  filterQueryString,
+  entities,
+  getEntityNameValue = (entity) => entity.name
+) {
+  if (
+    !filterQueryString ||
+    typeof filterQueryString !== "string" ||
+    filterQueryString.trim() === ""
+  ) {
     // If no filter string is provided, per current plan, other filters are not effective
     // without a name filter. If name filter is also absent, return all entities.
     // However, the strict plan says "name filter is mandatory".
@@ -185,9 +224,9 @@ function applyXRegistryFilters(filterQueryString, entities, getEntityNameValue =
   }
 
   const allExpressions = parseFilterExpression(filterQueryString);
-  
-  const nameExpressions = allExpressions.filter(e => e.attribute === 'name');
-  const otherExpressions = allExpressions.filter(e => e.attribute !== 'name');
+
+  const nameExpressions = allExpressions.filter((e) => e.attribute === "name");
+  const otherExpressions = allExpressions.filter((e) => e.attribute !== "name");
 
   // Mandatory Name Filter Check (as per plan)
   // If there are expressions, but none of them are for 'name', return empty array.
@@ -199,8 +238,8 @@ function applyXRegistryFilters(filterQueryString, entities, getEntityNameValue =
 
   let nameFilteredEntities = entities;
   if (nameExpressions.length > 0) {
-    nameFilteredEntities = entities.filter(entity => {
-      return nameExpressions.every(expr => {
+    nameFilteredEntities = entities.filter((entity) => {
+      return nameExpressions.every((expr) => {
         const entityName = getEntityNameValue(entity);
         return compareValues(entityName, expr.value, expr.operator);
       });
@@ -214,8 +253,8 @@ function applyXRegistryFilters(filterQueryString, entities, getEntityNameValue =
   }
 
   // Phase 2: Refinement Filtering
-  const refinedEntities = nameFilteredEntities.filter(entity => {
-    return otherExpressions.every(expr => {
+  const refinedEntities = nameFilteredEntities.filter((entity) => {
+    return otherExpressions.every((expr) => {
       const attrValue = getNestedValue(entity, expr.attribute);
       return compareValues(attrValue, expr.value, expr.operator);
     });
@@ -233,14 +272,14 @@ function applyXRegistryFilters(filterQueryString, entities, getEntityNameValue =
  */
 class FilterOptimizer {
   constructor(options = {}) {
-    this.nameIndex = new Map(); // name -> Set of entity indices  
+    this.nameIndex = new Map(); // name -> Set of entity indices
     this.attributeIndices = new Map(); // attribute -> Map(value -> Set of indices)
     this.filterCache = new Map(); // filterKey -> cached results
     this.cacheSize = options.cacheSize || 1000;
     this.maxCacheAge = options.maxCacheAge || 300000; // 5 minutes
     this.entities = [];
     this.lastIndexUpdate = 0;
-    
+
     // Two-step filtering configuration
     this.enableTwoStepFiltering = options.enableTwoStepFiltering !== false; // Default: enabled
     this.metadataFetcher = options.metadataFetcher || null; // Function to fetch metadata
@@ -250,7 +289,7 @@ class FilterOptimizer {
   /**
    * Build indices for fast filtering
    */
-  buildIndices(entities, getEntityNameValue = entity => entity.name) {
+  buildIndices(entities, getEntityNameValue = (entity) => entity.name) {
     this.entities = entities;
     this.nameIndex.clear();
     this.attributeIndices.clear();
@@ -269,8 +308,8 @@ class FilterOptimizer {
     });
 
     // Build attribute indices for common searchable attributes
-    const commonAttributes = ['description', 'author', 'license', 'version'];
-    commonAttributes.forEach(attr => {
+    const commonAttributes = ["description", "author", "license", "version"];
+    commonAttributes.forEach((attr) => {
       const attrIndex = new Map();
       entities.forEach((entity, index) => {
         const value = getNestedValue(entity, attr);
@@ -294,15 +333,20 @@ class FilterOptimizer {
     const filterValue = String(value).toLowerCase();
     const matchingIndices = new Set();
 
-    if (operator === '=') {
-      if (filterValue.includes('*')) {
+    if (operator === "=") {
+      if (filterValue.includes("*")) {
         // Wildcard matching - need to check all names
-        const regexPattern = '^' + filterValue.replace(/[\.\+\?\^\[\]\(\)\{\}\$\-\=\!\|]/g, '\\$&').replace(/\*/g, '.*?') + '$';
+        const regexPattern =
+          "^" +
+          filterValue
+            .replace(/[\.\+\?\^\[\]\(\)\{\}\$\-\=\!\|]/g, "\\$&")
+            .replace(/\*/g, ".*?") +
+          "$";
         try {
-          const regex = new RegExp(regexPattern, 'i');
+          const regex = new RegExp(regexPattern, "i");
           for (const [name, indices] of this.nameIndex) {
             if (regex.test(name)) {
-              indices.forEach(idx => matchingIndices.add(idx));
+              indices.forEach((idx) => matchingIndices.add(idx));
             }
           }
         } catch (e) {
@@ -312,22 +356,27 @@ class FilterOptimizer {
         // Exact match using index
         const indices = this.nameIndex.get(filterValue);
         if (indices) {
-          indices.forEach(idx => matchingIndices.add(idx));
+          indices.forEach((idx) => matchingIndices.add(idx));
         }
       }
-    } else if (operator === '!=' || operator === '<>') {
+    } else if (operator === "!=" || operator === "<>") {
       // NOT equals - add all except matching
       for (let i = 0; i < this.entities.length; i++) {
         matchingIndices.add(i);
       }
-      
-      if (filterValue.includes('*')) {
-        const regexPattern = '^' + filterValue.replace(/[\.\+\?\^\[\]\(\)\{\}\$\-\=\!\|]/g, '\\$&').replace(/\*/g, '.*?') + '$';
+
+      if (filterValue.includes("*")) {
+        const regexPattern =
+          "^" +
+          filterValue
+            .replace(/[\.\+\?\^\[\]\(\)\{\}\$\-\=\!\|]/g, "\\$&")
+            .replace(/\*/g, ".*?") +
+          "$";
         try {
-          const regex = new RegExp(regexPattern, 'i');
+          const regex = new RegExp(regexPattern, "i");
           for (const [name, indices] of this.nameIndex) {
             if (regex.test(name)) {
-              indices.forEach(idx => matchingIndices.delete(idx));
+              indices.forEach((idx) => matchingIndices.delete(idx));
             }
           }
         } catch (e) {
@@ -336,22 +385,22 @@ class FilterOptimizer {
       } else {
         const indices = this.nameIndex.get(filterValue);
         if (indices) {
-          indices.forEach(idx => matchingIndices.delete(idx));
+          indices.forEach((idx) => matchingIndices.delete(idx));
         }
       }
-    } else if (['<', '<=', '>', '>='].includes(operator)) {
+    } else if (["<", "<=", ">", ">="].includes(operator)) {
       // Comparison operators - fallback to linear scan
       return this.linearFilterByName(nameExpr);
     }
 
-    return Array.from(matchingIndices).map(idx => this.entities[idx]);
+    return Array.from(matchingIndices).map((idx) => this.entities[idx]);
   }
 
   /**
    * Fallback linear filtering for complex operations
    */
-  linearFilterByName(nameExpr, getEntityNameValue = entity => entity.name) {
-    return this.entities.filter(entity => {
+  linearFilterByName(nameExpr, getEntityNameValue = (entity) => entity.name) {
+    return this.entities.filter((entity) => {
       const entityName = getEntityNameValue(entity);
       return compareValues(entityName, nameExpr.value, nameExpr.operator);
     });
@@ -360,15 +409,27 @@ class FilterOptimizer {
   /**
    * Two-step filtering: Name first, then metadata
    */
-  async twoStepFilter(filterQueryString, getEntityNameValue = entity => entity.name, logger = console) {
-    if (!filterQueryString || typeof filterQueryString !== 'string' || filterQueryString.trim() === '') {
+  async twoStepFilter(
+    filterQueryString,
+    getEntityNameValue = (entity) => entity.name,
+    logger = console
+  ) {
+    if (
+      !filterQueryString ||
+      typeof filterQueryString !== "string" ||
+      filterQueryString.trim() === ""
+    ) {
       return this.entities;
     }
 
     const startTime = Date.now();
     const allExpressions = parseFilterExpression(filterQueryString);
-    const nameExpressions = allExpressions.filter(e => e.attribute === 'name');
-    const metadataExpressions = allExpressions.filter(e => e.attribute !== 'name');
+    const nameExpressions = allExpressions.filter(
+      (e) => e.attribute === "name"
+    );
+    const metadataExpressions = allExpressions.filter(
+      (e) => e.attribute !== "name"
+    );
 
     // Mandatory name filter check
     if (allExpressions.length > 0 && nameExpressions.length === 0) {
@@ -378,11 +439,11 @@ class FilterOptimizer {
     // Step 1: Fast name filtering using indices
     let nameFilteredResults = this.entities;
     if (nameExpressions.length > 0) {
-      if (nameExpressions.length === 1 && nameExpressions[0].operator === '=') {
+      if (nameExpressions.length === 1 && nameExpressions[0].operator === "=") {
         nameFilteredResults = this.filterByNameExpression(nameExpressions[0]);
       } else {
-        nameFilteredResults = this.entities.filter(entity => {
-          return nameExpressions.every(expr => {
+        nameFilteredResults = this.entities.filter((entity) => {
+          return nameExpressions.every((expr) => {
             const entityName = getEntityNameValue(entity);
             return compareValues(entityName, expr.value, expr.operator);
           });
@@ -390,11 +451,11 @@ class FilterOptimizer {
       }
     }
 
-    logger.debug('Two-step filtering: Phase 1 (name) complete', {
+    logger.debug("Two-step filtering: Phase 1 (name) complete", {
       originalCount: this.entities.length,
       nameFilteredCount: nameFilteredResults.length,
       hasMetadataFilters: metadataExpressions.length > 0,
-      phase1Duration: Date.now() - startTime
+      phase1Duration: Date.now() - startTime,
     });
 
     // Step 2: Metadata filtering (if needed and metadata fetcher available)
@@ -403,33 +464,42 @@ class FilterOptimizer {
     }
 
     if (!this.metadataFetcher || !this.enableTwoStepFiltering) {
-      logger.warn('Two-step filtering: Metadata filters requested but metadata fetcher not available', {
-        metadataExpressions: metadataExpressions.map(e => e.attribute)
-      });
+      logger.warn(
+        "Two-step filtering: Metadata filters requested but metadata fetcher not available",
+        {
+          metadataExpressions: metadataExpressions.map((e) => e.attribute),
+        }
+      );
       return nameFilteredResults;
     }
 
     // Limit metadata fetches to prevent overwhelming upstream services
-    const limitedResults = nameFilteredResults.slice(0, this.maxMetadataFetches);
+    const limitedResults = nameFilteredResults.slice(
+      0,
+      this.maxMetadataFetches
+    );
     if (limitedResults.length < nameFilteredResults.length) {
-      logger.warn('Two-step filtering: Limited metadata fetches due to large result set', {
-        totalResults: nameFilteredResults.length,
-        limitedTo: limitedResults.length,
-        maxFetches: this.maxMetadataFetches
-      });
+      logger.warn(
+        "Two-step filtering: Limited metadata fetches due to large result set",
+        {
+          totalResults: nameFilteredResults.length,
+          limitedTo: limitedResults.length,
+          maxFetches: this.maxMetadataFetches,
+        }
+      );
     }
 
     // Fetch metadata and apply filters
     const metadataResults = [];
     const metadataStartTime = Date.now();
-    
+
     for (const entity of limitedResults) {
       try {
         const entityName = getEntityNameValue(entity);
         const metadata = await this.metadataFetcher(entityName);
-        
+
         // Apply metadata filters
-        const matchesAllMetadataFilters = metadataExpressions.every(expr => {
+        const matchesAllMetadataFilters = metadataExpressions.every((expr) => {
           const attrValue = getNestedValue(metadata, expr.attribute);
           return compareValues(attrValue, expr.value, expr.operator);
         });
@@ -438,25 +508,28 @@ class FilterOptimizer {
           // Merge original entity with fetched metadata
           metadataResults.push({
             ...entity,
-            ...metadata
+            ...metadata,
           });
         }
       } catch (error) {
-        logger.debug('Two-step filtering: Failed to fetch metadata for entity', {
-          entityName: getEntityNameValue(entity),
-          error: error.message
-        });
+        logger.debug(
+          "Two-step filtering: Failed to fetch metadata for entity",
+          {
+            entityName: getEntityNameValue(entity),
+            error: error.message,
+          }
+        );
         // Continue with other entities
       }
     }
 
-    logger.info('Two-step filtering: Complete', {
+    logger.info("Two-step filtering: Complete", {
       originalCount: this.entities.length,
       nameFilteredCount: nameFilteredResults.length,
       metadataFetchedCount: limitedResults.length,
       finalResultCount: metadataResults.length,
       totalDuration: Date.now() - startTime,
-      metadataDuration: Date.now() - metadataStartTime
+      metadataDuration: Date.now() - metadataStartTime,
     });
 
     return metadataResults;
@@ -465,30 +538,55 @@ class FilterOptimizer {
   /**
    * Optimized filtering with caching (enhanced for two-step)
    */
-  async optimizedFilter(filterQueryString, getEntityNameValue = entity => entity.name, logger = console) {
-    if (!filterQueryString || typeof filterQueryString !== 'string' || filterQueryString.trim() === '') {
+  async optimizedFilter(
+    filterQueryString,
+    getEntityNameValue = (entity) => entity.name,
+    logger = console
+  ) {
+    if (
+      !filterQueryString ||
+      typeof filterQueryString !== "string" ||
+      filterQueryString.trim() === ""
+    ) {
       return this.entities;
     }
 
     // Check if this requires two-step filtering
     const allExpressions = parseFilterExpression(filterQueryString);
-    const hasMetadataFilters = allExpressions.some(e => e.attribute !== 'name');
+    const hasMetadataFilters = allExpressions.some(
+      (e) => e.attribute !== "name"
+    );
 
-    if (hasMetadataFilters && this.enableTwoStepFiltering && this.metadataFetcher) {
+    if (
+      hasMetadataFilters &&
+      this.enableTwoStepFiltering &&
+      this.metadataFetcher
+    ) {
       // Use two-step filtering for metadata queries
-      return await this.twoStepFilter(filterQueryString, getEntityNameValue, logger);
+      return await this.twoStepFilter(
+        filterQueryString,
+        getEntityNameValue,
+        logger
+      );
     }
 
     // Use standard optimized filtering for name-only queries
     // Check cache first
     const cacheKey = `${filterQueryString}:${this.lastIndexUpdate}`;
     const cachedResult = this.filterCache.get(cacheKey);
-    if (cachedResult && Date.now() - cachedResult.timestamp < this.maxCacheAge) {
+    if (
+      cachedResult &&
+      Date.now() - cachedResult.timestamp < this.maxCacheAge
+    ) {
       return cachedResult.data;
     }
 
-    const nameExpressions = allExpressions.filter(e => e.attribute === 'name');
-    const otherExpressions = allExpressions.filter(e => e.attribute !== 'name');
+    const nameExpressions = allExpressions.filter(
+      (e) => e.attribute === "name"
+    );
+    const otherExpressions = allExpressions.filter(
+      (e) => e.attribute !== "name"
+    );
 
     // Mandatory name filter check
     if (allExpressions.length > 0 && nameExpressions.length === 0) {
@@ -499,13 +597,13 @@ class FilterOptimizer {
 
     // Phase 1: Optimized name filtering using index
     if (nameExpressions.length > 0) {
-      if (nameExpressions.length === 1 && nameExpressions[0].operator === '=') {
+      if (nameExpressions.length === 1 && nameExpressions[0].operator === "=") {
         // Single exact match - use fast index lookup
         results = this.filterByNameExpression(nameExpressions[0]);
       } else {
         // Multiple name expressions or complex operators - use linear scan
-        results = this.entities.filter(entity => {
-          return nameExpressions.every(expr => {
+        results = this.entities.filter((entity) => {
+          return nameExpressions.every((expr) => {
             const entityName = getEntityNameValue(entity);
             return compareValues(entityName, expr.value, expr.operator);
           });
@@ -515,8 +613,8 @@ class FilterOptimizer {
 
     // Phase 2: Refinement filtering (for non-metadata attributes)
     if (otherExpressions.length > 0) {
-      results = results.filter(entity => {
-        return otherExpressions.every(expr => {
+      results = results.filter((entity) => {
+        return otherExpressions.every((expr) => {
           const attrValue = getNestedValue(entity, expr.attribute);
           return compareValues(attrValue, expr.value, expr.operator);
         });
@@ -547,7 +645,7 @@ class FilterOptimizer {
 
     this.filterCache.set(key, {
       data: data,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
   }
 
@@ -571,7 +669,7 @@ class FilterOptimizer {
       lastIndexUpdate: this.lastIndexUpdate,
       twoStepFilteringEnabled: this.enableTwoStepFiltering,
       hasMetadataFetcher: !!this.metadataFetcher,
-      maxMetadataFetches: this.maxMetadataFetches
+      maxMetadataFetches: this.maxMetadataFetches,
     };
   }
 }
@@ -579,51 +677,45 @@ class FilterOptimizer {
 /**
  * Pagination optimizer to avoid loading full result sets
  */
-function optimizedPagination(entities, offset, limit, sortParams = null, getNestedValue = getNestedValue) {
-  // For small datasets, use simple slicing
-  if (entities.length <= 10000) {
-    let sortedEntities = entities;
-    
-    if (sortParams && sortParams.length > 0) {
-      sortedEntities = [...entities].sort((a, b) => {
-        for (const { attribute, direction } of sortParams) {
-          const aVal = getNestedValue(a, attribute);
-          const bVal = getNestedValue(b, attribute);
-          
-          let comparison = 0;
-          if (aVal < bVal) comparison = -1;
-          else if (aVal > bVal) comparison = 1;
-          
-          if (comparison !== 0) {
-            return direction === 'desc' ? -comparison : comparison;
-          }
-        }
-        return 0;
-      });
-    }
-    
-    return {
-      items: sortedEntities.slice(offset, offset + limit),
-      totalCount: entities.length,
-      hasMore: offset + limit < entities.length
-    };
+function optimizedPagination(
+  entities,
+  offset,
+  limit,
+  sortParams = null,
+  getNestedValue = getNestedValue
+) {
+  let sortedEntities = entities;
+
+  // Apply sorting if requested (regardless of dataset size)
+  if (sortParams && sortParams.attribute) {
+    sortedEntities = [...entities].sort((a, b) => {
+      const aVal = getNestedValue(a, sortParams.attribute);
+      const bVal = getNestedValue(b, sortParams.attribute);
+
+      let comparison = 0;
+      if (aVal < bVal) comparison = -1;
+      else if (aVal > bVal) comparison = 1;
+
+      if (comparison !== 0) {
+        return sortParams.order === "desc" ? -comparison : comparison;
+      }
+      return 0;
+    });
   }
 
-  // For large datasets, implement streaming pagination
-  // This would be more complex and depend on specific backend capabilities
   return {
-    items: entities.slice(offset, offset + limit),
+    items: sortedEntities.slice(offset, offset + limit),
     totalCount: entities.length,
-    hasMore: offset + limit < entities.length
+    hasMore: offset + limit < entities.length,
   };
 }
 
-module.exports = { 
-  parseFilterExpression, 
-  getNestedValue, 
-  compareValues, 
-  applyXRegistryFilterWithNameConstraint, 
+module.exports = {
+  parseFilterExpression,
+  getNestedValue,
+  compareValues,
+  applyXRegistryFilterWithNameConstraint,
   applyXRegistryFilters,
   FilterOptimizer,
-  optimizedPagination
+  optimizedPagination,
 };

@@ -6,36 +6,40 @@ services:
       dockerfile: npm.Dockerfile
     container_name: bridge-test-npm
     ports:
-      - "4873:3100"
+      - "4873:3000"
     environment:
-      - XREGISTRY_NPM_PORT=3100
-      - XREGISTRY_NPM_API_KEY=npm-api-key-test-123
-      - XREGISTRY_NPM_QUIET=false
+      - NODE_ENV=production
+      - XREGISTRY_NPM_PORT=3000
+    volumes:
+      - bridge-npm-logs:/app/logs
     networks:
       - bridge-network
     healthcheck:
-      test: ["CMD", "node", "-e", "const http=require('http');const options={hostname:'localhost',port:3100,path:'/',timeout:2000};const req=http.request(options,(res)=>{process.exit(res.statusCode<500?0:1)});req.on('error',()=>process.exit(1));req.end();"]
+      test:
+        ["CMD", "curl", "-f", "-s", "--max-time", "5", "http://localhost:3000/"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
 
-  # PyPI Registry Service  
+  # PyPI Registry Service
   pypi-registry:
     build:
       context: ../..
       dockerfile: pypi.Dockerfile
     container_name: bridge-test-pypi
     ports:
-      - "8081:3000"
+      - "8081:3100"
     environment:
-      - XREGISTRY_PYPI_PORT=3000
-      - XREGISTRY_PYPI_API_KEY=pypi-api-key-test-123
-      - XREGISTRY_PYPI_QUIET=false
+      - NODE_ENV=production
+      - XREGISTRY_PYPI_PORT=3100
+    volumes:
+      - bridge-pypi-logs:/app/logs
     networks:
       - bridge-network
     healthcheck:
-      test: ["CMD", "node", "-e", "const http=require('http');const options={hostname:'localhost',port:3000,path:'/',timeout:2000};const req=http.request(options,(res)=>{process.exit(res.statusCode<500?0:1)});req.on('error',()=>process.exit(1));req.end();"]
+      test:
+        ["CMD", "curl", "-f", "-s", "--max-time", "5", "http://localhost:3100/"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -50,13 +54,15 @@ services:
     ports:
       - "8082:3300"
     environment:
+      - NODE_ENV=production
       - XREGISTRY_MAVEN_PORT=3300
-      - XREGISTRY_MAVEN_API_KEY=maven-api-key-test-123
-      - XREGISTRY_MAVEN_QUIET=false
+    volumes:
+      - bridge-maven-logs:/app/logs
     networks:
       - bridge-network
     healthcheck:
-      test: ["CMD", "node", "-e", "const http=require('http');const options={hostname:'localhost',port:3300,path:'/',timeout:2000};const req=http.request(options,(res)=>{process.exit(res.statusCode<500?0:1)});req.on('error',()=>process.exit(1));req.end();"]
+      test:
+        ["CMD", "curl", "-f", "-s", "--max-time", "5", "http://localhost:3300/"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -71,13 +77,15 @@ services:
     ports:
       - "8083:3200"
     environment:
+      - NODE_ENV=production
       - XREGISTRY_NUGET_PORT=3200
-      - XREGISTRY_NUGET_API_KEY=nuget-api-key-test-123
-      - XREGISTRY_NUGET_QUIET=false
+    volumes:
+      - bridge-nuget-logs:/app/logs
     networks:
       - bridge-network
     healthcheck:
-      test: ["CMD", "node", "-e", "const http=require('http');const options={hostname:'localhost',port:3200,path:'/',timeout:2000};const req=http.request(options,(res)=>{process.exit(res.statusCode<500?0:1)});req.on('error',()=>process.exit(1));req.end();"]
+      test:
+        ["CMD", "curl", "-f", "-s", "--max-time", "5", "http://localhost:3200/"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -92,13 +100,15 @@ services:
     ports:
       - "8084:3400"
     environment:
+      - NODE_ENV=production
       - XREGISTRY_OCI_PORT=3400
-      - XREGISTRY_OCI_API_KEY=oci-api-key-test-123
-      - XREGISTRY_OCI_QUIET=false
+    volumes:
+      - bridge-oci-logs:/app/logs
     networks:
       - bridge-network
     healthcheck:
-      test: ["CMD", "node", "-e", "const http=require('http');const options={hostname:'localhost',port:3400,path:'/',timeout:2000};const req=http.request(options,(res)=>{process.exit(res.statusCode<500?0:1)});req.on('error',()=>process.exit(1));req.end();"]
+      test:
+        ["CMD", "curl", "-f", "-s", "--max-time", "5", "http://localhost:3400/"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -113,15 +123,16 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - PORT=8080
+      - NODE_ENV=production
+      - BRIDGE_PORT=8080
       - BASE_URL=http://localhost:8080
       - BRIDGE_CONFIG_FILE=/app/downstreams-test.json
-      - NODE_ENV=development
       - STARTUP_WAIT_TIME=15000
       - RETRY_INTERVAL=60000
       - SERVER_HEALTH_TIMEOUT=10000
     volumes:
       - ./bridge-downstreams-test.json:/app/downstreams-test.json:ro
+      - bridge-bridge-logs:/app/logs
     networks:
       - bridge-network
     depends_on:
@@ -136,15 +147,24 @@ services:
       oci-registry:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "node", "-e", "const http=require('http');const options={hostname:'localhost',port:8080,path:'/',timeout:2000};const req=http.request(options,(res)=>{process.exit(res.statusCode<500?0:1)});req.on('error',()=>process.exit(1));req.end();"]
+      test:
+        ["CMD", "curl", "-f", "-s", "--max-time", "5", "http://localhost:8080/"]
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 60s
+
+volumes:
+  bridge-npm-logs:
+  bridge-pypi-logs:
+  bridge-maven-logs:
+  bridge-nuget-logs:
+  bridge-oci-logs:
+  bridge-bridge-logs:
 
 networks:
   bridge-network:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.20.0.0/16 
+        - subnet: 172.20.0.0/16

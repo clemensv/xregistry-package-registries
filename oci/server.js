@@ -595,7 +595,16 @@ function makeUrlAbsolute(req, url) {
 
 function generatePaginationLinks(req, totalCount, offset, limit) {
   const links = [];
-  const baseUrl = BASE_URL || `${req.protocol}://${req.get("host")}${req.path}`;
+
+  // Construct the base URL properly
+  let baseUrl;
+  if (BASE_URL) {
+    // If BASE_URL is set, use it with the path
+    baseUrl = `${BASE_URL}${req.path}`;
+  } else {
+    // If BASE_URL is not set, construct from request
+    baseUrl = `${req.protocol}://${req.get("host")}${req.path}`;
+  }
 
   // Add base query parameters from original request (except pagination ones)
   const queryParams = { ...req.query };

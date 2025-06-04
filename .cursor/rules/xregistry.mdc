@@ -1,0 +1,10 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+Code MUST conform to the rules in these specs:
+
+https://raw.githubusercontent.com/xregistry/spec/refs/heads/main/core/spec.md
+
+https://raw.githubusercontent.com/xregistry/spec/refs/heads/main/pagination/spec.md

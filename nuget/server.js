@@ -323,7 +323,16 @@ async function cachedGet(url, headers = {}) {
     // Cache expiration could be implemented here
   }
 
-  const axiosConfig = { url, method: "get", headers: { ...headers } };
+  const axiosConfig = {
+    url,
+    method: "get",
+    headers: { ...headers },
+    timeout: 10000, // 10 second timeout
+    validateStatus: function (status) {
+      // Consider anything less than 500 as success
+      return status < 500;
+    },
+  };
   if (etag) {
     axiosConfig.headers["If-None-Match"] = etag;
   }
@@ -345,6 +354,20 @@ async function cachedGet(url, headers = {}) {
   } catch (err) {
     if (err.response && err.response.status === 304 && cachedData) {
       // Not modified, return cached data
+      return cachedData;
+    }
+    // If timeout or network error and we have cached data, use it
+    if (
+      (err.code === "ECONNABORTED" ||
+        err.code === "ENOTFOUND" ||
+        err.code === "ETIMEDOUT") &&
+      cachedData
+    ) {
+      if (!QUIET_MODE) {
+        console.warn(
+          `Network error fetching ${url}, using cached data: ${err.message}`
+        );
+      }
       return cachedData;
     }
     throw err;
@@ -507,7 +530,16 @@ function xregistryCommonAttrs({
 // Utility function to generate pagination Link headers
 function generatePaginationLinks(req, totalCount, offset, limit) {
   const links = [];
-  const baseUrl = BASE_URL || `${req.protocol}://${req.get("host")}${req.path}`;
+
+  // Construct the base URL properly
+  let baseUrl;
+  if (BASE_URL) {
+    // If BASE_URL is set, use it with the path
+    baseUrl = `${BASE_URL}${req.path}`;
+  } else {
+    // If BASE_URL is not set, construct from request
+    baseUrl = `${req.protocol}://${req.get("host")}${req.path}`;
+  }
 
   // Add base query parameters from original request (except pagination ones)
   const queryParams = { ...req.query };
@@ -1174,20 +1206,52 @@ async function fetchDependencyRegistrationInfo(depId, depRegistrationUrl) {
     );
   }
   try {
-    const registrationIndex = await cachedGet(urlToFetch);
+    // Add timeout wrapper
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Registration fetch timeout")), 5000)
+    );
+    const registrationIndex = await Promise.race([
+      cachedGet(urlToFetch),
+      timeoutPromise,
+    ]);
     let allCatalogEntries = [];
     if (registrationIndex && registrationIndex.items) {
+      // Limit the number of pages to process to avoid excessive requests
+      const maxPages = 5;
+      let processedPages = 0;
+
       for (const page of registrationIndex.items) {
+        if (processedPages >= maxPages) {
+          if (!QUIET_MODE) {
+            console.log(
+              `[fetchDependencyRegistrationInfo] Reached maximum page limit (${maxPages}) for ${depId}`
+            );
+          }
+          break;
+        }
+
         // Iterate through pages listed in the index
         let pageItems = page.items; // Direct items if embedded in the page object itself
         if (!pageItems && page["@id"]) {
-          // If not embedded, fetch page JSON by @id
-          if (!QUIET_MODE) {
-            // console.log(`[fetchDependencyRegistrationInfo] Fetching page: ${page["@id"]}`);
-          }
-          const pageData = await cachedGet(page["@id"]);
-          if (pageData && pageData.items) {
-            pageItems = pageData.items;
+          // If not embedded, fetch page JSON by @id with timeout
+          try {
+            const pageTimeoutPromise = new Promise((_, reject) =>
+              setTimeout(() => reject(new Error("Page fetch timeout")), 3000)
+            );
+            const pageData = await Promise.race([
+              cachedGet(page["@id"]),
+              pageTimeoutPromise,
+            ]);
+            if (pageData && pageData.items) {
+              pageItems = pageData.items;
+            }
+          } catch (pageError) {
+            if (!QUIET_MODE) {
+              console.warn(
+                `[fetchDependencyRegistrationInfo] Failed to fetch page ${page["@id"]} for ${depId}: ${pageError.message}`
+              );
+            }
+            continue; // Skip this page and continue with others
           }
         }
         if (pageItems) {
@@ -1198,13 +1262,24 @@ async function fetchDependencyRegistrationInfo(depId, depRegistrationUrl) {
             }
           }
         }
+        processedPages++;
       }
     }
     // Sort versions: latest first (most relevant for finding highest match)
     allCatalogEntries.sort((a, b) =>
       compareNuGetVersions(b.version, a.version)
     );
-    return allCatalogEntries.map((entry) => entry.version); // Return just sorted version strings
+    // Limit the number of versions returned to avoid memory issues
+    const maxVersions = 20;
+    const versions = allCatalogEntries
+      .slice(0, maxVersions)
+      .map((entry) => entry.version);
+    if (!QUIET_MODE && allCatalogEntries.length > maxVersions) {
+      console.log(
+        `[fetchDependencyRegistrationInfo] Limited versions for ${depId} to ${maxVersions} (had ${allCatalogEntries.length})`
+      );
+    }
+    return versions;
   } catch (error) {
     if (!QUIET_MODE) {
       console.warn(
@@ -1225,10 +1300,23 @@ async function processNuGetDependencies(
   }
 
   const processedDeps = [];
+  const maxDependencies = 10; // Limit the number of dependencies to process
+  let processedCount = 0;
+
   for (const group of dependencyGroups) {
+    if (processedCount >= maxDependencies) {
+      if (!QUIET_MODE) {
+        console.log(
+          `[processNuGetDependencies] Reached maximum dependency limit (${maxDependencies}) for ${parentPackageIdForLogging}`
+        );
+      }
+      break;
+    }
+
     const targetFramework = group.targetFramework || "any";
     if (group.dependencies && Array.isArray(group.dependencies)) {
       for (const dep of group.dependencies) {
+        if (processedCount >= maxDependencies) break;
         if (!dep.id || !dep.range) continue; // Skip if essential info is missing
 
         const depObj = {
@@ -1250,7 +1338,11 @@ async function processNuGetDependencies(
                 `[processNuGetDependencies] Checking existence of specific version: ${versionCheckUrl}`
               );
             }
-            await cachedGet(versionCheckUrl);
+            // Add timeout wrapper
+            const timeoutPromise = new Promise((_, reject) =>
+              setTimeout(() => reject(new Error("Timeout")), 5000)
+            );
+            await Promise.race([cachedGet(versionCheckUrl), timeoutPromise]);
             specificVersionExists = true;
             if (!QUIET_MODE) {
               console.log(
@@ -1264,7 +1356,7 @@ async function processNuGetDependencies(
           } catch (versionError) {
             if (!QUIET_MODE) {
               console.log(
-                `[processNuGetDependencies] Specific version ${dep.id}@${resolvedVersion} not found (referenced by ${parentPackageIdForLogging}). Will attempt range check or fallback.`
+                `[processNuGetDependencies] Specific version ${dep.id}@${resolvedVersion} not found or timed out (referenced by ${parentPackageIdForLogging}). Will attempt range check or fallback.`
               );
             }
             resolvedVersion = null; // Clear it as the specific version leaf wasn't found
@@ -1283,29 +1375,44 @@ async function processNuGetDependencies(
                 `[processNuGetDependencies] Matched min version range for ${dep.id}: >= ${minVersion}`
               );
             }
-            const availableVersions = await fetchDependencyRegistrationInfo(
-              dep.id,
-              dep.registration
-            );
-            let bestMatch = null;
-            for (const availableVer of availableVersions) {
-              // availableVersions are sorted latest first
-              if (compareNuGetVersions(availableVer, minVersion) >= 0) {
-                bestMatch = availableVer;
-                break; // Found the latest compliant version
+            try {
+              // Add timeout wrapper for dependency resolution
+              const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(
+                  () => reject(new Error("Dependency resolution timeout")),
+                  3000
+                )
+              );
+              const availableVersions = await Promise.race([
+                fetchDependencyRegistrationInfo(dep.id, dep.registration),
+                timeoutPromise,
+              ]);
+              let bestMatch = null;
+              for (const availableVer of availableVersions) {
+                // availableVersions are sorted latest first
+                if (compareNuGetVersions(availableVer, minVersion) >= 0) {
+                  bestMatch = availableVer;
+                  break; // Found the latest compliant version
+                }
               }
-            }
-            if (bestMatch) {
+              if (bestMatch) {
+                if (!QUIET_MODE) {
+                  console.log(
+                    `[processNuGetDependencies] Resolved ${dep.id} range ${dep.range} to version ${bestMatch}`
+                  );
+                }
+                depObj.package = `${packagePath}/versions/${encodeURIComponent(
+                  bestMatch
+                )}`;
+                depObj.resolved_version = bestMatch;
+                resolvedVersion = bestMatch; // Mark as resolved
+              }
+            } catch (rangeError) {
               if (!QUIET_MODE) {
                 console.log(
-                  `[processNuGetDependencies] Resolved ${dep.id} range ${dep.range} to version ${bestMatch}`
+                  `[processNuGetDependencies] Failed to resolve range for ${dep.id} (referenced by ${parentPackageIdForLogging}): ${rangeError.message}`
                 );
               }
-              depObj.package = `${packagePath}/versions/${encodeURIComponent(
-                bestMatch
-              )}`;
-              depObj.resolved_version = bestMatch;
-              resolvedVersion = bestMatch; // Mark as resolved
             }
           }
         }
@@ -1313,7 +1420,18 @@ async function processNuGetDependencies(
         // Fallback if no specific or range-based version was resolved
         if (!resolvedVersion) {
           try {
-            if (await packageExists(dep.id)) {
+            // Add timeout wrapper for package existence check
+            const timeoutPromise = new Promise((_, reject) =>
+              setTimeout(
+                () => reject(new Error("Package existence check timeout")),
+                2000
+              )
+            );
+            const exists = await Promise.race([
+              packageExists(dep.id),
+              timeoutPromise,
+            ]);
+            if (exists) {
               depObj.package = packagePath; // Link to base package (default/latest version)
               if (!QUIET_MODE) {
                 console.log(
@@ -1336,6 +1454,7 @@ async function processNuGetDependencies(
           }
         }
         processedDeps.push(depObj);
+        processedCount++;
       }
     }
   }
@@ -1450,6 +1569,22 @@ async function refreshPackageNamesFromCatalog() {
 
     // Update cache and cursor
     const oldCount = packageNamesCache.length;
+
+    // Always include essential Microsoft packages to ensure they're available
+    const essentialPackages = [
+      "Newtonsoft.Json",
+      "Microsoft.Extensions.DependencyInjection",
+      "Microsoft.Extensions.Logging",
+      "Microsoft.Extensions.Configuration",
+      "Microsoft.AspNetCore.App",
+      "System.Text.Json",
+      "Microsoft.EntityFrameworkCore",
+      "AutoMapper",
+    ];
+
+    // Merge catalog packages with essential packages
+    essentialPackages.forEach((pkg) => newPackageIds.add(pkg));
+
     packageNamesCache = Array.from(newPackageIds).sort();
     catalogCursor = latestTimestamp;
     lastCacheUpdate = new Date().toISOString();
@@ -1474,6 +1609,9 @@ async function refreshPackageNamesFromCatalog() {
       packageNamesCache = [
         "Newtonsoft.Json",
         "Microsoft.Extensions.DependencyInjection",
+        "Microsoft.Extensions.Logging",
+        "Microsoft.Extensions.Configuration",
+        "Microsoft.AspNetCore.App",
         "System.Text.Json",
         "Microsoft.EntityFrameworkCore",
         "AutoMapper",
@@ -1487,10 +1625,10 @@ async function initializePackageCache() {
   try {
     logger.info("Initializing NuGet package cache from catalog");
 
-    // Initialize cursor to a reasonable starting point (e.g., 24 hours ago)
-    // For a full index, you could start from a much earlier date or null
+    // Initialize cursor to load more packages (e.g., 7 days ago)
+    // This ensures we get popular packages like Microsoft.Extensions.DependencyInjection
     const startTime = new Date();
-    startTime.setHours(startTime.getHours() - 24);
+    startTime.setDate(startTime.getDate() - 7); // 7 days ago instead of 24 hours
     catalogCursor = startTime.toISOString();
 
     await refreshPackageNamesFromCatalog();
@@ -1511,6 +1649,9 @@ async function initializePackageCache() {
     packageNamesCache = [
       "Newtonsoft.Json",
       "Microsoft.Extensions.DependencyInjection",
+      "Microsoft.Extensions.Logging",
+      "Microsoft.Extensions.Configuration",
+      "Microsoft.AspNetCore.App",
       "System.Text.Json",
       "Microsoft.EntityFrameworkCore",
       "AutoMapper",
@@ -1786,13 +1927,14 @@ app.get(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`, async (req, res) => {
         );
     }
     // For NuGet, use cached package names when no filter, otherwise search API
-    let query = req.query.filter || "";
+    let query = req.query.filter ? req.query.filter : "";
     let packageNames = [];
     try {
       if (query) {
         // Search for packages matching the filter
         logger.debug("Searching NuGet packages with filter", {
-          query,
+          originalQuery: req.query.filter,
+          normalizedQuery: query,
           offset,
           limit,
         });
@@ -1831,10 +1973,18 @@ app.get(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`, async (req, res) => {
           packageNames = await applyXRegistryFilters(
             query,
             packageNamesCache,
-            req
+            (entity) => entity
           );
 
-          // Apply pagination after filtering
+          // Apply sorting if requested (before pagination)
+          if (req.query.sort) {
+            logger.debug("Applying sort to filtered package names", {
+              sort: req.query.sort,
+            });
+            packageNames = applySortFlag(req.query.sort, packageNames);
+          }
+
+          // Apply pagination after filtering and sorting
           packageNames = packageNames.slice(offset, offset + limit);
         }
       } else {
@@ -1851,14 +2001,20 @@ app.get(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`, async (req, res) => {
           await refreshPackageNamesFromCatalog();
         }
 
-        // Apply pagination to cached package names
-        const startIndex = offset;
-        const endIndex = offset + limit;
-        packageNames = packageNamesCache.slice(startIndex, endIndex);
+        // Start with full cache
+        packageNames = [...packageNamesCache];
+
+        // Apply sorting if requested (before pagination)
+        if (req.query.sort) {
+          logger.debug("Applying sort to cached package names", {
+            sort: req.query.sort,
+          });
+          packageNames = applySortFlag(req.query.sort, packageNames);
+        }
+
+        // Apply pagination to sorted package names
+        packageNames = packageNames.slice(offset, offset + limit);
       }
-      // Apply sorting if requested (use shared sorting utility)
-      logger.debug("Applying sort to package names", { sort: req.query.sort });
-      packageNames = applySortFlag(req.query.sort, packageNames);
     } catch (error) {
       logger.error("Error getting package names", {
         error: error.message,
@@ -1870,9 +2026,18 @@ app.get(`/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`, async (req, res) => {
       // If cache is available and the query failed, try to use cache
       if (!query && packageNamesCache.length > 0) {
         logger.info("Falling back to cached package names after API error");
-        const startIndex = offset;
-        const endIndex = offset + limit;
-        packageNames = packageNamesCache.slice(startIndex, endIndex);
+        packageNames = [...packageNamesCache];
+
+        // Apply sorting if requested (before pagination)
+        if (req.query.sort) {
+          logger.debug("Applying sort to fallback package names", {
+            sort: req.query.sort,
+          });
+          packageNames = applySortFlag(req.query.sort, packageNames);
+        }
+
+        // Apply pagination to sorted package names
+        packageNames = packageNames.slice(offset, offset + limit);
       } else {
         // If the API query fails and no cache available, return error
         return res

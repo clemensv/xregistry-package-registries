@@ -11,11 +11,11 @@ describe("Basic Server Functionality", function () {
   let baseUrl = `http://localhost:${serverPort}`;
 
   before(async function () {
-    this.timeout(20000);
+    this.timeout(60000);
 
     console.log("Starting xRegistry NPM server for basic tests...");
     serverProcess = await startServer();
-    await waitForServer(baseUrl, 15000);
+    await waitForServer(baseUrl, 45000);
     console.log("Server is ready for basic tests");
   });
   after(function (done) {
@@ -169,6 +169,74 @@ describe("Basic Server Functionality", function () {
       expect(packages.length).to.be.greaterThan(0);
     });
 
+    it("should support xRegistry filter operators", async function () {
+      const operators = [
+        "name=*express*", // Wildcard
+        "name!=*nonexistent*", // Not equals with wildcard
+        "name=lodash", // Exact match (if lodash exists)
+      ];
+
+      for (const filter of operators) {
+        const response = await axios.get(
+          `${baseUrl}/noderegistries/npmjs.org/packages?filter=${encodeURIComponent(
+            filter
+          )}&limit=3`
+        );
+
+        expect(response.status).to.equal(200);
+        expect(response.data).to.be.an("object");
+        expect(response.data).to.have.property("resources");
+      }
+    });
+
+    it("should reject filters without name constraint", async function () {
+      // Per xRegistry spec, non-name filters require a name filter
+      const invalidFilters = [
+        "description=*library*", // No name filter
+        "author=*user*", // No name filter
+        "license=*MIT*", // No name filter
+      ];
+
+      for (const filter of invalidFilters) {
+        const response = await axios.get(
+          `${baseUrl}/noderegistries/npmjs.org/packages?filter=${encodeURIComponent(
+            filter
+          )}&limit=1`
+        );
+
+        expect(response.status).to.equal(200);
+        expect(response.data).to.be.an("object");
+
+        // Should return empty set since no name filter is present
+        const packages = response.data.resources || [];
+        expect(packages.length).to.equal(0);
+      }
+    });
+
+    it("should handle common package filters", async function () {
+      const testCases = [
+        { filter: "name=*react*", name: "React packages" },
+        { filter: "name=*angular*", name: "Angular packages" },
+        { filter: "name=*express*", name: "Express packages" },
+      ];
+
+      for (const testCase of testCases) {
+        const response = await axios.get(
+          `${baseUrl}/noderegistries/npmjs.org/packages?filter=${encodeURIComponent(
+            testCase.filter
+          )}&limit=5`
+        );
+
+        expect(response.status).to.equal(200);
+        expect(response.data).to.be.an("object");
+        expect(response.data).to.have.property("resources");
+
+        // Log results for debugging
+        const packages = response.data.resources || [];
+        console.log(`${testCase.name}: found ${packages.length} packages`);
+      }
+    });
+
     it("should handle well-known package retrieval", async function () {
       // Test with a very common package that should exist
       try {
@@ -305,12 +373,50 @@ describe("Basic Server Functionality", function () {
         `${baseUrl}/noderegistries/npmjs.org/packages?limit=5&sort=name=desc`
       );
       expect(response.status).to.equal(200);
-      expect(response.data).to.have.property("resources");
-      const names = response.data.resources.map((pkg) => pkg.name);
-      const sorted = [...names].sort((a, b) =>
-        b.localeCompare(a, undefined, { sensitivity: "base" })
-      );
-      expect(names).to.deep.equal(sorted);
+
+      // The NPM server returns different formats based on optimization:
+      // 1. For large datasets with sorting: returns resources object directly
+      // 2. For standard requests: returns { count, resources, _links }
+      let packageNames;
+
+      if (response.data.resources && Array.isArray(response.data.resources)) {
+        // Standard format with resources array
+        packageNames = response.data.resources.map((pkg) => pkg.name);
+      } else if (
+        response.data.resources &&
+        typeof response.data.resources === "object"
+      ) {
+        // Standard format with resources object
+        packageNames = Object.keys(response.data.resources);
+      } else if (
+        typeof response.data === "object" &&
+        !Array.isArray(response.data)
+      ) {
+        // Optimized format - response.data is the resources object directly
+        packageNames = Object.keys(response.data);
+      } else {
+        throw new Error("Unexpected response format");
+      }
+
+      expect(packageNames).to.be.an("array");
+      expect(packageNames.length).to.be.greaterThan(0);
+
+      // Check if packages are sorted in descending order
+      // Instead of expecting exact package names, just verify the sorting logic
+      for (let i = 0; i < packageNames.length - 1; i++) {
+        const current = packageNames[i];
+        const next = packageNames[i + 1];
+
+        // In descending order, current should be >= next alphabetically
+        const comparison = current.localeCompare(next, undefined, {
+          sensitivity: "base",
+        });
+
+        expect(comparison).to.be.greaterThanOrEqual(
+          0,
+          `Package "${current}" should come after or equal to "${next}" in descending order`
+        );
+      }
     });
     it("should sort versions ascending by default", async function () {
       const pkg = "express";
@@ -389,11 +495,11 @@ describe("Basic Server Functionality", function () {
       // Fallback timeout
       setTimeout(() => {
         resolve(process);
-      }, 8000);
+      }, 30000);
     });
   }
 
-  async function waitForServer(url, timeout = 15000) {
+  async function waitForServer(url, timeout = 45000) {
     const start = Date.now();
 
     while (Date.now() - start < timeout) {

@@ -110,7 +110,7 @@ describe("NuGet Basic Server Functionality", function () {
 
     it("should filter packages by name (simple text search)", async function () {
       const response = await axios.get(
-        `${baseUrl}/dotnetregistries/nuget.org/packages?filter=Microsoft&limit=10`
+        `${baseUrl}/dotnetregistries/nuget.org/packages?filter=name=*Microsoft*&limit=10`
       );
 
       expect(response.status).to.equal(200);
@@ -143,7 +143,7 @@ describe("NuGet Basic Server Functionality", function () {
 
     it("should sort packages correctly", async function () {
       const response = await axios.get(
-        `${baseUrl}/dotnetregistries/nuget.org/packages?filter=System&limit=10`
+        `${baseUrl}/dotnetregistries/nuget.org/packages?filter=name=*System*&limit=10`
       );
 
       expect(response.status).to.equal(200);
@@ -159,7 +159,7 @@ describe("NuGet Basic Server Functionality", function () {
 
     it("should sort packages by name descending", async function () {
       const response = await axios.get(
-        `${baseUrl}/dotnetregistries/nuget.org/packages?filter=Microsoft&limit=5&sort=name=desc`
+        `${baseUrl}/dotnetregistries/nuget.org/packages?filter=name=*Microsoft*&limit=5&sort=name=desc`
       );
 
       expect(response.status).to.equal(200);
@@ -174,12 +174,68 @@ describe("NuGet Basic Server Functionality", function () {
         expect(packages).to.deep.equal(sortedPackages);
       }
     });
+
+    it("should reject filters without name constraint", async function () {
+      // Per xRegistry spec, non-name filters require a name filter
+      const invalidFilters = [
+        "description=*library*", // No name filter
+        "author=*Microsoft*", // No name filter
+        "license=*MIT*", // No name filter
+      ];
+
+      for (const filter of invalidFilters) {
+        const response = await axios.get(
+          `${baseUrl}/dotnetregistries/nuget.org/packages?filter=${encodeURIComponent(
+            filter
+          )}&limit=1`
+        );
+
+        expect(response.status).to.equal(200);
+        expect(response.data).to.be.an("object");
+
+        // Should return empty set since no name filter is present
+        const packages = Object.keys(response.data);
+        expect(packages.length).to.equal(0);
+      }
+    });
+
+    it("should support more xRegistry filter operators", async function () {
+      const operators = [
+        "name=*Microsoft*", // Wildcard
+        "name!=*TestPackage*", // Not equals with wildcard
+        "name=Newtonsoft.Json", // Exact match
+      ];
+
+      for (const filter of operators) {
+        const response = await axios.get(
+          `${baseUrl}/dotnetregistries/nuget.org/packages?filter=${encodeURIComponent(
+            filter
+          )}&limit=3`
+        );
+
+        expect(response.status).to.equal(200);
+        expect(response.data).to.be.an("object");
+      }
+    });
+
+    it("should handle empty filter results gracefully", async function () {
+      const response = await axios.get(
+        `${baseUrl}/dotnetregistries/nuget.org/packages?filter=name=*ThisPackageDefinitelyDoesNotExist12345*&limit=5`
+      );
+
+      expect(response.status).to.equal(200);
+      expect(response.data).to.be.an("object");
+
+      // Should return empty or very few results
+      const packages = Object.keys(response.data);
+      expect(packages.length).to.be.lessThan(3);
+    });
   });
 
   describe("Microsoft .NET Package Tests", function () {
     it("should find Newtonsoft.Json package", async function () {
       const response = await axios.get(
-        `${baseUrl}/dotnetregistries/nuget.org/packages?filter=Newtonsoft.Json`
+        `${baseUrl}/dotnetregistries/nuget.org/packages?filter=name=*Newtonsoft.Json*`
       );
 
       expect(response.status).to.equal(200);
@@ -195,7 +251,7 @@ describe("NuGet Basic Server Functionality", function () {
 
     it("should find Microsoft.Extensions.DependencyInjection package", async function () {
       const response = await axios.get(
-        `${baseUrl}/dotnetregistries/nuget.org/packages?filter=Microsoft.Extensions.DependencyInjection`
+        `${baseUrl}/dotnetregistries/nuget.org/packages?filter=name=*Microsoft.Extensions.DependencyInjection*`
       );
 
       expect(response.status).to.equal(200);
@@ -210,7 +266,7 @@ describe("NuGet Basic Server Functionality", function () {
 
     it("should find multiple System packages", async function () {
       const response = await axios.get(
-        `${baseUrl}/dotnetregistries/nuget.org/packages?filter=System&limit=20`
+        `${baseUrl}/dotnetregistries/nuget.org/packages?filter=name=*System*&limit=20`
       );
 
       expect(response.status).to.equal(200);
@@ -450,7 +506,8 @@ describe("NuGet Basic Server Functionality", function () {
         const response = await axios.get(
           `${baseUrl}/dotnetregistries/nuget.org/packages/ActualChat.Api/versions/${encodeURIComponent(
             testVersionId
-          )}`
+          )}`,
+          { timeout: 15000 } // 15 second timeout
         );
 
         expect(response.status).to.equal(200);
@@ -484,7 +541,8 @@ describe("NuGet Basic Server Functionality", function () {
 
       try {
         const response = await axios.get(
-          `${baseUrl}/dotnetregistries/nuget.org/packages/ActualChat.Api/meta`
+          `${baseUrl}/dotnetregistries/nuget.org/packages/ActualChat.Api/meta`,
+          { timeout: 15000 } // 15 second timeout
         );
 
         expect(response.status).to.equal(200);
@@ -563,7 +621,7 @@ describe("NuGet Basic Server Functionality", function () {
   describe("Sort Flag Functionality", function () {
     it("should sort packages by packageid descending", async function () {
       const response = await axios.get(
-        `${baseUrl}/dotnetregistries/nuget.org/packages?limit=5&sort=packageid=desc&filter=Microsoft`
+        `${baseUrl}/dotnetregistries/nuget.org/packages?limit=5&sort=packageid=desc&filter=name=*Microsoft*`
       );
       expect(response.status).to.equal(200);
       const names = Object.keys(response.data);

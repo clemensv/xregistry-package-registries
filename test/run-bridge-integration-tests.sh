@@ -247,6 +247,22 @@ check_required_files() {
 
 # Main execution
 main() {
+    echo "==================== BRIDGE INTEGRATION TEST FRAMEWORK ===================="
+    log_info "🚀 Starting Bridge Docker Compose Integration Tests"
+    log_info ""
+    log_info "📋 This test framework has multiple phases:"
+    log_info "    1️⃣  Docker Build: Build all service containers (npm, pypi, maven, nuget, oci, bridge)"
+    log_info "    2️⃣  Service Startup: Start containers and wait for health checks"
+    log_info "    3️⃣  Integration Tests: Run actual test scenarios against the bridge"
+    log_info "    4️⃣  Cleanup: Stop and remove all containers"
+    log_info ""
+    log_info "🔍 Possible failure types:"
+    log_info "    💥 BUILD FAILURE: Docker images fail to build (infrastructure problem)"
+    log_info "    💥 STARTUP FAILURE: Containers fail health checks (infrastructure problem)"
+    log_info "    💥 TEST FAILURE: Infrastructure OK, but test scenarios fail (test problem)"
+    log_info ""
+    echo "============================================================================="
+    
     check_prerequisites
     check_directories
     
@@ -262,26 +278,85 @@ main() {
     # Build and start services
     log_info "Building and starting Docker Compose services..."
     log_info "This may take several minutes for the first run..."
+    log_info "Building services: npm-registry, pypi-registry, maven-registry, nuget-registry, oci-registry, bridge-proxy"
     
     if [[ "$VERBOSE" == "true" ]]; then
         docker-compose -f docker-compose.bridge.yml up -d --build
     else
-        docker-compose -f docker-compose.bridge.yml up -d --build > /dev/null
+        log_info "Running docker-compose up (output will be saved to log file)..."
+        # Show progress while building
+        (
+            docker-compose -f docker-compose.bridge.yml up -d --build > /tmp/docker-compose-output.log 2>&1 &
+            DOCKER_PID=$!
+            
+            while kill -0 $DOCKER_PID 2>/dev/null; do
+                log_info "Building Docker images... (check /tmp/docker-compose-output.log for details)"
+                sleep 30
+            done
+            
+            wait $DOCKER_PID
+            echo $? > /tmp/docker-compose-exit-code
+        )
+        
+        local compose_exit_code
+        compose_exit_code=$(cat /tmp/docker-compose-exit-code 2>/dev/null || echo "1")
+        
+        if [[ $compose_exit_code -eq 0 ]]; then
+            log_info "Docker Compose completed successfully"
+        fi
     fi
     
-    if [[ $? -ne 0 ]]; then
-        log_error "Failed to start Docker Compose services"
+    local compose_exit_code
+    if [[ "$VERBOSE" == "true" ]]; then
+        compose_exit_code=$?
+    else
+        compose_exit_code=$(cat /tmp/docker-compose-exit-code 2>/dev/null || echo "1")
+    fi
+    
+        if [[ $compose_exit_code -ne 0 ]]; then
+        log_error "❌ CRITICAL: Failed to start Docker Compose services (exit code: $compose_exit_code)"
+        log_error "📄 Docker Compose build/startup failed. Showing last 30 lines of output:"
+        echo "==================== DOCKER COMPOSE ERROR OUTPUT ===================="
+        tail -30 /tmp/docker-compose-output.log 2>/dev/null || true
+        echo "======================================================================="
+        
+        log_error "🔍 Checking individual service status for diagnostic information:"
+        docker-compose -f docker-compose.bridge.yml ps 2>/dev/null || true
+        
+        log_error "🚨 FAILURE SUMMARY: Docker containers failed to build or start properly"
+        log_error "    This means the integration tests NEVER RAN because the infrastructure failed"
+        log_error "    Check the Docker Compose output above for specific build or startup errors"
+        
         exit 1
     fi
-    
-    log_info "Docker Compose services started"
-    
+
+    log_info "✅ Docker Compose services started successfully"
+
     # Show service status
-    log_info "Current service status:"
-    docker-compose -f docker-compose.bridge.yml ps
+    log_info "📋 Current service status:"
+    local service_status
+    service_status=$(docker-compose -f docker-compose.bridge.yml ps)
+    echo "$service_status"
+    
+    # Check if any services are unhealthy right after startup
+    if echo "$service_status" | grep -q "unhealthy\|Exit\|error"; then
+        log_warning "⚠️  Some services appear to be unhealthy immediately after startup:"
+        echo "$service_status" | grep -E "(unhealthy|Exit|error|Exited)"
+        log_warning "📋 Showing logs for failed services:"
+        
+        # Show logs for each service that appears unhealthy
+        for service in npm-registry pypi-registry maven-registry nuget-registry oci-registry; do
+            if echo "$service_status" | grep "$service" | grep -q "unhealthy\|Exit\|error"; then
+                log_warning "🔍 Logs for failed service: $service"
+                docker-compose -f docker-compose.bridge.yml logs --tail=20 "$service" 2>/dev/null || true
+                echo "----------------------------------------"
+            fi
+        done
+    fi
     
     # Wait for bridge to be healthy before running tests
-    log_info "Waiting for bridge proxy to become healthy..."
+    log_info "⏳ Waiting for bridge proxy to become healthy..."
+    log_info "    Bridge depends on: npm-registry, pypi-registry, maven-registry, nuget-registry, oci-registry"
     local max_wait_time=300  # 5 minutes
     local wait_interval=10   # 10 seconds
     local elapsed=0
@@ -290,20 +365,70 @@ main() {
         sleep $wait_interval
         elapsed=$((elapsed + wait_interval))
         
-        local bridge_health
-        bridge_health=$(docker-compose -f docker-compose.bridge.yml ps bridge-proxy)
+        # Check all service statuses for better diagnostics
+        local all_services_status
+        all_services_status=$(docker-compose -f docker-compose.bridge.yml ps)
         
-        log_info "Bridge health check (${elapsed}s/${max_wait_time}s): $bridge_health"
+        local bridge_health
+        bridge_health=$(echo "$all_services_status" | grep "bridge-proxy" || echo "bridge-proxy not found")
+        
+        log_info "🔍 Health check progress (${elapsed}s/${max_wait_time}s):"
+        log_info "    Bridge: $bridge_health"
         
         if echo "$bridge_health" | grep -q "healthy"; then
             log_info "✅ Bridge proxy is healthy!"
             break
         fi
         
+        # Every 30 seconds, show more detailed status of all services
+        if [[ $((elapsed % 30)) -eq 0 ]]; then
+            log_info "📊 Detailed service status check at ${elapsed}s:"
+            echo "$all_services_status"
+            
+            # Check for any failed dependencies
+            local failed_services=""
+            for service in npm-registry pypi-registry maven-registry nuget-registry oci-registry; do
+                local service_status
+                service_status=$(echo "$all_services_status" | grep "$service" || echo "$service not found")
+                if echo "$service_status" | grep -q "unhealthy\|Exit\|error\|Exited"; then
+                    failed_services="$failed_services $service"
+                    log_warning "❌ Dependency failure detected: $service"
+                    log_warning "    Status: $service_status"
+                fi
+            done
+            
+            if [[ -n "$failed_services" ]]; then
+                log_warning "🚨 Bridge cannot start because these dependencies failed:$failed_services"
+                log_warning "📋 Showing logs for failed dependencies:"
+                for service in $failed_services; do
+                    log_warning "🔍 Last 15 lines from $service:"
+                    docker-compose -f docker-compose.bridge.yml logs --tail=15 "$service" 2>/dev/null || true
+                    echo "----------------------------------------"
+                done
+            fi
+        fi
+        
         if [[ $elapsed -ge $max_wait_time ]]; then
-            log_error "❌ Bridge proxy failed to become healthy within $max_wait_time seconds"
-            log_info "Bridge proxy logs:"
-            docker-compose -f docker-compose.bridge.yml logs bridge-proxy
+            log_error "❌ CRITICAL: Bridge proxy failed to become healthy within $max_wait_time seconds"
+            log_error "🚨 INFRASTRUCTURE FAILURE - Integration tests CANNOT RUN"
+            log_error ""
+            log_error "📊 Final service status:"
+            echo "$all_services_status"
+            log_error ""
+            log_error "📋 Collecting diagnostic information from all services:"
+            
+            for service in npm-registry pypi-registry maven-registry nuget-registry oci-registry bridge-proxy; do
+                log_error "🔍 Logs from $service:"
+                docker-compose -f docker-compose.bridge.yml logs --tail=20 "$service" 2>/dev/null || log_error "  No logs available for $service"
+                echo "========================================"
+            done
+            
+            log_error "🚨 FAILURE SUMMARY:"
+            log_error "    - Bridge proxy health check failed after $max_wait_time seconds"
+            log_error "    - Integration tests DID NOT RUN due to infrastructure failure"
+            log_error "    - Check the service logs above for specific error details"
+            log_error "    - Common issues: port conflicts, resource constraints, network problems"
+            
             exit 1
         fi
     done
@@ -355,16 +480,22 @@ main() {
     log_info "Executing: $test_command"
     
     # Execute the test command
-    log_info "Starting test execution..."
+    log_info "🚀 Starting integration test execution..."
+    log_info "    All infrastructure is healthy - running actual tests now"
+    log_info "    Command: $test_command"
     local test_exit_code=0
     
+    echo "==================== INTEGRATION TEST OUTPUT ===================="
     if eval "$test_command"; then
         test_exit_code=0
+        echo "=================================================================="
+        log_info "✅ Integration tests completed successfully!"
     else
         test_exit_code=$?
+        echo "=================================================================="
+        log_error "❌ Integration tests failed during execution (exit code: $test_exit_code)"
+        log_error "    Infrastructure was healthy, but the tests themselves failed"
     fi
-    
-    log_info "Test process completed with exit code: $test_exit_code"
     
     local end_time
     end_time=$(date +%s)
@@ -414,11 +545,23 @@ main() {
         docker-compose -f docker-compose.bridge.yml ps
     fi
     
+    echo ""
+    echo "==================== FINAL TEST SUMMARY ===================="
     if [[ $test_exit_code -eq 0 ]]; then
-        log_info "✅ All Bridge integration tests passed successfully!"
+        log_info "🎉 SUCCESS: All Bridge integration tests passed successfully!"
+        log_info "    ✅ Infrastructure: All Docker containers started and became healthy"
+        log_info "    ✅ Integration Tests: All test scenarios passed"
+        log_info "    📊 Duration: ${duration_min}m ${duration_sec}s"
     else
-        log_error "❌ Bridge integration tests failed with exit code: $test_exit_code"
+        log_error "💥 FAILURE: Bridge integration tests failed with exit code: $test_exit_code"
+        log_error "    ❌ Test Execution: Tests ran but some scenarios failed"
+        log_error "    ✅ Infrastructure: Docker containers were healthy (infrastructure was OK)"
+        log_error "    📊 Duration: ${duration_min}m ${duration_sec}s"
+        log_error ""
+        log_error "🔍 This is a TEST FAILURE, not an infrastructure failure"
+        log_error "    Check the test output above for specific test case failures"
     fi
+    echo "============================================================"
     
     exit $test_exit_code
 }

@@ -1,55 +1,133 @@
-version: '3.8'
+version: "3.8"
 
 services:
-  # Unified xRegistry Server (Production-like)
-  unified:
+  # Bridge Service - Main API Gateway
+  bridge:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: bridge.Dockerfile
     ports:
-      - "3000:3000"
+      - "8080:8080"
     environment:
-      - XREGISTRY_PORT=3000
-      - XREGISTRY_ENABLE=pypi,npm,maven,nuget,oci
-      - XREGISTRY_QUIET=false
-      - NODE_ENV=development
+      - NODE_ENV=production
+      - BRIDGE_PORT=8080
     volumes:
+      - ./logs/bridge:/app/logs
       - ./cache:/app/cache
-      - ./logs:/app/logs
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "node", "-e", "const http = require('http'); const options = { host: 'localhost', port: 3000, path: '/', timeout: 2000 }; const req = http.request(options, (res) => { if (res.statusCode === 200) process.exit(0); else process.exit(1); }); req.on('error', () => process.exit(1)); req.end();"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 60s
 
-  # Individual PyPI Server (Development)
-  pypi:
+  # Maven Service
+  maven:
     build:
-      context: ./pypi
+      context: .
+      dockerfile: maven.Dockerfile
     ports:
-      - "3001:3000"
+      - "3200:3200"
     environment:
-      - XREGISTRY_PYPI_PORT=3000
-      - XREGISTRY_PYPI_BASEURL=http://localhost:3001
+      - NODE_ENV=production
+      - MAVEN_PORT=3200
     volumes:
-      - ./pypi/cache:/app/cache
-      - ./logs:/logs
+      - ./logs/maven:/app/logs
+      - ./maven/cache:/app/cache
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3200/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
-  # Individual NPM Server (Development)
+  # NPM Service
   npm:
     build:
-      context: ./npm
-    image: xregistry-npm-bridge
-    container_name: xregistry-npm-bridge
+      context: .
+      dockerfile: npm.Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NPM_PORT=3000
+    volumes:
+      - ./logs/npm:/app/logs
+      - ./npm/cache:/app/cache
+      - ./npm/all-packages:/app/all-packages
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # PyPI Service
+  pypi:
+    build:
+      context: .
+      dockerfile: pypi.Dockerfile
     ports:
       - "3100:3100"
     environment:
-      - XREGISTRY_NPM_PORT=3100
-      - XREGISTRY_NPM_BASEURL=http://localhost:3100
+      - NODE_ENV=production
+      - PYPI_PORT=3100
     volumes:
-      - ./npm/cache:/app/cache
-      - ./npm/all-packages:/app/all-packages
-      - ./logs:/logs
+      - ./logs/pypi:/app/logs
+      - ./pypi/cache:/app/cache
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3100/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # NuGet Service
+  nuget:
+    build:
+      context: .
+      dockerfile: nuget.Dockerfile
+    ports:
+      - "3300:3300"
+    environment:
+      - NODE_ENV=production
+      - NUGET_PORT=3300
+    volumes:
+      - ./logs/nuget:/app/logs
+      - ./nuget/cache:/app/cache
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3300/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # OCI Service
+  oci:
+    build:
+      context: .
+      dockerfile: oci.Dockerfile
+    ports:
+      - "3400:3400"
+    environment:
+      - NODE_ENV=production
+      - OCI_PORT=3400
+    volumes:
+      - ./logs/oci:/app/logs
+      - ./oci/cache:/app/cache
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3400/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
 volumes:
-  logs: 
+  logs:
+  cache:

@@ -41,6 +41,9 @@ Thumbs.db
 # Logs
 logs/
 *.log
+*/logs/
+pypi/logs/
+bridge/dist/logs/
 
 # Runtime data
 pids/
@@ -54,6 +57,39 @@ start-servers*.ps1
 setup-deployment-secrets.*
 run-test-servers.js
 
-# Cache (will be created in container)
-cache/*
-!cache/.gitkeep 
+# Cache directories (will be created in container)
+cache/
+*/cache/
+maven/cache/
+npm/cache/
+nuget/cache/
+oci/cache/
+pypi/cache/
+shared/cache/
+
+# Maven-specific excludes
+maven/maven-index-cache/
+maven/*.gz
+maven/nexus-maven-repository-index.*
+maven/test-index.txt
+
+# NPM-specific excludes  
+npm/all-packages/
+
+# Distribution and build directories
+dist/
+build/
+.next/
+out/
+
+# Package manager lockfiles we don't need (keep the ones services need)
+*/yarn.lock
+*/pnpm-lock.yaml
+
+# Temporary files
+*.tmp
+*.temp
+.tmp/
+.temp/
+
+ 
