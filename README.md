@@ -181,11 +181,62 @@ docker-compose down
 
 ### Production Deployment
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for:
+#### Azure Container Apps Deployment
+
+The xRegistry Package Registries project includes fully automated deployment to Azure Container Apps:
+
+```bash
+# Set variables
+RG_NAME="rg-xregistry-prod"
+LOCATION="eastus"
+ACR_NAME="xregistryacr"
+ACA_ENV_NAME="cae-xregistry-prod"
+ACA_NAME="ca-xregistry-unified"
+
+# Create resource group and resources
+az group create --name $RG_NAME --location $LOCATION
+az acr create --resource-group $RG_NAME --name $ACR_NAME --sku Standard --admin-enabled true
+az containerapp env create --name $ACA_ENV_NAME --resource-group $RG_NAME --location $LOCATION
+```
+
+**CI/CD Integration:**
+
+- Automated deployments via GitHub Actions workflows
+- Multi-platform container builds (AMD64/ARM64)
+- Security scanning and health verification
+
+**Monitoring and Health:**
+
+- Built-in health check endpoints
+- Application Insights integration
+- Container logs accessible via Azure CLI
+
+**Scaling and Updates:**
+
+```bash
+# Configure auto-scaling
+az containerapp update --name $ACA_NAME --resource-group $RG_NAME \
+  --min-replicas 1 --max-replicas 10
+
+# View revisions for rollback
+az containerapp revision list --name $ACA_NAME --resource-group $RG_NAME
+```
+
+**Resource Optimization:**
+
+- Optimized container configuration (1.75 CPU + 3.5GB memory)
+- Resource sharing across registry services
+- Non-root container execution for security
+- HTTPS-only ingress for secure communications
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for comprehensive details on:
+
 - Azure Container Apps deployment
 - GitHub Actions CI/CD setup
 - Production configuration options
 - Monitoring and health checks
+- Scaling and auto-scaling options
+- Security and resource optimization
 
 ## 🔧 Configuration
 
@@ -243,19 +294,23 @@ See [DEVELOPMENT.md](DEVELOPMENT.md) for detailed development documentation.
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribution guidelines
 - **[GITHUB-WORKFLOWS.md](GITHUB-WORKFLOWS.md)** - CI/CD pipeline documentation
 - **[CHANGELOG.md](CHANGELOG.md)** - Project change history
+- **[PERFORMANCE_OPTIMIZATION.md](PERFORMANCE_OPTIMIZATION.md)** - Performance tuning guidelines
 - **API Documentation** - Available at `http://localhost:8092/` when running
+- **xRegistry Specification** - See the [official xRegistry specification](https://github.com/xregistry/spec) for standard compliance details
 
 ## 🔍 Troubleshooting
 
 ### Common Issues
 
 **Port conflicts:**
+
 ```bash
 # Use dynamic port assignment
 .\start-servers-dynamic.bat
 ```
 
 **Services not starting:**
+
 ```bash
 # Check dependencies
 npm install
@@ -265,6 +320,7 @@ node --version  # Should be v16+
 ```
 
 **Bridge not connecting:**
+
 ```bash
 # Rebuild bridge
 cd bridge && npm run build

@@ -1,9 +1,0 @@
-{
-  "name": "all-packages",
-  "version": "1.0.0",
-  "description": "Container for all-the-package-names",
-  "private": true,
-  "dependencies": {
-    "all-the-package-names": "^2.0.2154"
-  }
-}
