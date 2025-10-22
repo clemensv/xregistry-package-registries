@@ -2,11 +2,15 @@
   "name": "xregistry-pypi-wrapper",
   "version": "1.0.0",
   "description": "xRegistry API wrapper for PyPI",
-  "main": "server.js",
+  "main": "dist/server.js",
   "scripts": {
-    "build": "npm install && node -c server.js",
-    "start": "node server.js",
-    "dev": "nodemon server.js"
+    "clean": "rimraf dist",
+    "prebuild": "npm run clean",
+    "build": "tsc",
+    "prestart": "npm run build",
+    "start": "node dist/server.js",
+    "dev": "nodemon --watch src --ext ts --exec \"npm run build && npm start\"",
+    "type-check": "tsc --noEmit"
   },
   "author": "",
   "license": "MIT",
@@ -17,7 +21,13 @@
     "uuid": "^9.0.1"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1"
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.10.0",
+    "@types/uuid": "^9.0.7",
+    "@types/yargs": "^17.0.32",
+    "nodemon": "^3.0.1",
+    "rimraf": "^5.0.5",
+    "typescript": "^5.5.4"
   },
   "engines": {
     "node": ">=18.0.0"

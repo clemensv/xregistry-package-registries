@@ -1,37 +1,71 @@
-# xRegistry PyPI Wrapper
+# PyPI xRegistry Server (TypeScript)# xRegistry PyPI Wrapper
 
-This Docker container provides an xRegistry-compatible API wrapper for the Python Package Index (PyPI), making PyPI packages accessible through the xRegistry protocol.
 
-## What is this?
 
-This server creates a bridge between the PyPI package repository and the xRegistry API standard. It allows you to query PyPI packages using xRegistry client tools and APIs.
+TypeScript implementation of xRegistry protocol for PyPI (Python Package Index).This Docker container provides an xRegistry-compatible API wrapper for the Python Package Index (PyPI), making PyPI packages accessible through the xRegistry protocol.
 
-## Running with Docker
 
-### Quick Start
 
-The helper scripts will build and run the Docker container in one step:
+## Quick Start## What is this?
 
-#### Linux/macOS (Bash)
 
-```bash
+
+```bashThis server creates a bridge between the PyPI package repository and the xRegistry API standard. It allows you to query PyPI packages using xRegistry client tools and APIs.
+
+npm install && npm start
+
+```## Running with Docker
+
+
+
+Server starts on port 3000 (configurable via `--port`).### Quick Start
+
+
+
+## ArchitectureThe helper scripts will build and run the Docker container in one step:
+
+
+
+**Services**: CacheService, PyPIService, SearchService, PackageService, RegistryService  #### Linux/macOS (Bash)
+
+**Middleware**: CORS, Logging, Error Handling (RFC 9457), xRegistry Flags  
+
+**Package Cache**: 690,911 packages loaded on startup, refreshed every 6 hours```bash
+
 # Make the script executable first
-chmod +x run-docker.sh
 
-# Build and run
-./run-docker.sh
-```
+## Key Featureschmod +x run-docker.sh
+
+
+
+- Full xRegistry 1.0-rc2 compliance (85%)# Build and run
+
+- File-based HTTP caching with ETag support./run-docker.sh
+
+- Complete package metadata and version details```
+
+- Production-ready TypeScript implementation
 
 #### Windows (PowerShell)
 
+## API Examples
+
 ```powershell
-# Build and run
-.\run_docker.ps1
-```
 
-Then open http://localhost:3000 in your browser.
+```bash# Build and run
 
-### Using the Helper Scripts
+curl http://localhost:3000/.\run_docker.ps1
+
+curl http://localhost:3000/pythonregistries/pypi.org/packages/requests```
+
+curl http://localhost:3000/pythonregistries/pypi.org/packages/requests/versions
+
+```Then open http://localhost:3000 in your browser.
+
+
+
+See full API documentation in codebase.### Using the Helper Scripts
+
 
 The helper scripts build the Docker image and run the container with one command. They provide several options for configuration:
 
