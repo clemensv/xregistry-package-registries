@@ -10,8 +10,8 @@ import { CACHE_CONFIG } from './config/constants';
 import { corsMiddleware } from './middleware/cors';
 import { errorHandler } from './middleware/error-handler';
 import { createLoggingMiddleware } from './middleware/logging';
-import { parseXRegistryFlags } from './middleware/xregistry-flags';
 import { xregistryErrorHandler } from './middleware/xregistry-error-handler';
+import { parseXRegistryFlags } from './middleware/xregistry-flags';
 import { NpmService } from './services/npm-service';
 
 // Simple console logger

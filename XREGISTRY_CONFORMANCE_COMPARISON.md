@@ -10,13 +10,13 @@ This document compares the xRegistry 1.0-rc2 conformance implementation across t
 
 ## Executive Summary
 
-| Feature | OCI | NPM | NuGet | Status |
-|---------|-----|-----|-------|--------|
+| Feature                          | OCI        | NPM        | NuGet      | Status                    |
+| -------------------------------- | ---------- | ---------- | ---------- | ------------------------- |
 | **Phase 1: REQUIRED Attributes** | ✅ Complete | ✅ Complete | ✅ Complete | **All Servers Compliant** |
-| **Phase 2: Request Flags** | ✅ Complete | ⚠️ Partial | ⚠️ Partial | **OCI Only** |
-| **Phase 3: Meta Entity** | ✅ Complete | ⚠️ Partial | ⚠️ Partial | **OCI Only** |
-| **Phase 4: Error Handling** | ✅ Complete | ❌ Missing | ❌ Missing | **OCI Only** |
-| **Overall Compliance** | **85%** | **60%** | **60%** | **OCI Leads** |
+| **Phase 2: Request Flags**       | ✅ Complete | ⚠️ Partial  | ⚠️ Partial  | **OCI Only**              |
+| **Phase 3: Meta Entity**         | ✅ Complete | ⚠️ Partial  | ⚠️ Partial  | **OCI Only**              |
+| **Phase 4: Error Handling**      | ✅ Complete | ❌ Missing  | ❌ Missing  | **OCI Only**              |
+| **Overall Compliance**           | **85%**    | **60%**    | **60%**    | **OCI Leads**             |
 
 ---
 
@@ -208,15 +208,15 @@ packageNames = await applyXRegistryFilters(
 
 ### 📊 Comparison
 
-| Flag | OCI | NPM | NuGet |
-|------|-----|-----|-------|
-| `?inline` | ✅ Middleware | ⚠️ Utility only | ⚠️ Utility only |
-| `?filter` | ✅ Middleware | ⚠️ Utility only | ⚠️ Utility only |
-| `?sort` | ✅ Middleware | ⚠️ Partial | ⚠️ Utility only |
-| `?epoch` | ✅ Middleware | ❌ Missing | ❌ Missing |
-| `?doc` | ✅ Middleware | ❌ Missing | ❌ Missing |
-| `?collections` | ✅ Middleware | ❌ Missing | ❌ Missing |
-| `?specversion` | ✅ Middleware | ❌ Missing | ❌ Missing |
+| Flag           | OCI          | NPM            | NuGet          |
+| -------------- | ------------ | -------------- | -------------- |
+| `?inline`      | ✅ Middleware | ⚠️ Utility only | ⚠️ Utility only |
+| `?filter`      | ✅ Middleware | ⚠️ Utility only | ⚠️ Utility only |
+| `?sort`        | ✅ Middleware | ⚠️ Partial      | ⚠️ Utility only |
+| `?epoch`       | ✅ Middleware | ❌ Missing      | ❌ Missing      |
+| `?doc`         | ✅ Middleware | ❌ Missing      | ❌ Missing      |
+| `?collections` | ✅ Middleware | ❌ Missing      | ❌ Missing      |
+| `?specversion` | ✅ Middleware | ❌ Missing      | ❌ Missing      |
 
 ### ✅ Verdict: **OCI Passes, NPM & NuGet Need Work**
 
@@ -312,12 +312,12 @@ app.get(
 
 ### 📊 Comparison
 
-| Feature | OCI | NPM | NuGet |
-|---------|-----|-----|-------|
-| Route exists | ✅ Yes | ❓ Unknown | ✅ Yes |
-| REQUIRED attributes | ✅ Yes | ❓ Unknown | ✅ Yes |
-| Resource properties | ✅ Complete | ❓ Unknown | ⚠️ Verify |
-| Tested | ✅ Yes | ❌ No evidence | ✅ Yes |
+| Feature             | OCI        | NPM           | NuGet    |
+| ------------------- | ---------- | ------------- | -------- |
+| Route exists        | ✅ Yes      | ❓ Unknown     | ✅ Yes    |
+| REQUIRED attributes | ✅ Yes      | ❓ Unknown     | ✅ Yes    |
+| Resource properties | ✅ Complete | ❓ Unknown     | ⚠️ Verify |
+| Tested              | ✅ Yes      | ❌ No evidence | ✅ Yes    |
 
 ### ✅ Verdict: **OCI Passes, NPM Unknown, NuGet Likely Passes**
 
@@ -486,14 +486,14 @@ res.status(401).json(
 
 ### 📊 Comparison
 
-| Feature | OCI | NPM | NuGet |
-|---------|-----|-----|-------|
-| RFC 9457 format | ✅ Yes | ❌ No | ❌ No |
-| Error type URLs | ✅ Yes | ❌ No | ❌ No |
-| Problem Details fields | ✅ Complete | ❌ Custom | ❌ Custom |
-| Content-Type header | ✅ Yes | ❌ No | ❌ No |
-| Error middleware | ✅ Yes | ⚠️ Partial | ⚠️ Partial |
-| Typed error classes | ✅ Yes | ❌ No | ❌ No |
+| Feature                | OCI        | NPM       | NuGet     |
+| ---------------------- | ---------- | --------- | --------- |
+| RFC 9457 format        | ✅ Yes      | ❌ No      | ❌ No      |
+| Error type URLs        | ✅ Yes      | ❌ No      | ❌ No      |
+| Problem Details fields | ✅ Complete | ❌ Custom  | ❌ Custom  |
+| Content-Type header    | ✅ Yes      | ❌ No      | ❌ No      |
+| Error middleware       | ✅ Yes      | ⚠️ Partial | ⚠️ Partial |
+| Typed error classes    | ✅ Yes      | ❌ No      | ❌ No      |
 
 ### ✅ Verdict: **OCI Passes, NPM & NuGet Fail**
 

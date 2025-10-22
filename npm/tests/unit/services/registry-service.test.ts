@@ -191,15 +191,14 @@ describe('RegistryService', () => {
                 throw new Error('Test error');
             });
 
-            await registryService.getRegistry(req, res);
-
-            expect(res.status).toHaveBeenCalledWith(500);
-            expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    error: 'Internal server error',
-                    message: 'Failed to retrieve registry information'
-                })
-            );
+            // Service should throw RFC 9457 error
+            await expect(registryService.getRegistry(req, res)).rejects.toMatchObject({
+                type: expect.stringContaining('internal_error'),
+                status: 500,
+                instance: '/',
+                title: expect.any(String),
+                detail: 'Failed to retrieve registry information'
+            });
 
             expect(mockLogger.error).toHaveBeenCalledWith(
                 'Failed to serve registry root',
@@ -255,9 +254,13 @@ describe('RegistryService', () => {
             const req = mockRequest as Request;
             const res = mockResponse as Response;
 
-            await registryService.getGroup(req, res);
-
-            expect(res.status).toHaveBeenCalledWith(500);
+            // Service should throw RFC 9457 error
+            await expect(registryService.getGroup(req, res)).rejects.toMatchObject({
+                type: expect.stringContaining('internal_error'),
+                status: 500,
+                instance: '/',
+                detail: 'Failed to retrieve group'
+            });
             expect(mockLogger.error).toHaveBeenCalled();
         });
 

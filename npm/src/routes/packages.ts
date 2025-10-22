@@ -4,9 +4,9 @@
 
 import { Request, Response, Router } from 'express';
 import { GROUP_CONFIG, RESOURCE_CONFIG } from '../config/constants';
-import { PackageService } from '../services/package-service';
 import { asyncHandler, throwEntityNotFound } from '../middleware/xregistry-error-handler';
-import { applyFilterFlag, applySortFlag, applyInlineFlag } from '../middleware/xregistry-flags';
+import { applyFilterFlag, applyInlineFlag, applySortFlag } from '../middleware/xregistry-flags';
+import { PackageService } from '../services/package-service';
 
 export interface PackageRouterOptions {
     packageService: PackageService;
