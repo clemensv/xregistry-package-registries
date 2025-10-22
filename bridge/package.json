@@ -2,11 +2,13 @@
   "name": "xregistry-proxy",
   "version": "1.0.0",
   "description": "xRegistry reverse proxy for package registries",
-  "main": "dist/proxy.js",
+  "main": "dist/server.js",
   "scripts": {
+    "clean": "rimraf dist",
+    "prebuild": "npm run clean",
     "build": "tsc",
-    "start": "node dist/proxy.js",
-    "dev": "ts-node src/proxy.ts",
+    "start": "node dist/server.js",
+    "dev": "ts-node src/server.ts",
     "watch": "tsc --watch"
   },
   "dependencies": {
@@ -28,7 +30,8 @@
     "@types/yargs": "^17.0.32",
     "@types/uuid": "^9.0.7",
     "typescript": "^5.3.3",
-    "ts-node": "^10.9.2"
+    "ts-node": "^10.9.2",
+    "rimraf": "^6.0.1"
   },
   "engines": {
     "node": ">=18.0.0"
