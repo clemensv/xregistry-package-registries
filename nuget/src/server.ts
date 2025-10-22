@@ -511,6 +511,28 @@ export class XRegistryServer {
     }
 
     /**
+     * Initialize package cache in the background
+     */
+    private async initializePackageCache(): Promise<void> {
+        const cacheCount = this.NuGetService.getTotalPackageCount();
+        if (cacheCount === 0) {
+            this.logger.info('Initializing package cache from NuGet catalog...');
+            try {
+                await this.NuGetService.refreshPackageNamesFromCatalog();
+                const newCount = this.NuGetService.getTotalPackageCount();
+                this.logger.info('Package cache initialized', { packageCount: newCount });
+            } catch (error) {
+                this.logger.error('Failed to initialize package cache from catalog', { 
+                    error: error instanceof Error ? error.message : String(error) 
+                });
+                this.logger.info('Server will continue with empty cache. Packages can still be accessed directly by name.');
+            }
+        } else {
+            this.logger.info('Package cache already initialized', { packageCount: cacheCount });
+        }
+    }
+
+    /**
      * Start the server
      */
     async start(): Promise<void> {
@@ -518,13 +540,19 @@ export class XRegistryServer {
             try {
                 this.server = require('http').createServer(this.app);
 
-                this.server.listen(this.options.port, this.options.host, () => {
+                this.server.listen(this.options.port, this.options.host, async () => {
                     this.logger.info('xRegistry NuGet Wrapper Server started', {
                         port: this.options.port,
                         host: this.options.host,
                         nugetRegistry: this.options.nugetRegistryUrl,
                         cacheEnabled: this.options.cacheEnabled
                     });
+                    
+                    // Initialize package names cache in the background
+                    this.initializePackageCache().catch((error: Error) => {
+                        this.logger.error('Failed to initialize package cache', { error: error.message });
+                    });
+                    
                     resolve();
                 });
 
