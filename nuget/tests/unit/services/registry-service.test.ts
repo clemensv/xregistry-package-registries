@@ -113,8 +113,8 @@ describe('RegistryService', () => {
                     xid: '/',
                     self: 'https://registry.example.com',
                     name: 'NuGet Registry Service',
-                    description: 'xRegistry-compliant NPM package registry',
-                    documentation: 'https://docs.npmjs.com/',
+                    description: 'xRegistry-compliant NuGet package registry',
+                    documentation: 'https://learn.microsoft.com/nuget/',
                     epoch: expect.any(Number),
                     createdat: expect.any(String),
                     modifiedat: expect.any(String)
@@ -191,15 +191,13 @@ describe('RegistryService', () => {
                 throw new Error('Test error');
             });
 
-            await registryService.getRegistry(req, res);
-
-            expect(res.status).toHaveBeenCalledWith(500);
-            expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    error: 'Internal server error',
-                    message: 'Failed to retrieve registry information'
-                })
-            );
+            await expect(registryService.getRegistry(req, res)).rejects.toMatchObject({
+                type: expect.stringContaining('internal_error'),
+                status: 500,
+                instance: '/',
+                title: expect.any(String),
+                detail: 'Failed to retrieve registry information'
+            });
 
             expect(mockLogger.error).toHaveBeenCalledWith(
                 'Failed to serve registry root',
@@ -255,9 +253,14 @@ describe('RegistryService', () => {
             const req = mockRequest as Request;
             const res = mockResponse as Response;
 
-            await registryService.getGroup(req, res);
+            await expect(registryService.getGroup(req, res)).rejects.toMatchObject({
+                type: expect.stringContaining('internal_error'),
+                status: 500,
+                instance: '/',
+                title: expect.any(String),
+                detail: 'Failed to retrieve group'
+            });
 
-            expect(res.status).toHaveBeenCalledWith(500);
             expect(mockLogger.error).toHaveBeenCalled();
         });
 
