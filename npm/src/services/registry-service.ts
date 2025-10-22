@@ -6,6 +6,7 @@
 import { Request, Response } from 'express';
 import { CacheService } from '../cache/cache-service';
 import { GROUP_CONFIG, PAGINATION, RESOURCE_CONFIG } from '../config/constants';
+import { throwEntityNotFound, throwInternalError } from '../middleware/xregistry-error-handler';
 import {
     FilterExpression,
     XRegistryEntity,
@@ -92,10 +93,7 @@ export class RegistryService {
                 stack: error.stack,
                 path: req.path
             });
-            res.status(500).json({
-                error: 'Internal server error',
-                message: 'Failed to retrieve registry information'
-            });
+            throwInternalError(req.originalUrl, 'Failed to retrieve registry information');
         }
     }
 
@@ -143,10 +141,7 @@ export class RegistryService {
                 stack: error.stack,
                 path: req.path
             });
-            res.status(500).json({
-                error: 'Internal server error',
-                message: 'Failed to retrieve groups'
-            });
+            throwInternalError(req.originalUrl, 'Failed to retrieve groups');
         }
     }
 
@@ -158,11 +153,7 @@ export class RegistryService {
             const groupId = req.params['groupId'];
 
             if (groupId !== GROUP_CONFIG.ID) {
-                res.status(404).json({
-                    error: 'Group not found',
-                    message: `Group '${groupId}' does not exist`
-                });
-                return;
+                throwEntityNotFound(req.originalUrl, 'group', groupId || '');
             }
 
             let groupEntity: XRegistryEntity & Record<string, any> = createXRegistryEntity({
@@ -212,10 +203,7 @@ export class RegistryService {
                 path: req.path,
                 groupId: req.params['groupId']
             });
-            res.status(500).json({
-                error: 'Internal server error',
-                message: 'Failed to retrieve group'
-            });
+            throwInternalError(req.originalUrl, 'Failed to retrieve group');
         }
     }
 
@@ -227,11 +215,7 @@ export class RegistryService {
             const groupId = req.params['groupId'];
 
             if (groupId !== GROUP_CONFIG.ID) {
-                res.status(404).json({
-                    error: 'Group not found',
-                    message: `Group '${groupId}' does not exist`
-                });
-                return;
+                throwEntityNotFound(req.originalUrl, 'group', groupId || '');
             }
 
             const filter = req.query['filter'] as string;
@@ -276,10 +260,7 @@ export class RegistryService {
                 path: req.path,
                 groupId: req.params['groupId']
             });
-            res.status(500).json({
-                error: 'Internal server error',
-                message: 'Failed to retrieve resources'
-            });
+            throwInternalError(req.originalUrl, 'Failed to retrieve resources');
         }
     }
 
@@ -292,20 +273,12 @@ export class RegistryService {
             const resourceId = req.params['resourceId'];
 
             if (groupId !== GROUP_CONFIG.ID) {
-                res.status(404).json({
-                    error: 'Group not found',
-                    message: `Group '${groupId}' does not exist`
-                });
-                return;
+                throwEntityNotFound(req.originalUrl, 'group', groupId || '');
             }
 
             const packageMetadata = await this.npmService.getPackageMetadata(resourceId || '');
             if (!packageMetadata) {
-                res.status(404).json({
-                    error: 'Resource not found',
-                    message: `Package '${resourceId}' does not exist`
-                });
-                return;
+                throwEntityNotFound(req.originalUrl, 'package', resourceId || '');
             }
 
             let packageEntity: XRegistryEntity & Record<string, any> = createXRegistryEntity({
@@ -351,10 +324,7 @@ export class RegistryService {
                 groupId: req.params['groupId'],
                 resourceId: req.params['resourceId']
             });
-            res.status(500).json({
-                error: 'Internal server error',
-                message: 'Failed to retrieve resource'
-            });
+            throwInternalError(req.originalUrl, 'Failed to retrieve resource');
         }
     }
 

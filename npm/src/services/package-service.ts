@@ -3,6 +3,7 @@
  * @fileoverview Service for package operations wrapping NPM service
  */
 
+import { throwEntityNotFound } from '../middleware/xregistry-error-handler';
 import { PackageMetadata } from '../types/xregistry';
 import { NpmService } from './npm-service';
 
@@ -18,6 +19,11 @@ export class PackageService {
     constructor(options: PackageServiceOptions) {
         this.npmService = options.npmService;
         this.baseUrl = options.baseUrl || 'http://localhost:3100';
+    }
+
+    private buildInstanceUrl(packageName: string, version?: string): string {
+        const base = `/groups/npmjs.org/packages/${packageName}`;
+        return version ? `${base}/versions/${version}` : base;
     }
 
     async getAllPackages(
@@ -47,7 +53,7 @@ export class PackageService {
     async getPackage(packageName: string): Promise<PackageMetadata> {
         const packageData = await this.npmService.getPackageMetadata(packageName);
         if (!packageData) {
-            throw new Error(`Package '${packageName}' not found`);
+            throwEntityNotFound(this.buildInstanceUrl(packageName), 'package', packageName);
         }
         return packageData;
     }
@@ -59,7 +65,7 @@ export class PackageService {
     ): Promise<{ versions: any[]; totalCount: number }> {
         const packageData = await this.npmService.getPackageMetadata(packageName);
         if (!packageData) {
-            throw new Error(`Package '${packageName}' not found`);
+            throwEntityNotFound(this.buildInstanceUrl(packageName), 'package', packageName);
         }
 
         const versions = packageData.versions || [];
@@ -82,7 +88,7 @@ export class PackageService {
     async getPackageVersion(packageName: string, version: string): Promise<any> {
         const versionData = await this.npmService.getVersionMetadata(packageName, version);
         if (!versionData) {
-            throw new Error(`Version '${version}' not found for package '${packageName}'`);
+            throwEntityNotFound(this.buildInstanceUrl(packageName, version), 'version', version);
         }
         return versionData;
     }
@@ -90,7 +96,7 @@ export class PackageService {
     async getPackageMeta(packageName: string): Promise<any> {
         const packageData = await this.npmService.getPackageMetadata(packageName);
         if (!packageData) {
-            throw new Error(`Package '${packageName}' not found`);
+            throwEntityNotFound(this.buildInstanceUrl(packageName), 'package', packageName);
         }
 
         return {
