@@ -6,8 +6,9 @@
 import { Request, Response } from 'express';
 import { CacheService } from '../cache/cache-service';
 import { GROUP_CONFIG, PAGINATION, RESOURCE_CONFIG } from '../config/constants';
+import { throwEntityNotFound, throwInternalError } from '../middleware/xregistry-error-handler';
+import { applyFilterFlag, applySortFlag } from '../middleware/xregistry-flags';
 import {
-    FilterExpression,
     XRegistryEntity,
     XRegistryGroupResponse,
     XRegistryResourceResponse
@@ -18,8 +19,7 @@ import {
     handleEpochFlag,
     handleInlineFlag,
     handleNoReadonlyFlag,
-    handleSchemaFlag,
-    parseFilterExpressions
+    handleSchemaFlag
 } from '../utils/xregistry-utils';
 import { NuGetService } from './nuget-service';
 
@@ -72,7 +72,7 @@ export class RegistryService {
                 registryEntity[GROUP_CONFIG.TYPE] = groups;
             } else {
                 registryEntity[`${GROUP_CONFIG.TYPE}url`] = `${baseUrl}/${GROUP_CONFIG.TYPE}`;
-                registryEntity[`${GROUP_CONFIG.TYPE}count`] = 1; // Only one group (npm)
+                registryEntity[`${GROUP_CONFIG.TYPE}count`] = 1; // Only one group (nuget.org)
             }
 
             const etag = generateETag(registryEntity);
@@ -92,10 +92,7 @@ export class RegistryService {
                 stack: error.stack,
                 path: req.path
             });
-            res.status(500).json({
-                error: 'Internal server error',
-                message: 'Failed to retrieve registry information'
-            });
+            throwInternalError(req.originalUrl, 'Failed to retrieve registry information');
         }
     }
 
@@ -104,14 +101,16 @@ export class RegistryService {
      */
     async getGroups(req: Request, res: Response): Promise<void> {
         try {
-            const filter = req.query['filter'] as string;
-
             let groups = await this.getGroupsInline(req);
 
-            // Apply filters if provided
-            if (filter) {
-                const filterExpressions = parseFilterExpressions(filter);
-                groups = this.applyFilters(groups, filterExpressions);
+            // Apply xRegistry filter flag if present
+            if (req.xregistryFlags?.filter) {
+                groups = applyFilterFlag(groups, req.xregistryFlags.filter) as typeof groups;
+            }
+
+            // Apply xRegistry sort flag if present
+            if (req.xregistryFlags?.sort) {
+                groups = applySortFlag(groups, req.xregistryFlags.sort) as typeof groups;
             }
 
             // Apply xRegistry query parameter processing to each group
@@ -133,8 +132,7 @@ export class RegistryService {
 
             this.logger.info('Groups collection served', {
                 path: req.path,
-                count: groups.length,
-                filter: filter || null
+                count: groups.length
             });
 
         } catch (error: any) {
@@ -143,10 +141,7 @@ export class RegistryService {
                 stack: error.stack,
                 path: req.path
             });
-            res.status(500).json({
-                error: 'Internal server error',
-                message: 'Failed to retrieve groups'
-            });
+            throwInternalError(req.originalUrl, 'Failed to retrieve groups');
         }
     }
 
@@ -155,14 +150,10 @@ export class RegistryService {
      */
     async getGroup(req: Request, res: Response): Promise<void> {
         try {
-            const groupId = req.params['groupId'];
+            const groupId = req.params['groupId'] || '';
 
             if (groupId !== GROUP_CONFIG.ID) {
-                res.status(404).json({
-                    error: 'Group not found',
-                    message: `Group '${groupId}' does not exist`
-                });
-                return;
+                throwEntityNotFound(req.originalUrl, 'group', groupId);
             }
 
             let groupEntity: XRegistryEntity & Record<string, any> = createXRegistryEntity({
@@ -212,10 +203,7 @@ export class RegistryService {
                 path: req.path,
                 groupId: req.params['groupId']
             });
-            res.status(500).json({
-                error: 'Internal server error',
-                message: 'Failed to retrieve group'
-            });
+            throwInternalError(req.originalUrl, 'Failed to retrieve group');
         }
     }
 
@@ -224,25 +212,29 @@ export class RegistryService {
      */
     async getResources(req: Request, res: Response): Promise<void> {
         try {
-            const groupId = req.params['groupId'];
+            const groupId = req.params['groupId'] || '';
 
             if (groupId !== GROUP_CONFIG.ID) {
-                res.status(404).json({
-                    error: 'Group not found',
-                    message: `Group '${groupId}' does not exist`
-                });
-                return;
+                throwEntityNotFound(req.originalUrl, 'group', groupId);
             }
 
-            const filter = req.query['filter'] as string;
             const page = parseInt(req.query['page'] as string || '1', 10);
             const limit = parseInt(req.query['limit'] as string || PAGINATION.DEFAULT_PAGE_LIMIT.toString(), 10);
 
             let resources = await this.getResourcesInline(req, groupId, {
                 page,
-                limit,
-                filter
+                limit
             });
+
+            // Apply xRegistry filter flag if present
+            if (req.xregistryFlags?.filter) {
+                resources = applyFilterFlag(resources, req.xregistryFlags.filter) as typeof resources;
+            }
+
+            // Apply xRegistry sort flag if present
+            if (req.xregistryFlags?.sort) {
+                resources = applySortFlag(resources, req.xregistryFlags.sort) as typeof resources;
+            }
 
             // Apply xRegistry query parameter processing to each resource
             resources = resources.map(resource => {
@@ -276,10 +268,7 @@ export class RegistryService {
                 path: req.path,
                 groupId: req.params['groupId']
             });
-            res.status(500).json({
-                error: 'Internal server error',
-                message: 'Failed to retrieve resources'
-            });
+            throwInternalError(req.originalUrl, 'Failed to retrieve resources');
         }
     }
 
@@ -288,24 +277,16 @@ export class RegistryService {
      */
     async getResource(req: Request, res: Response): Promise<void> {
         try {
-            const groupId = req.params['groupId'];
-            const resourceId = req.params['resourceId'];
+            const groupId = req.params['groupId'] || '';
+            const resourceId = req.params['resourceId'] || '';
 
             if (groupId !== GROUP_CONFIG.ID) {
-                res.status(404).json({
-                    error: 'Group not found',
-                    message: `Group '${groupId}' does not exist`
-                });
-                return;
+                throwEntityNotFound(req.originalUrl, 'group', groupId);
             }
 
-            const packageMetadata = await this.NuGetService.getPackageMetadata(resourceId || '');
+            const packageMetadata = await this.NuGetService.getPackageMetadata(resourceId);
             if (!packageMetadata) {
-                res.status(404).json({
-                    error: 'Resource not found',
-                    message: `Package '${resourceId}' does not exist`
-                });
-                return;
+                throwEntityNotFound(req.originalUrl, 'package', resourceId);
             }
 
             let packageEntity: XRegistryEntity & Record<string, any> = createXRegistryEntity({
@@ -351,10 +332,7 @@ export class RegistryService {
                 groupId: req.params['groupId'],
                 resourceId: req.params['resourceId']
             });
-            res.status(500).json({
-                error: 'Internal server error',
-                message: 'Failed to retrieve resource'
-            });
+            throwInternalError(req.originalUrl, 'Failed to retrieve resource');
         }
     }
 
@@ -410,28 +388,4 @@ export class RegistryService {
         });
     }
 
-    /**
-     * Apply filters to entities
-     */
-    private applyFilters(entities: XRegistryEntity[], filters: FilterExpression[]): XRegistryEntity[] {
-        return entities.filter(entity => {
-            return filters.every(filter => {
-                const value = entity[filter.attribute];
-                if (value === undefined) return false;
-
-                switch (filter.operator) {
-                    case '=':
-                        return String(value) === filter.value;
-                    case '!=':
-                        return String(value) !== filter.value;
-                    case '~':
-                        return String(value).includes(filter.value);
-                    case '!~':
-                        return !String(value).includes(filter.value);
-                    default:
-                        return false;
-                }
-            });
-        });
-    }
 } 

@@ -10,6 +10,7 @@ import {
     epochError,
     errorToXRegistryError,
     forbidden,
+    internalError,
     invalidData,
     serviceUnavailable,
     unauthorized,
@@ -76,6 +77,13 @@ export function throwUnauthorized(instance: string, detail?: string): never {
  */
 export function throwForbidden(instance: string, detail?: string): never {
     throw forbidden(instance, detail);
+}
+
+/**
+ * Throw a 500 internal server error
+ */
+export function throwInternalError(instance: string, detail?: string): never {
+    throw internalError(instance, detail);
 }
 
 /**

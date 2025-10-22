@@ -10,6 +10,8 @@ import { CACHE_CONFIG, NUGET_REGISTRY } from './config/constants';
 import { corsMiddleware } from './middleware/cors';
 import { errorHandler } from './middleware/error-handler';
 import { createLoggingMiddleware } from './middleware/logging';
+import { parseXRegistryFlags } from './middleware/xregistry-flags';
+import { xregistryErrorHandler } from './middleware/xregistry-error-handler';
 import { NuGetService } from './services/nuget-service';
 
 // Simple console logger
@@ -113,6 +115,7 @@ export class XRegistryServer {
         this.app.use(express.urlencoded({ extended: true, limit: '10mb' }));
         this.app.use(corsMiddleware);
         this.app.use(createLoggingMiddleware({ logger: this.logger }));
+        this.app.use(parseXRegistryFlags);
     }
 
     /**
@@ -503,6 +506,7 @@ export class XRegistryServer {
      * Setup error handling
      */
     private setupErrorHandling(): void {
+        this.app.use(xregistryErrorHandler);
         this.app.use(errorHandler);
     }
 
