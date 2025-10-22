@@ -10,6 +10,8 @@ import { CACHE_CONFIG } from './config/constants';
 import { corsMiddleware } from './middleware/cors';
 import { errorHandler } from './middleware/error-handler';
 import { createLoggingMiddleware } from './middleware/logging';
+import { parseXRegistryFlags } from './middleware/xregistry-flags';
+import { xregistryErrorHandler } from './middleware/xregistry-error-handler';
 import { NpmService } from './services/npm-service';
 
 // Simple console logger
@@ -107,6 +109,8 @@ export class XRegistryServer {
         this.app.use(express.urlencoded({ extended: true, limit: '10mb' }));
         this.app.use(corsMiddleware);
         this.app.use(createLoggingMiddleware({ logger: this.logger }));
+        // xRegistry request flags parsing (must be after body parser)
+        this.app.use(parseXRegistryFlags);
     }
 
     /**
@@ -468,6 +472,9 @@ export class XRegistryServer {
      * Setup error handling
      */
     private setupErrorHandling(): void {
+        // xRegistry RFC 9457 error handler (must be registered last)
+        this.app.use(xregistryErrorHandler);
+        // Fallback error handler
         this.app.use(errorHandler);
     }
 
