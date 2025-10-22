@@ -560,7 +560,7 @@ export class XRegistryServer {
      */
     private shutdown(signal: string): void {
         this.logger.info(`Received ${signal}, shutting down gracefully`);
-        
+
         // Set a timeout to force exit if graceful shutdown takes too long
         const forceExitTimeout = setTimeout(() => {
             this.logger.warn('Forcefully exiting after timeout');

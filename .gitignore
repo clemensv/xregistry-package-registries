@@ -2,6 +2,7 @@
 node_modules/
 jspm_packages/
 dist/
+tmp/
 **/dist
 
 .azure-credentials.json
@@ -15,6 +16,11 @@ cache/
 .env.development.local
 .env.test.local
 .env.production.local
+
+# Secrets and credentials
+**/backends.json
+**/backends.local.json
+**/.credentials.json
 
 # Logs
 logs
@@ -39,3 +45,5 @@ coverage/
 *.swo
 .DS_Store
 Thumbs.db .cursor/
+
+tmp/

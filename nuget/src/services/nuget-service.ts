@@ -8,19 +8,19 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { CacheManager } from '../cache/cache-manager';
 import { CACHE_CONFIG, NUGET_REGISTRY } from '../config/constants';
-import { PackageMetadata, VersionMetadata } from '../types/xregistry';
 import {
-    NuGetSearchResponse,
+    CachedResponse,
+    CacheMetadata,
+    NuGetCatalogEntry,
+    NuGetCatalogIndex,
+    NuGetCatalogPage,
+    NuGetDependencyGroup,
     NuGetPackageSearchResult,
     NuGetRegistrationIndex,
     NuGetRegistrationPage,
-    NuGetCatalogEntry,
-    NuGetDependencyGroup,
-    NuGetCatalogIndex,
-    NuGetCatalogPage,
-    CachedResponse,
-    CacheMetadata
+    NuGetSearchResponse
 } from '../types/nuget';
+import { PackageMetadata, VersionMetadata } from '../types/xregistry';
 
 /**
  * Service configuration
@@ -123,7 +123,7 @@ export class NuGetService {
                     return cachedData;
                 }
             }
-            
+
             if (cachedData) {
                 return cachedData;
             }
@@ -388,7 +388,7 @@ export class NuGetService {
     async refreshPackageNamesFromCatalog(): Promise<void> {
         try {
             const catalogIndex = await this.cachedGet<NuGetCatalogIndex>(this.catalogIndexUrl);
-            
+
             for (const page of catalogIndex.items) {
                 await this.processCatalogPage(page['@id'], this.catalogCursor);
             }
@@ -405,7 +405,7 @@ export class NuGetService {
      */
     private async processCatalogPage(pageUrl: string, cursor: string | null): Promise<void> {
         const page = await this.cachedGet<NuGetCatalogPage>(pageUrl);
-        
+
         if (page.items) {
             for (const item of page.items) {
                 if (cursor && item.commitTimeStamp <= cursor) {

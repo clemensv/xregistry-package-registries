@@ -4,6 +4,19 @@ This is an xRegistry v1.0 proxy for OCI container registries.
 
 It is a Node.js Express server that implements the xRegistry API and translates requests to OCI API calls.
 
+## 🔐 Security First
+
+**Important**: This project uses environment variables for credentials. **Never commit secrets to git!**
+
+👉 **See [SECURITY.md](./SECURITY.md) for complete security setup instructions.**
+
+Quick start:
+```bash
+cp .env.example .env
+# Edit .env with your credentials
+npm start
+```
+
 ## Running the server
 
 To run the server, you need to have Node.js installed.
@@ -11,7 +24,8 @@ To run the server, you need to have Node.js installed.
 1. Clone this repository.
 2. Navigate to the `oci` directory.
 3. Run `npm install` to install the dependencies.
-4. Run `npm start` to start the server.
+4. **Configure credentials** - see [SECURITY.md](./SECURITY.md)
+5. Run `npm start` to start the server.
 
 The server will be running on port 3000 by default. You can change the port by setting the `PORT` environment variable.
 

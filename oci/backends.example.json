@@ -1,0 +1,38 @@
+{
+    "backends": [
+        {
+            "id": "mcr.microsoft.com",
+            "name": "Microsoft Container Registry",
+            "url": "https://mcr.microsoft.com",
+            "registry": "mcr.microsoft.com",
+            "apiVersion": "v2",
+            "description": "Microsoft Container Registry - Official Microsoft container images",
+            "enabled": true,
+            "public": true,
+            "catalogPath": "/v2/_catalog"
+        },
+        {
+            "id": "docker.io",
+            "name": "Docker Hub",
+            "url": "https://registry-1.docker.io",
+            "registry": "registry-1.docker.io",
+            "authUrl": "https://auth.docker.io",
+            "apiVersion": "v2",
+            "description": "Docker Hub official registry",
+            "enabled": true,
+            "public": true,
+            "catalogPath": "/v2/_catalog",
+            "username": "YOUR_DOCKERHUB_USERNAME",
+            "password": "YOUR_DOCKERHUB_PAT_OR_PASSWORD"
+        },
+        {
+            "id": "ghcr.io",
+            "name": "GitHub Container Registry",
+            "url": "https://ghcr.io",
+            "apiVersion": "v2",
+            "description": "GitHub Container Registry",
+            "enabled": true,
+            "public": true
+        }
+    ]
+}
