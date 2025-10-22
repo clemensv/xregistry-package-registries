@@ -7,8 +7,8 @@ import { Request, Response } from 'express';
 import { CacheService } from '../cache/cache-service';
 import { GROUP_CONFIG, PAGINATION, RESOURCE_CONFIG } from '../config/constants';
 import { throwEntityNotFound, throwInternalError } from '../middleware/xregistry-error-handler';
+import { applyFilterFlag, applySortFlag } from '../middleware/xregistry-flags';
 import {
-    FilterExpression,
     XRegistryEntity,
     XRegistryGroupResponse,
     XRegistryResourceResponse
@@ -19,8 +19,7 @@ import {
     handleEpochFlag,
     handleInlineFlag,
     handleNoReadonlyFlag,
-    handleSchemaFlag,
-    parseFilterExpressions
+    handleSchemaFlag
 } from '../utils/xregistry-utils';
 import { NpmService } from './npm-service';
 
@@ -102,17 +101,19 @@ export class RegistryService {
      */
     async getGroups(req: Request, res: Response): Promise<void> {
         try {
-            const filter = req.query['filter'] as string;
-
             let groups = await this.getGroupsInline(req);
 
-            // Apply filters if provided
-            if (filter) {
-                const filterExpressions = parseFilterExpressions(filter);
-                groups = this.applyFilters(groups, filterExpressions);
+            // Apply xRegistry filter flag if present
+            if (req.xregistryFlags?.filter) {
+                groups = applyFilterFlag(groups, req.xregistryFlags.filter) as typeof groups;
             }
 
-            // Apply xRegistry query parameter processing to each group
+            // Apply xRegistry sort flag if present
+            if (req.xregistryFlags?.sort) {
+                groups = applySortFlag(groups, req.xregistryFlags.sort) as typeof groups;
+            }
+
+            // Apply xRegistry query parameter processing to each group (legacy support)
             groups = groups.map(group => {
                 let processedGroup = handleInlineFlag(req, group);
                 processedGroup = handleEpochFlag(req, processedGroup);
@@ -132,7 +133,8 @@ export class RegistryService {
             this.logger.info('Groups collection served', {
                 path: req.path,
                 count: groups.length,
-                filter: filter || null
+                hasFilter: !!req.xregistryFlags?.filter,
+                hasSort: !!req.xregistryFlags?.sort
             });
 
         } catch (error: any) {
@@ -218,17 +220,23 @@ export class RegistryService {
                 throwEntityNotFound(req.originalUrl, 'group', groupId || '');
             }
 
-            const filter = req.query['filter'] as string;
-            const page = parseInt(req.query['page'] as string || '1', 10);
-            const limit = parseInt(req.query['limit'] as string || PAGINATION.DEFAULT_PAGE_LIMIT.toString(), 10);
-
+            // Get resources (use default pagination for now)
             let resources = await this.getResourcesInline(req, groupId, {
-                page,
-                limit,
-                filter
+                page: 1,
+                limit: 100
             });
 
-            // Apply xRegistry query parameter processing to each resource
+            // Apply xRegistry filter flag if present
+            if (req.xregistryFlags?.filter) {
+                resources = applyFilterFlag(resources, req.xregistryFlags.filter) as typeof resources;
+            }
+
+            // Apply xRegistry sort flag if present
+            if (req.xregistryFlags?.sort) {
+                resources = applySortFlag(resources, req.xregistryFlags.sort) as typeof resources;
+            }
+
+            // Apply xRegistry query parameter processing to each resource (legacy support)
             resources = resources.map(resource => {
                 let processedResource = handleInlineFlag(req, resource);
                 processedResource = handleEpochFlag(req, processedResource);
@@ -249,8 +257,8 @@ export class RegistryService {
                 path: req.path,
                 groupId,
                 count: resources.length,
-                page,
-                limit
+                hasFilter: !!req.xregistryFlags?.filter,
+                hasSort: !!req.xregistryFlags?.sort
             });
 
         } catch (error: any) {
@@ -380,28 +388,4 @@ export class RegistryService {
         );
     }
 
-    /**
-     * Apply filters to entities
-     */
-    private applyFilters(entities: XRegistryEntity[], filters: FilterExpression[]): XRegistryEntity[] {
-        return entities.filter(entity => {
-            return filters.every(filter => {
-                const value = entity[filter.attribute];
-                if (value === undefined) return false;
-
-                switch (filter.operator) {
-                    case '=':
-                        return String(value) === filter.value;
-                    case '!=':
-                        return String(value) !== filter.value;
-                    case '~':
-                        return String(value).includes(filter.value);
-                    case '!~':
-                        return !String(value).includes(filter.value);
-                    default:
-                        return false;
-                }
-            });
-        });
-    }
 } 

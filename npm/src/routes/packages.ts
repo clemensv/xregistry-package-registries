@@ -3,10 +3,10 @@
  */
 
 import { Request, Response, Router } from 'express';
-import { GROUP_CONFIG, PAGINATION, RESOURCE_CONFIG } from '../config/constants';
+import { GROUP_CONFIG, RESOURCE_CONFIG } from '../config/constants';
 import { PackageService } from '../services/package-service';
 import { asyncHandler, throwEntityNotFound } from '../middleware/xregistry-error-handler';
-import { parseFilterParams, parsePaginationParams } from '../utils/request-utils';
+import { applyFilterFlag, applySortFlag, applyInlineFlag } from '../middleware/xregistry-flags';
 
 export interface PackageRouterOptions {
     packageService: PackageService;
@@ -29,16 +29,30 @@ export function createPackageRoutes(options: PackageRouterOptions): Router {
             throwEntityNotFound(req.originalUrl, 'group', groupId);
         }
 
-        const filters = parseFilterParams(req.query['filter']);
-        const { offset, limit } = parsePaginationParams(req.query, PAGINATION.DEFAULT_PAGE_LIMIT);
+        // Get packages (using default pagination for now)
+        let { packages } = await packageService.getAllPackages({}, 0, 100);
 
-        const { packages } = await packageService.getAllPackages(filters, offset, limit);
+        // Apply xRegistry filter flag if present
+        if (req.xregistryFlags?.filter) {
+            packages = applyFilterFlag(packages, req.xregistryFlags.filter) as typeof packages;
+        }
 
-        const responseData: Record<string, any> = {};
+        // Apply xRegistry sort flag if present
+        if (req.xregistryFlags?.sort) {
+            packages = applySortFlag(packages, req.xregistryFlags.sort) as typeof packages;
+        }
+
+        // Convert to response format (keyed by package name)
+        let responseData: Record<string, any> = {};
         packages.forEach((pkg, index) => {
             const name = pkg['name'] || `package-${index}`;
             responseData[name] = pkg;
         });
+
+        // Apply inline flag if present
+        if (req.xregistryFlags?.inline) {
+            responseData = applyInlineFlag(responseData, req.xregistryFlags.inline);
+        }
 
         res.json(responseData);
     }));
@@ -55,7 +69,13 @@ export function createPackageRoutes(options: PackageRouterOptions): Router {
             throwEntityNotFound(req.originalUrl, 'group', groupId);
         }
 
-        const packageData = await packageService.getPackage(packageName);
+        let packageData = await packageService.getPackage(packageName);
+
+        // Apply inline flag if present (e.g., ?inline=versions)
+        if (req.xregistryFlags?.inline) {
+            packageData = applyInlineFlag(packageData, req.xregistryFlags.inline) as typeof packageData;
+        }
+
         res.json(packageData);
     }));
 
