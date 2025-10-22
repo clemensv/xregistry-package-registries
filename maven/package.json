@@ -2,11 +2,17 @@
   "name": "xregistry-maven-wrapper",
   "version": "1.0.0",
   "description": "xRegistry API wrapper for Maven Central",
-  "main": "server.js",
+  "main": "dist/server.js",
   "scripts": {
-    "build": "npm install && node -c server.js",
-    "start": "node server.js",
-    "dev": "nodemon server.js"
+    "prebuild": "npm run clean",
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "prestart": "npm run build",
+    "start": "node dist/server.js",
+    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
   },
   "author": "",
   "license": "MIT",
@@ -19,7 +25,19 @@
     "yargs": "^17.7.2"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1"
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.10.0",
+    "@types/sqlite3": "^3.1.11",
+    "@types/uuid": "^9.0.7",
+    "@types/xml2js": "^0.4.14",
+    "@types/yargs": "^17.0.32",
+    "@types/jest": "^29.5.11",
+    "jest": "^29.7.0",
+    "nodemon": "^3.0.1",
+    "rimraf": "^5.0.5",
+    "ts-jest": "^29.1.1",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.5.4"
   },
   "engines": {
     "node": ">=18.0.0"

@@ -10,8 +10,8 @@ import { CACHE_CONFIG, NUGET_REGISTRY } from './config/constants';
 import { corsMiddleware } from './middleware/cors';
 import { errorHandler } from './middleware/error-handler';
 import { createLoggingMiddleware } from './middleware/logging';
-import { parseXRegistryFlags } from './middleware/xregistry-flags';
 import { xregistryErrorHandler } from './middleware/xregistry-error-handler';
+import { parseXRegistryFlags } from './middleware/xregistry-flags';
 import { NuGetService } from './services/nuget-service';
 
 // Simple console logger
@@ -522,8 +522,8 @@ export class XRegistryServer {
                 const newCount = this.NuGetService.getTotalPackageCount();
                 this.logger.info('Package cache initialized', { packageCount: newCount });
             } catch (error) {
-                this.logger.error('Failed to initialize package cache from catalog', { 
-                    error: error instanceof Error ? error.message : String(error) 
+                this.logger.error('Failed to initialize package cache from catalog', {
+                    error: error instanceof Error ? error.message : String(error)
                 });
                 this.logger.info('Server will continue with empty cache. Packages can still be accessed directly by name.');
             }
@@ -547,12 +547,12 @@ export class XRegistryServer {
                         nugetRegistry: this.options.nugetRegistryUrl,
                         cacheEnabled: this.options.cacheEnabled
                     });
-                    
+
                     // Initialize package names cache in the background
                     this.initializePackageCache().catch((error: Error) => {
                         this.logger.error('Failed to initialize package cache', { error: error.message });
                     });
-                    
+
                     resolve();
                 });
 
