@@ -79,5 +79,21 @@ export function createPackageRoutes(options: PackageRouterOptions): Router {
         res.json(packageData);
     }));
 
+    /**
+     * GET /:groupId/packages/:packageName/meta
+     * Get package meta information (Resource-level metadata)
+     */
+    router.get(`/:groupId/${RESOURCE_CONFIG.TYPE}/:packageName/meta`, asyncHandler(async (req: Request, res: Response): Promise<void> => {
+        const groupId = req.params['groupId'] || '';
+        const packageName = req.params['packageName'] || '';
+
+        if (groupId !== GROUP_CONFIG.ID) {
+            throwEntityNotFound(req.originalUrl, 'group', groupId);
+        }
+
+        const metaData = await packageService.getPackageMeta(packageName);
+        res.json(metaData);
+    }));
+
     return router;
 } 
