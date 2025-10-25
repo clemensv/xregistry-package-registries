@@ -167,7 +167,7 @@ export class OCIXRegistryServer {
             res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
             res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
             if (req.method === 'OPTIONS') {
-                res.sendStatus(200);
+                res.sendStatus(204);
             } else {
                 next();
             }
@@ -176,6 +176,12 @@ export class OCIXRegistryServer {
         // Body parser
         this.app.use(express.json());
         this.app.use(express.urlencoded({ extended: true }));
+
+        // Standard HTTP headers
+        this.app.use((_req, res, next) => {
+            res.setHeader('cache-control', 'public, max-age=300');
+            next();
+        });
 
         // xRegistry request flags parsing middleware
         this.app.use(parseXRegistryFlags);
@@ -194,6 +200,24 @@ export class OCIXRegistryServer {
      * Setup routes
      */
     private setupRoutes(): void {
+        // Performance stats endpoint
+        this.app.get('/performance/stats', (_req: Request, res: Response) => {
+            res.json({
+                filterOptimizer: {
+                    twoStepFilteringEnabled: false,
+                    hasMetadataFetcher: false,
+                    indexedEntities: 0,
+                    nameIndexSize: 0,
+                    maxMetadataFetches: 0,
+                    cacheSize: 0,
+                    maxCacheAge: 0
+                },
+                packageCache: {
+                    size: 0
+                }
+            });
+        });
+
         // Health check
         this.app.get('/health', (_req: Request, res: Response) => {
             res.json({
@@ -211,6 +235,15 @@ export class OCIXRegistryServer {
         // Registry root
         this.app.get('/', (req: Request, res: Response) => {
             this.registryService.getRegistry(req, res);
+        });
+
+        // Model and capabilities
+        this.app.get('/model', (req: Request, res: Response) => {
+            this.registryService.getModel(req, res);
+        });
+
+        this.app.get('/capabilities', (req: Request, res: Response) => {
+            this.registryService.getCapabilities(req, res);
         });
 
         // Groups (backends) routes
@@ -325,8 +358,24 @@ export class OCIXRegistryServer {
  * Main entry point
  */
 if (require.main === module) {
-    const port = process.env.PORT ? parseInt(process.env.PORT, 10) : SERVER_CONFIG.DEFAULT_PORT;
-    const host = process.env.HOST || '0.0.0.0';
+    // Parse command line arguments
+    const args = process.argv.slice(2);
+    let port = process.env.PORT ? parseInt(process.env.PORT, 10) : SERVER_CONFIG.DEFAULT_PORT;
+    let host = process.env.HOST || '0.0.0.0';
+
+    for (let i = 0; i < args.length; i++) {
+        if (args[i] === '--port' && i + 1 < args.length) {
+            const portArg = args[i + 1];
+            if (portArg) {
+                port = parseInt(portArg, 10);
+            }
+        } else if (args[i] === '--host' && i + 1 < args.length) {
+            const hostArg = args[i + 1];
+            if (hostArg) {
+                host = hostArg;
+            }
+        }
+    }
 
     const server = new OCIXRegistryServer({ port, host });
 

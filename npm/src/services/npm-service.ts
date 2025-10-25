@@ -7,7 +7,7 @@ import axios, { AxiosInstance } from 'axios';
 import { CacheManager } from '../cache/cache-manager';
 import { CACHE_CONFIG, NPM_REGISTRY } from '../config/constants';
 import { PackageMetadata, VersionMetadata } from '../types/xregistry';
-import { encodePackageName, normalizePackageId } from '../utils/package-utils';
+import { convertTildeToSlash, encodePackageName, normalizePackageId } from '../utils/package-utils';
 import { generateXRegistryEntity } from '../utils/xregistry-utils';
 
 /**
@@ -130,8 +130,9 @@ export class NpmService {
                 }
             }
 
-            // Fetch from NPM registry
-            const encodedName = encodePackageName(normalizedName);
+            // Fetch from NPM registry - convert tildes back to slashes for scoped packages
+            const realPackageName = convertTildeToSlash(normalizedName);
+            const encodedName = encodePackageName(realPackageName);
             const response = await this.httpClient.get<NpmPackageManifest>(`/${encodedName}`);
 
             if (response.status !== 200) {

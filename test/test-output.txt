@@ -1,0 +1,560 @@
+
+> xregistry-tests@1.0.0 test:npm:basic
+> mocha npm/basic-server.test.js --timeout 120000 --exit
+
+
+
+  Basic Server Functionality
+Starting xRegistry NPM server for basic tests...
+Server is ready for basic tests
+    Core Endpoints
+      Γ£ö should return registry root with correct structure
+      Γ£ö should return capabilities
+      Γ£ö should return model
+      Γ£ö should return noderegistries collection
+      Γ£ö should return specific noderegistry
+    Package Operations
+      Γ£ö should return packages collection with pagination (926ms)
+      Γ£ö should support filtering packages (266ms)
+      Γ£ö should support xRegistry filter operators (1609ms)
+      Γ£ö should reject filters without name constraint
+React packages: found 5 packages
+Angular packages: found 5 packages
+Express packages: found 5 packages
+      Γ£ö should handle common package filters (751ms)
+      Γ£ö should handle well-known package retrieval
+@types/node package not found - this is expected if npm registry is unavailable
+      - should handle scoped package encoding correctly
+      Γ£ö should return xRegistry conformant packages collection format (713ms)
+    Error Handling
+      Γ£ö should return 404 for non-existent group
+      Γ£ö should return 404 for non-existent package (593ms)
+      Γ£ö should handle invalid limit parameter
+    HTTP Headers and Standards Compliance
+      Γ£ö should include proper Content-Type headers
+      Γ£ö should include CORS headers
+      Γ£ö should handle OPTIONS requests
+      Γ£ö should include pagination Link headers when appropriate (41ms)
+    Sort Flag
+      Γ£ö should sort packages by packageid descending (330ms)
+      Γ£ö should sort versions ascending by default
+    Inline Flag
+      Γ£ö should inline model at root with inline=model
+      Γ£ö should inline packages collection with inline=endpoints
+Stopping server...
+Server stopped
+
+
+[Mocha after] Open handles: 4
+[Mocha after] Handle[0]: Socket <ref *1> Socket {
+  connecting: false,
+  _hadError: false,
+  _parent: null,
+  _host: null,
+  _closeAfterHandlingError: false,
+  _events: {
+    close: undefined,
+    error: undefined,
+    prefinish: undefined,
+    finish: undefined,
+    drain: undefined,
+    data: undefined,
+    end: [Function: onReadableStreamEnd],
+    readable: undefined
+  },
+  _readableState: ReadableState {
+    highWaterMark: 16384,
+    buffer: [],
+    bufferIndex: 0,
+    length: 0,
+    pipes: [],
+    awaitDrainWriters: null,
+    readable: false,
+    [Symbol(kState)]: 1054468
+  },
+  _writableState: <ref *2> WritableState {
+    highWaterMark: 16384,
+    length: 0,
+    corked: 0,
+    onwrite: [Function: bound onwrite],
+    writelen: 0,
+    bufferedIndex: 0,
+    pendingcb: 1,
+    [Symbol(kState)]: 420217092,
+    [Symbol(kBufferedValue)]: null,
+    [Symbol(kWriteCbValue)]: null,
+    [Symbol(kAfterWriteTickInfoValue)]: {
+      count: 1,
+      cb: [Function (anonymous)],
+      stream: [Circular *1],
+      state: [Circular *2]
+    }
+  },
+  allowHalfOpen: false,
+  _maxListeners: undefined,
+  _writev: null,
+  _write: [Function (anonymous)],
+  _eventsCount: 1,
+  _sockname: null,
+  _pendingData: null,
+  _pendingEncoding: '',
+  server: null,
+  _server: null,
+  _type: 'pipe',
+  fd: 2,
+  _isStdio: true,
+  destroySoon: [Function (anonymous)],
+  _destroy: [Function: dummyDestroy],
+  [Symbol(async_id_symbol)]: 2,
+  [Symbol(kHandle)]: Pipe { [Symbol(owner_symbol)]: [Circular *1] },
+  [Symbol(lastWriteQueueSize)]: 0,
+  [Symbol(timeout)]: null,
+  [Symbol(kBuffer)]: null,
+  [Symbol(kBufferCb)]: null,
+  [Symbol(kBufferGen)]: null,
+  [Symbol(shapeMode)]: true,
+  [Symbol(kCapture)]: false,
+  [Symbol(kSetNoDelay)]: false,
+  [Symbol(kSetKeepAlive)]: false,
+  [Symbol(kSetKeepAliveInitialDelay)]: 0,
+  [Symbol(kBytesRead)]: 0,
+  [Symbol(kBytesWritten)]: 0
+}
+[Mocha after] Handle[1]: Socket <ref *1> Socket {
+  connecting: false,
+  _hadError: false,
+  _parent: null,
+  _host: null,
+  _closeAfterHandlingError: false,
+  _events: {
+    close: undefined,
+    error: undefined,
+    prefinish: undefined,
+    finish: undefined,
+    drain: undefined,
+    data: undefined,
+    end: [Function: onReadableStreamEnd],
+    readable: undefined
+  },
+  _readableState: ReadableState {
+    highWaterMark: 16384,
+    buffer: [],
+    bufferIndex: 0,
+    length: 0,
+    pipes: [],
+    awaitDrainWriters: null,
+    readable: false,
+    [Symbol(kState)]: 1054468
+  },
+  _writableState: WritableState {
+    highWaterMark: 16384,
+    length: 0,
+    corked: 0,
+    onwrite: [Function: bound onwrite],
+    writelen: 0,
+    bufferedIndex: 0,
+    pendingcb: 0,
+    [Symbol(kState)]: 17563908,
+    [Symbol(kBufferedValue)]: null,
+    [Symbol(kWriteCbValue)]: null,
+    [Symbol(kAfterWriteTickInfoValue)]: null
+  },
+  allowHalfOpen: false,
+  _maxListeners: undefined,
+  _writev: null,
+  _write: [Function (anonymous)],
+  _eventsCount: 1,
+  _sockname: null,
+  _pendingData: null,
+  _pendingEncoding: '',
+  server: null,
+  _server: null,
+  _type: 'pipe',
+  fd: 1,
+  _isStdio: true,
+  destroySoon: [Function (anonymous)],
+  _destroy: [Function: dummyDestroy],
+  [Symbol(async_id_symbol)]: 3,
+  [Symbol(kHandle)]: Pipe { [Symbol(owner_symbol)]: [Circular *1] },
+  [Symbol(lastWriteQueueSize)]: 0,
+  [Symbol(timeout)]: null,
+  [Symbol(kBuffer)]: null,
+  [Symbol(kBufferCb)]: null,
+  [Symbol(kBufferGen)]: null,
+  [Symbol(shapeMode)]: true,
+  [Symbol(kCapture)]: false,
+  [Symbol(kSetNoDelay)]: false,
+  [Symbol(kSetKeepAlive)]: false,
+  [Symbol(kSetKeepAliveInitialDelay)]: 0,
+  [Symbol(kBytesRead)]: 0,
+  [Symbol(kBytesWritten)]: 0
+}
+[Mocha after] Handle[2]: Socket Socket {
+  connecting: false,
+  _hadError: false,
+  _parent: null,
+  _host: null,
+  _closeAfterHandlingError: false,
+  _events: {
+    close: undefined,
+    error: undefined,
+    prefinish: undefined,
+    finish: undefined,
+    drain: undefined,
+    data: undefined,
+    end: [Function: onReadableStreamEnd],
+    readable: undefined
+  },
+  _readableState: ReadableState {
+    highWaterMark: 16384,
+    buffer: [],
+    bufferIndex: 0,
+    length: 0,
+    pipes: [],
+    awaitDrainWriters: null,
+    readable: false,
+    [Symbol(kState)]: 1054580
+  },
+  _writableState: WritableState {
+    highWaterMark: 16384,
+    length: 0,
+    corked: 0,
+    onwrite: [Function: bound onwrite],
+    writelen: 0,
+    bufferedIndex: 0,
+    pendingcb: 0,
+    [Symbol(kState)]: 17564532,
+    [Symbol(kBufferedValue)]: null
+  },
+  allowHalfOpen: false,
+  _maxListeners: undefined,
+  _eventsCount: 1,
+  _sockname: null,
+  _pendingData: null,
+  _pendingEncoding: '',
+  server: null,
+  _server: null,
+  [Symbol(async_id_symbol)]: 16,
+  [Symbol(kHandle)]: null,
+  [Symbol(lastWriteQueueSize)]: 0,
+  [Symbol(timeout)]: null,
+  [Symbol(kBuffer)]: null,
+  [Symbol(kBufferCb)]: null,
+  [Symbol(kBufferGen)]: null,
+  [Symbol(shapeMode)]: true,
+  [Symbol(kCapture)]: false,
+  [Symbol(kSetNoDelay)]: false,
+  [Symbol(kSetKeepAlive)]: false,
+  [Symbol(kSetKeepAliveInitialDelay)]: 0,
+  [Symbol(kBytesRead)]: 0,
+  [Symbol(kBytesWritten)]: 0
+}
+[Mocha after] Handle[3]: ChildProcess ChildProcess {
+  _events: [Object: null prototype] {
+    close: [Function (anonymous)],
+    error: [ [Function (anonymous)], [Function: completeCleanup] ],
+    exit: [Function: completeCleanup]
+  },
+  _eventsCount: 3,
+  _maxListeners: undefined,
+  _closesNeeded: 3,
+  _closesGot: 3,
+  connected: false,
+  signalCode: 'SIGTERM',
+  exitCode: null,
+  killed: true,
+  spawnfile: 'node',
+  _handle: null,
+  spawnargs: [
+    'node',
+    'C:\\git\\xregistry-package-registries\\npm\\dist\\server.js',
+    '--port',
+    3102,
+    '--quiet'
+  ],
+  pid: 53508,
+  stdin: Socket {
+    connecting: false,
+    _hadError: false,
+    _parent: null,
+    _host: null,
+    _closeAfterHandlingError: false,
+    _events: {
+      close: undefined,
+      error: undefined,
+      prefinish: undefined,
+      finish: undefined,
+      drain: undefined,
+      data: undefined,
+      end: [Function: onReadableStreamEnd],
+      readable: undefined
+    },
+    _readableState: ReadableState {
+      highWaterMark: 16384,
+      buffer: [],
+      bufferIndex: 0,
+      length: 0,
+      pipes: [],
+      awaitDrainWriters: null,
+      readable: false,
+      [Symbol(kState)]: 1054580
+    },
+    _writableState: WritableState {
+      highWaterMark: 16384,
+      length: 0,
+      corked: 0,
+      onwrite: [Function: bound onwrite],
+      writelen: 0,
+      bufferedIndex: 0,
+      pendingcb: 0,
+      [Symbol(kState)]: 17564532,
+      [Symbol(kBufferedValue)]: null
+    },
+    allowHalfOpen: false,
+    _maxListeners: undefined,
+    _eventsCount: 1,
+    _sockname: null,
+    _pendingData: null,
+    _pendingEncoding: '',
+    server: null,
+    _server: null,
+    [Symbol(async_id_symbol)]: 16,
+    [Symbol(kHandle)]: null,
+    [Symbol(lastWriteQueueSize)]: 0,
+    [Symbol(timeout)]: null,
+    [Symbol(kBuffer)]: null,
+    [Symbol(kBufferCb)]: null,
+    [Symbol(kBufferGen)]: null,
+    [Symbol(shapeMode)]: true,
+    [Symbol(kCapture)]: false,
+    [Symbol(kSetNoDelay)]: false,
+    [Symbol(kSetKeepAlive)]: false,
+    [Symbol(kSetKeepAliveInitialDelay)]: 0,
+    [Symbol(kBytesRead)]: 0,
+    [Symbol(kBytesWritten)]: 0
+  },
+  stdout: Socket {
+    connecting: false,
+    _hadError: false,
+    _parent: null,
+    _host: null,
+    _closeAfterHandlingError: false,
+    _events: {
+      close: [Function (anonymous)],
+      error: undefined,
+      prefinish: undefined,
+      finish: undefined,
+      drain: undefined,
+      data: [Function (anonymous)],
+      end: [Function: onReadableStreamEnd],
+      readable: undefined
+    },
+    _readableState: ReadableState {
+      highWaterMark: 16384,
+      buffer: [],
+      bufferIndex: 0,
+      length: 0,
+      pipes: [],
+      awaitDrainWriters: null,
+      [Symbol(kState)]: 194512756
+    },
+    _writableState: WritableState {
+      highWaterMark: 16384,
+      length: 0,
+      corked: 0,
+      onwrite: [Function: bound onwrite],
+      writelen: 0,
+      bufferedIndex: 0,
+      pendingcb: 0,
+      [Symbol(kState)]: 1091450228,
+      [Symbol(kBufferedValue)]: null
+    },
+    allowHalfOpen: false,
+    _maxListeners: undefined,
+    _eventsCount: 3,
+    _sockname: null,
+    _pendingData: null,
+    _pendingEncoding: '',
+    server: null,
+    _server: null,
+    write: [Function: writeAfterFIN],
+    [Symbol(async_id_symbol)]: 17,
+    [Symbol(kHandle)]: null,
+    [Symbol(lastWriteQueueSize)]: 0,
+    [Symbol(timeout)]: null,
+    [Symbol(kBuffer)]: null,
+    [Symbol(kBufferCb)]: null,
+    [Symbol(kBufferGen)]: null,
+    [Symbol(shapeMode)]: true,
+    [Symbol(kCapture)]: false,
+    [Symbol(kSetNoDelay)]: false,
+    [Symbol(kSetKeepAlive)]: false,
+    [Symbol(kSetKeepAliveInitialDelay)]: 0,
+    [Symbol(kBytesRead)]: 10775,
+    [Symbol(kBytesWritten)]: 0
+  },
+  stderr: Socket {
+    connecting: false,
+    _hadError: false,
+    _parent: null,
+    _host: null,
+    _closeAfterHandlingError: false,
+    _events: {
+      close: [Function (anonymous)],
+      error: undefined,
+      prefinish: undefined,
+      finish: undefined,
+      drain: undefined,
+      data: [Function (anonymous)],
+      end: [Function: onReadableStreamEnd],
+      readable: undefined
+    },
+    _readableState: ReadableState {
+      highWaterMark: 16384,
+      buffer: [],
+      bufferIndex: 0,
+      length: 0,
+      pipes: [],
+      awaitDrainWriters: null,
+      [Symbol(kState)]: 194512756
+    },
+    _writableState: WritableState {
+      highWaterMark: 16384,
+      length: 0,
+      corked: 0,
+      onwrite: [Function: bound onwrite],
+      writelen: 0,
+      bufferedIndex: 0,
+      pendingcb: 0,
+      [Symbol(kState)]: 1091450228,
+      [Symbol(kBufferedValue)]: null
+    },
+    allowHalfOpen: false,
+    _maxListeners: undefined,
+    _eventsCount: 3,
+    _sockname: null,
+    _pendingData: null,
+    _pendingEncoding: '',
+    server: null,
+    _server: null,
+    write: [Function: writeAfterFIN],
+    [Symbol(async_id_symbol)]: 18,
+    [Symbol(kHandle)]: null,
+    [Symbol(lastWriteQueueSize)]: 0,
+    [Symbol(timeout)]: null,
+    [Symbol(kBuffer)]: null,
+    [Symbol(kBufferCb)]: null,
+    [Symbol(kBufferGen)]: null,
+    [Symbol(shapeMode)]: true,
+    [Symbol(kCapture)]: false,
+    [Symbol(kSetNoDelay)]: false,
+    [Symbol(kSetKeepAlive)]: false,
+    [Symbol(kSetKeepAliveInitialDelay)]: 0,
+    [Symbol(kBytesRead)]: 23864,
+    [Symbol(kBytesWritten)]: 0
+  },
+  stdio: [
+    Socket {
+      connecting: false,
+      _hadError: false,
+      _parent: null,
+      _host: null,
+      _closeAfterHandlingError: false,
+      _events: [Object],
+      _readableState: [ReadableState],
+      _writableState: [WritableState],
+      allowHalfOpen: false,
+      _maxListeners: undefined,
+      _eventsCount: 1,
+      _sockname: null,
+      _pendingData: null,
+      _pendingEncoding: '',
+      server: null,
+      _server: null,
+      [Symbol(async_id_symbol)]: 16,
+      [Symbol(kHandle)]: null,
+      [Symbol(lastWriteQueueSize)]: 0,
+      [Symbol(timeout)]: null,
+      [Symbol(kBuffer)]: null,
+      [Symbol(kBufferCb)]: null,
+      [Symbol(kBufferGen)]: null,
+      [Symbol(shapeMode)]: true,
+      [Symbol(kCapture)]: false,
+      [Symbol(kSetNoDelay)]: false,
+      [Symbol(kSetKeepAlive)]: false,
+      [Symbol(kSetKeepAliveInitialDelay)]: 0,
+      [Symbol(kBytesRead)]: 0,
+      [Symbol(kBytesWritten)]: 0
+    },
+    Socket {
+      connecting: false,
+      _hadError: false,
+      _parent: null,
+      _host: null,
+      _closeAfterHandlingError: false,
+      _events: [Object],
+      _readableState: [ReadableState],
+      _writableState: [WritableState],
+      allowHalfOpen: false,
+      _maxListeners: undefined,
+      _eventsCount: 3,
+      _sockname: null,
+      _pendingData: null,
+      _pendingEncoding: '',
+      server: null,
+      _server: null,
+      write: [Function: writeAfterFIN],
+      [Symbol(async_id_symbol)]: 17,
+      [Symbol(kHandle)]: null,
+      [Symbol(lastWriteQueueSize)]: 0,
+      [Symbol(timeout)]: null,
+      [Symbol(kBuffer)]: null,
+      [Symbol(kBufferCb)]: null,
+      [Symbol(kBufferGen)]: null,
+      [Symbol(shapeMode)]: true,
+      [Symbol(kCapture)]: false,
+      [Symbol(kSetNoDelay)]: false,
+      [Symbol(kSetKeepAlive)]: false,
+      [Symbol(kSetKeepAliveInitialDelay)]: 0,
+      [Symbol(kBytesRead)]: 10775,
+      [Symbol(kBytesWritten)]: 0
+    },
+    Socket {
+      connecting: false,
+      _hadError: false,
+      _parent: null,
+      _host: null,
+      _closeAfterHandlingError: false,
+      _events: [Object],
+      _readableState: [ReadableState],
+      _writableState: [WritableState],
+      allowHalfOpen: false,
+      _maxListeners: undefined,
+      _eventsCount: 3,
+      _sockname: null,
+      _pendingData: null,
+      _pendingEncoding: '',
+      server: null,
+      _server: null,
+      write: [Function: writeAfterFIN],
+      [Symbol(async_id_symbol)]: 18,
+      [Symbol(kHandle)]: null,
+      [Symbol(lastWriteQueueSize)]: 0,
+      [Symbol(timeout)]: null,
+      [Symbol(kBuffer)]: null,
+      [Symbol(kBufferCb)]: null,
+      [Symbol(kBufferGen)]: null,
+      [Symbol(shapeMode)]: true,
+      [Symbol(kCapture)]: false,
+      [Symbol(kSetNoDelay)]: false,
+      [Symbol(kSetKeepAlive)]: false,
+      [Symbol(kSetKeepAliveInitialDelay)]: 0,
+      [Symbol(kBytesRead)]: 23864,
+      [Symbol(kBytesWritten)]: 0
+    }
+  ],
+  [Symbol(shapeMode)]: false,
+  [Symbol(kCapture)]: false
+}
+[Mocha after] Open requests: 0
+[Mocha after] Forcing process exit due to open handles/requests.

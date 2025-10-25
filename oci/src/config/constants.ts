@@ -4,8 +4,8 @@
 
 export const REGISTRY_CONFIG = {
     ID: 'oci-wrapper',
-    SPEC_VERSION: '1.0-rc1',
-    SCHEMA_VERSION: 'xRegistry-json/1.0-rc1',
+    SPEC_VERSION: '1.0-rc2',
+    SCHEMA_VERSION: 'xRegistry-json/1.0-rc2',
 } as const;
 
 export const GROUP_CONFIG = {
@@ -57,7 +57,7 @@ export const OCI_REGISTRY = {
     BASE_URL: 'https://registry-1.docker.io',
     API_VERSION: 'v2',
     USER_AGENT: 'xRegistry-OCI-Wrapper/1.0',
-    TIMEOUT_MS: 30000,
+    TIMEOUT_MS: 5000,  // Reduced to 5 seconds to fail fast on connection issues
     AUTH_URL: 'https://auth.docker.io',
     CATALOG_PATH: '/v2/_catalog',
 } as const;

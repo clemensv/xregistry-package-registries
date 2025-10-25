@@ -1733,6 +1733,25 @@ app.get("/", (req, res) => {
   res.json(rootResponse);
 });
 
+// Performance stats endpoint for two-step filtering capabilities
+app.get("/performance/stats", (req, res) => {
+  const stats = {
+    filterOptimizer: {
+      twoStepFilteringEnabled: false, // NuGet doesn't have FilterOptimizer yet
+      hasMetadataFetcher: false,
+      indexedEntities: packageNamesCache.length,
+      nameIndexSize: packageNamesCache.length,
+      maxMetadataFetches: 0,
+      cacheSize: 0,
+      maxCacheAge: 0,
+    },
+    packageCache: {
+      size: packageNamesCache.length,
+    },
+  };
+  res.json(stats);
+});
+
 // Capabilities endpoint
 app.get("/capabilities", (req, res) => {
   const baseUrl = BASE_URL || `${req.protocol}://${req.get("host")}`;

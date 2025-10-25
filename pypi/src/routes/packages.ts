@@ -3,181 +3,221 @@
  * Implements /pythonregistries/pypi.org/packages/* endpoints
  */
 
-import { Router, Request, Response, NextFunction } from 'express';
+import { NextFunction, Request, Response, Router } from 'express';
+import { REGISTRY_METADATA, SERVER_CONFIG } from '../config/constants';
 import { PackageService } from '../services/package-service';
 import { SearchService } from '../services/search-service';
-import { REGISTRY_METADATA, SERVER_CONFIG } from '../config/constants';
 import { entityNotFound } from '../utils/xregistry-errors';
 
 export function createPackageRoutes(
-  packageService: PackageService,
-  searchService: SearchService
+    packageService: PackageService,
+    searchService: SearchService
 ): Router {
-  const router = Router();
-  const { GROUP_TYPE, GROUP_ID, RESOURCE_TYPE } = REGISTRY_METADATA;
+    const router = Router();
+    const { GROUP_TYPE, GROUP_ID, RESOURCE_TYPE } = REGISTRY_METADATA;
 
-  // Helper to get base URL
-  const getBaseUrl = (req: Request): string => {
-    const baseUrl = process.env.XREGISTRY_PYPI_BASEURL;
-    return baseUrl || `${req.protocol}://${req.get('host')}`;
-  };
-
-  // Async error handler
-  const asyncHandler = (fn: Function) => {
-    return (req: Request, res: Response, next: NextFunction) => {
-      Promise.resolve(fn(req, res, next)).catch(next);
+    // Helper to get base URL
+    const getBaseUrl = (req: Request): string => {
+        const baseUrl = process.env.XREGISTRY_PYPI_BASEURL;
+        return baseUrl || `${req.protocol}://${req.get('host')}`;
     };
-  };
 
-  // Package collection
-  router.get(
-    `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`,
-    asyncHandler(async (req: Request, res: Response): Promise<void> => {
-      const baseUrl = getBaseUrl(req);
-      
-      // Get all packages from cache
-      const allPackages = searchService.getAllPackages();
-      
-      // Apply pagination
-      const limit = req.query.limit
-        ? parseInt(req.query.limit as string, 10)
-        : SERVER_CONFIG.DEFAULT_PAGE_LIMIT;
-      const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
-
-      if (limit <= 0) {
-        res.status(400).json({
-          type: 'https://github.com/xregistry/spec/blob/main/core/spec.md#invalid-input',
-          title: 'Invalid pagination parameter',
-          status: 400,
-          instance: req.originalUrl,
-          detail: 'Limit must be greater than 0',
-        });
-        return;
-      }
-
-      // Slice for pagination
-      const paginatedPackages = allPackages.slice(offset, offset + limit);
-      
-      // Build response
-      const packages: Record<string, any> = {};
-      const now = new Date().toISOString();
-      const resourceBasePath = `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`;
-
-      for (const pkg of paginatedPackages) {
-        packages[pkg.name] = {
-          packageid: pkg.name,
-          xid: `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${pkg.name}`,
-          name: pkg.name,
-          epoch: 1,
-          createdat: now,
-          modifiedat: now,
-          self: `${resourceBasePath}/${pkg.name}`,
+    // Async error handler
+    const asyncHandler = (fn: Function) => {
+        return (req: Request, res: Response, next: NextFunction) => {
+            Promise.resolve(fn(req, res, next)).catch(next);
         };
-      }
+    };
 
-      // Add pagination headers
-      if (allPackages.length > offset + limit) {
-        const nextOffset = offset + limit;
-        res.set('Link', `<${baseUrl}${req.path}?offset=${nextOffset}&limit=${limit}>; rel="next"`);
-      }
+    // Helper to match filter
+    const matchesFilter = (value: string, filterPattern: string): boolean => {
+        if (filterPattern.includes('*')) {
+            // Wildcard matching
+            const pattern = filterPattern.replace(/\*/g, '.*');
+            const regex = new RegExp(`^${pattern}$`, 'i');
+            return regex.test(value);
+        } else {
+            // Exact match (case insensitive)
+            return value.toLowerCase() === filterPattern.toLowerCase();
+        }
+    };
 
-      res.json(packages);
-    })
-  );
+    // Package collection
+    router.get(
+        `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`,
+        asyncHandler(async (req: Request, res: Response): Promise<void> => {
+            const baseUrl = getBaseUrl(req);
 
-  // Package documentation endpoint
-  router.get(
-    `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName/doc`,
-    asyncHandler(async (req: Request, res: Response) => {
-      const { packageName } = req.params;
+            // Apply pagination
+            const limit = req.query.limit
+                ? parseInt(req.query.limit as string, 10)
+                : SERVER_CONFIG.DEFAULT_PAGE_LIMIT;
+            const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
+            const filter = req.query.filter as string | undefined;
+            const sort = req.query.sort as string | undefined;
 
-      // Check if package exists
-      const exists = await searchService.packageExists(packageName);
-      if (!exists) {
-        throw entityNotFound(req.originalUrl, 'package', packageName);
-      }
+            if (limit <= 0) {
+                res.status(400).json({
+                    type: 'https://github.com/xregistry/spec/blob/main/core/spec.md#invalid-input',
+                    title: 'Invalid pagination parameter',
+                    status: 400,
+                    instance: req.originalUrl,
+                    detail: 'Limit must be greater than 0',
+                });
+                return;
+            }
 
-      const { content, contentType } = await packageService.getPackageDoc(packageName);
-      res.set('Content-Type', contentType);
-      res.send(content);
-    })
-  );
+            // Get all packages from cache
+            let allPackages = searchService.getAllPackages();
 
-  // Package metadata
-  router.get(
-    `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName`,
-    asyncHandler(async (req: Request, res: Response) => {
-      const { packageName } = req.params;
-      const baseUrl = getBaseUrl(req);
+            // Apply filtering if provided
+            if (filter) {
+                // Parse filter (format: "name=*azure*")
+                const filterMatch = filter.match(/name=(.+)/i);
+                if (filterMatch) {
+                    const filterPattern = filterMatch[1];
+                    allPackages = allPackages.filter(pkg => matchesFilter(pkg.name, filterPattern));
+                } else {
+                    // If filter doesn't have name constraint, return empty set
+                    allPackages = [];
+                }
+            }
 
-      // Check if package exists
-      const exists = await searchService.packageExists(packageName);
-      if (!exists) {
-        throw entityNotFound(req.originalUrl, 'package', packageName);
-      }
+            // Apply sorting if provided
+            if (sort) {
+                const sortParts = sort.split('=');
+                if (sortParts.length === 2) {
+                    const sortOrder = sortParts[1].toLowerCase();
+                    allPackages = [...allPackages].sort((a, b) => {
+                        const comparison = a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+                        return sortOrder === 'desc' ? -comparison : comparison;
+                    });
+                }
+            }
 
-      const packageData = await packageService.getPackageMetadata(packageName, baseUrl);
-      res.json(packageData);
-    })
-  );
+            // Slice for pagination
+            const paginatedPackages = allPackages.slice(offset, offset + limit);
 
-  // Package meta
-  router.get(
-    `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName/meta`,
-    asyncHandler(async (req: Request, res: Response) => {
-      const { packageName } = req.params;
-      const baseUrl = getBaseUrl(req);
+            // Build response
+            const packages: Record<string, any> = {};
+            const now = new Date().toISOString();
+            const resourceBasePath = `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`;
 
-      // Check if package exists
-      const exists = await searchService.packageExists(packageName);
-      if (!exists) {
-        throw entityNotFound(req.originalUrl, 'package', packageName);
-      }
+            for (const pkg of paginatedPackages) {
+                packages[pkg.name] = {
+                    packageid: pkg.name,
+                    xid: `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${pkg.name}`,
+                    name: pkg.name,
+                    epoch: 1,
+                    createdat: now,
+                    modifiedat: now,
+                    self: `${resourceBasePath}/${pkg.name}`,
+                };
+            }
 
-      const metaData = await packageService.getPackageMeta(packageName, baseUrl);
-      res.json(metaData);
-    })
-  );
+            // Add pagination headers
+            if (allPackages.length > offset + limit) {
+                const nextOffset = offset + limit;
+                res.set('Link', `<${baseUrl}${req.path}?offset=${nextOffset}&limit=${limit}>; rel="next"`);
+            }
 
-  // Package versions collection
-  router.get(
-    `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName/versions`,
-    asyncHandler(async (req: Request, res: Response) => {
-      const { packageName } = req.params;
-      const baseUrl = getBaseUrl(req);
+            res.json(packages);
+        })
+    );
 
-      // Check if package exists
-      const exists = await searchService.packageExists(packageName);
-      if (!exists) {
-        throw entityNotFound(req.originalUrl, 'package', packageName);
-      }
+    // Package documentation endpoint
+    router.get(
+        `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName/doc`,
+        asyncHandler(async (req: Request, res: Response) => {
+            const { packageName } = req.params;
 
-      const versionsData = await packageService.getPackageVersions(packageName, baseUrl);
-      res.json(versionsData);
-    })
-  );
+            // Check if package exists
+            const exists = await searchService.packageExists(packageName);
+            if (!exists) {
+                throw entityNotFound(req.originalUrl, 'package', packageName);
+            }
 
-  // Specific version details
-  router.get(
-    `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName/versions/:versionId`,
-    asyncHandler(async (req: Request, res: Response) => {
-      const { packageName, versionId } = req.params;
-      const baseUrl = getBaseUrl(req);
+            const { content, contentType } = await packageService.getPackageDoc(packageName);
+            res.set('Content-Type', contentType);
+            res.send(content);
+        })
+    );
 
-      // Check if package exists
-      const exists = await searchService.packageExists(packageName);
-      if (!exists) {
-        throw entityNotFound(req.originalUrl, 'package', packageName);
-      }
+    // Package metadata
+    router.get(
+        `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName`,
+        asyncHandler(async (req: Request, res: Response) => {
+            const { packageName } = req.params;
+            const baseUrl = getBaseUrl(req);
 
-      const versionData = await packageService.getVersionDetails(
-        packageName,
-        versionId,
-        baseUrl
-      );
-      res.json(versionData);
-    })
-  );
+            // Check if package exists
+            const exists = await searchService.packageExists(packageName);
+            if (!exists) {
+                throw entityNotFound(req.originalUrl, 'package', packageName);
+            }
 
-  return router;
+            const packageData = await packageService.getPackageMetadata(packageName, baseUrl);
+            res.json(packageData);
+        })
+    );
+
+    // Package meta
+    router.get(
+        `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName/meta`,
+        asyncHandler(async (req: Request, res: Response) => {
+            const { packageName } = req.params;
+            const baseUrl = getBaseUrl(req);
+
+            // Check if package exists
+            const exists = await searchService.packageExists(packageName);
+            if (!exists) {
+                throw entityNotFound(req.originalUrl, 'package', packageName);
+            }
+
+            const metaData = await packageService.getPackageMeta(packageName, baseUrl);
+            res.json(metaData);
+        })
+    );
+
+    // Package versions collection
+    router.get(
+        `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName/versions`,
+        asyncHandler(async (req: Request, res: Response) => {
+            const { packageName } = req.params;
+            const baseUrl = getBaseUrl(req);
+
+            // Check if package exists
+            const exists = await searchService.packageExists(packageName);
+            if (!exists) {
+                throw entityNotFound(req.originalUrl, 'package', packageName);
+            }
+
+            const versionsData = await packageService.getPackageVersions(packageName, baseUrl);
+            res.json(versionsData);
+        })
+    );
+
+    // Specific version details
+    router.get(
+        `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/:packageName/versions/:versionId`,
+        asyncHandler(async (req: Request, res: Response) => {
+            const { packageName, versionId } = req.params;
+            const baseUrl = getBaseUrl(req);
+
+            // Check if package exists
+            const exists = await searchService.packageExists(packageName);
+            if (!exists) {
+                throw entityNotFound(req.originalUrl, 'package', packageName);
+            }
+
+            const versionData = await packageService.getVersionDetails(
+                packageName,
+                versionId,
+                baseUrl
+            );
+            res.json(versionData);
+        })
+    );
+
+    return router;
 }

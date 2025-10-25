@@ -4,6 +4,8 @@
  */
 
 import express, { Express, NextFunction, Request, Response } from 'express';
+import * as fs from 'fs';
+import * as path from 'path';
 import { CACHE_CONFIG, MAVEN_REGISTRY, SERVER_CONFIG } from './config/constants';
 import { corsMiddleware } from './middleware/cors';
 import { createLoggingMiddleware, createSimpleLogger, Logger } from './middleware/logging';
@@ -63,9 +65,27 @@ export class MavenXRegistryServer {
             mavenService: this.mavenService
         });
 
-        this.searchService = new SearchService({
+        // Check for database in multiple locations (for tests and production)
+        const searchServiceOptions: any = {
             mavenService: this.mavenService
-        });
+        };
+
+        // Try these paths in order:
+        // 1. Root of maven directory (for tests)
+        // 2. Current working directory (for tests run from different locations)
+        const possiblePaths = [
+            path.join(__dirname, '..', 'maven-packages.db'),  // ../maven-packages.db from dist
+            path.join(process.cwd(), 'maven-packages.db')       // ./maven-packages.db from cwd
+        ];
+
+        for (const dbPath of possiblePaths) {
+            if (fs.existsSync(dbPath)) {
+                searchServiceOptions.dbPath = dbPath;
+                break;
+            }
+        }
+
+        this.searchService = new SearchService(searchServiceOptions);
 
         // Setup middleware and routes
         this.setupMiddleware();
@@ -83,6 +103,12 @@ export class MavenXRegistryServer {
 
         // CORS
         this.app.use(corsMiddleware);
+
+        // Standard HTTP headers
+        this.app.use((_req, res, next) => {
+            res.setHeader('cache-control', 'public, max-age=300');
+            next();
+        });
 
         // Logging
         this.app.use(createLoggingMiddleware(this.logger));
@@ -107,6 +133,24 @@ export class MavenXRegistryServer {
             searchService: this.searchService
         });
         this.app.use('/', packageRoutes);
+
+        // Performance stats endpoint
+        this.app.get('/performance/stats', (_req: Request, res: Response) => {
+            res.json({
+                filterOptimizer: {
+                    twoStepFilteringEnabled: false,
+                    hasMetadataFetcher: false,
+                    indexedEntities: 0,
+                    nameIndexSize: 0,
+                    maxMetadataFetches: 0,
+                    cacheSize: 0,
+                    maxCacheAge: 0
+                },
+                packageCache: {
+                    size: 0
+                }
+            });
+        });
 
         // Health check endpoint
         this.app.get('/health', (_req: Request, res: Response) => {
@@ -221,7 +265,26 @@ export class MavenXRegistryServer {
  * Main entry point
  */
 if (require.main === module) {
-    const server = new MavenXRegistryServer();
+    // Parse command line arguments
+    const args = process.argv.slice(2);
+    let port = process.env['PORT'] ? parseInt(process.env['PORT'], 10) : SERVER_CONFIG.PORT;
+    let host = process.env['HOST'] || SERVER_CONFIG.HOST;
+
+    for (let i = 0; i < args.length; i++) {
+        if (args[i] === '--port' && i + 1 < args.length) {
+            const portArg = args[i + 1];
+            if (portArg) {
+                port = parseInt(portArg, 10);
+            }
+        } else if (args[i] === '--host' && i + 1 < args.length) {
+            const hostArg = args[i + 1];
+            if (hostArg) {
+                host = hostArg;
+            }
+        }
+    }
+
+    const server = new MavenXRegistryServer({ port, host });
 
     // Graceful shutdown
     const shutdown = async (signal: string) => {

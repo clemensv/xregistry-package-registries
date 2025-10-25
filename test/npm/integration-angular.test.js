@@ -355,7 +355,14 @@ describe("Angular Packages Integration Test", function () {
   }
   function startServer() {
     return new Promise((resolve, reject) => {
-      const serverPath = path.join(__dirname, "..", "..", "npm", "server.js");
+      const serverPath = path.join(
+        __dirname,
+        "..",
+        "..",
+        "npm",
+        "dist",
+        "server.js"
+      );
       const process = spawn("node", [serverPath, "--port", serverPort], {
         // Removed --quiet flag
         stdio: ["pipe", "pipe", "pipe"],

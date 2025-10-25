@@ -9,7 +9,8 @@ services:
       - "4873:3000"
     environment:
       - NODE_ENV=production
-      - XREGISTRY_NPM_PORT=3000
+      - PORT=3000
+      - HOST=0.0.0.0
     volumes:
       - bridge-npm-logs:/app/logs
     networks:
@@ -32,7 +33,8 @@ services:
       - "8081:3100"
     environment:
       - NODE_ENV=production
-      - XREGISTRY_PYPI_PORT=3100
+      - PORT=3100
+      - HOST=0.0.0.0
     volumes:
       - bridge-pypi-logs:/app/logs
     networks:
@@ -55,7 +57,8 @@ services:
       - "8082:3300"
     environment:
       - NODE_ENV=production
-      - XREGISTRY_MAVEN_PORT=3300
+      - PORT=3300
+      - HOST=0.0.0.0
     volumes:
       - bridge-maven-logs:/app/logs
     networks:
@@ -78,7 +81,8 @@ services:
       - "8083:3200"
     environment:
       - NODE_ENV=production
-      - XREGISTRY_NUGET_PORT=3200
+      - PORT=3200
+      - HOST=0.0.0.0
     volumes:
       - bridge-nuget-logs:/app/logs
     networks:
@@ -101,7 +105,8 @@ services:
       - "8084:3400"
     environment:
       - NODE_ENV=production
-      - XREGISTRY_OCI_PORT=3400
+      - PORT=3400
+      - HOST=0.0.0.0
     volumes:
       - bridge-oci-logs:/app/logs
     networks:

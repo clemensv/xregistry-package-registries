@@ -31,5 +31,5 @@ export const BRIDGE_STARTUP_TIME = new Date().toISOString();
 export let BRIDGE_EPOCH = 1;
 
 export function incrementBridgeEpoch(): void {
-  BRIDGE_EPOCH++;
+    BRIDGE_EPOCH++;
 }

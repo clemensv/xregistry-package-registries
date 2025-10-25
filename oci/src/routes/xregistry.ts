@@ -40,10 +40,34 @@ export function createXRegistryRoutes(options: XRegistryRouterOptions): Router {
     });
 
     /**
-     * GET /groups
+     * GET /model
+     * Model definition endpoint
+     */
+    router.get('/model', async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            await registryService.getModel(req, res);
+        } catch (error) {
+            next(error);
+        }
+    });
+
+    /**
+     * GET /capabilities
+     * Server capabilities endpoint
+     */
+    router.get('/capabilities', async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            await registryService.getCapabilities(req, res);
+        } catch (error) {
+            next(error);
+        }
+    });
+
+    /**
+     * GET /containerregistries
      * Groups collection endpoint
      */
-    router.get('/groups', async (req: Request, res: Response, next: NextFunction) => {
+    router.get('/containerregistries', async (req: Request, res: Response, next: NextFunction) => {
         try {
             await registryService.getGroups(req, res);
         } catch (error) {
@@ -52,10 +76,10 @@ export function createXRegistryRoutes(options: XRegistryRouterOptions): Router {
     });
 
     /**
-     * GET /groups/:groupId
+     * GET /containerregistries/:groupId
      * Specific group endpoint
      */
-    router.get('/groups/:groupId', async (req: Request, res: Response, next: NextFunction) => {
+    router.get('/containerregistries/:groupId', async (req: Request, res: Response, next: NextFunction) => {
         try {
             await registryService.getGroup(req, res);
         } catch (error) {
@@ -64,10 +88,10 @@ export function createXRegistryRoutes(options: XRegistryRouterOptions): Router {
     });
 
     /**
-     * GET /groups/:groupId/images
+     * GET /containerregistries/:groupId/images
      * Resources (images) collection endpoint
      */
-    router.get('/groups/:groupId/images', async (req: Request, res: Response, next: NextFunction) => {
+    router.get('/containerregistries/:groupId/images', async (req: Request, res: Response, next: NextFunction) => {
         try {
             await registryService.getResources(req, res);
         } catch (error) {
@@ -76,10 +100,10 @@ export function createXRegistryRoutes(options: XRegistryRouterOptions): Router {
     });
 
     /**
-     * GET /groups/:groupId/images/:resourceId
+     * GET /containerregistries/:groupId/images/:resourceId
      * Specific resource (image) endpoint
      */
-    router.get('/groups/:groupId/images/:resourceId', async (req: Request, res: Response, next: NextFunction) => {
+    router.get('/containerregistries/:groupId/images/:resourceId', async (req: Request, res: Response, next: NextFunction) => {
         try {
             await registryService.getResource(req, res);
         } catch (error) {

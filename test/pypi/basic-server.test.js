@@ -321,7 +321,14 @@ describe("PyPI Basic Server Functionality", function () {
 
 async function startServer(port) {
   return new Promise((resolve, reject) => {
-    const serverScript = path.join(__dirname, "..", "..", "pypi", "server.js");
+    const serverScript = path.join(
+      __dirname,
+      "..",
+      "..",
+      "pypi",
+      "dist",
+      "server.js"
+    );
 
     const serverProcess = spawn(
       "node",
@@ -340,7 +347,7 @@ async function startServer(port) {
       console.log("PyPI Server stdout:", data.toString().trim());
 
       if (
-        data.toString().includes("listening on port") ||
+        data.toString().includes("PyPI xRegistry server started") ||
         data.toString().includes("Package cache loaded")
       ) {
         if (!started) {

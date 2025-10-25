@@ -5,113 +5,196 @@
 
 import { RequestHandler } from 'express';
 import { createProxyMiddleware, Options } from 'http-proxy-middleware';
-import { DownstreamConfig } from '../types/bridge';
 import { BASE_URL, BASE_URL_HEADER } from '../config/constants';
+import { DownstreamConfig } from '../types/bridge';
 
 export class ProxyService {
-  constructor(private readonly logger: any) {}
+    constructor(private readonly logger: any) { }
 
-  /**
-   * Create proxy middleware for a specific group type
-   */
-  createProxyMiddleware(
-    groupType: string,
-    backend: DownstreamConfig
-  ): RequestHandler[] {
-    const targetUrl = backend.url;
-    
-    this.logger.info('Creating proxy middleware', { groupType, targetUrl });
+    /**
+     * Recursively rewrite URLs in response data
+     * Replaces downstream server URLs with bridge base URL
+     */
+    private rewriteUrls(data: any, downstreamUrl: string, bridgeBaseUrl: string): any {
+        if (typeof data === 'string') {
+            // Replace URLs in strings (handles "self", "shortself", and any URL fields)
+            if (data.startsWith(downstreamUrl)) {
+                return data.replace(downstreamUrl, bridgeBaseUrl);
+            }
+            return data;
+        }
 
-    // Middleware to inject base URL header
-    const headerMiddleware: RequestHandler = (req, res, next) => {
-      try {
-        req.headers[BASE_URL_HEADER] = BASE_URL;
-        next();
-      } catch (error) {
-        this.logger.error('Error in route header middleware', {
-          error: error instanceof Error ? error.message : String(error),
-          groupType
-        });
-        res.status(500).json({ error: 'Internal server error' });
-      }
-    };
+        if (Array.isArray(data)) {
+            // Recursively process arrays
+            return data.map(item => this.rewriteUrls(item, downstreamUrl, bridgeBaseUrl));
+        }
 
-    // Create proxy middleware with options
-    const proxyOptions: Options = {
-      target: targetUrl,
-      changeOrigin: true,
-      
-      // Ensure CORS headers are preserved/added to proxied responses
-      onProxyRes: (proxyRes, _req, _res) => {
-        if (!proxyRes.headers['access-control-allow-origin']) {
-          proxyRes.headers['access-control-allow-origin'] = '*';
+        if (data && typeof data === 'object') {
+            // Recursively process objects
+            const rewritten: any = {};
+            for (const [key, value] of Object.entries(data)) {
+                rewritten[key] = this.rewriteUrls(value, downstreamUrl, bridgeBaseUrl);
+            }
+            return rewritten;
         }
-        if (!proxyRes.headers['access-control-allow-methods']) {
-          proxyRes.headers['access-control-allow-methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH';
-        }
-        if (!proxyRes.headers['access-control-allow-headers']) {
-          proxyRes.headers['access-control-allow-headers'] = 
-            'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-MS-Client-Principal, X-Base-Url, X-Correlation-Id, X-Trace-Id';
-        }
-      },
-      
-      // Inject API key and tracing headers
-      onProxyReq: (proxyReq, req: any) => {
-        try {
-          if (backend.apiKey) {
-            proxyReq.setHeader('Authorization', `Bearer ${backend.apiKey}`);
-          }
-          
-          // Inject distributed tracing headers
-          if (req.logger && req.logger.createDownstreamHeaders) {
-            const traceHeaders = req.logger.createDownstreamHeaders(req);
-            Object.entries(traceHeaders).forEach(([key, value]) => {
-              proxyReq.setHeader(key, String(value));
-            });
-            
-            this.logger.debug('Injected trace headers into proxy request', {
-              groupType,
-              targetUrl,
-              traceId: req.traceId,
-              correlationId: req.correlationId,
-              requestId: req.requestId,
-              injectedHeaders: Object.keys(traceHeaders)
-            });
-          }
-        } catch (error) {
-          this.logger.error('Error in proxy request handler', {
-            error: error instanceof Error ? error.message : String(error),
-            groupType,
-            targetUrl
-          });
-        }
-      },
-      
-      // Handle proxy errors
-      onError: (err, req: any, res) => {
-        this.logger.error('Proxy error', { 
-          groupType,
-          targetUrl,
-          error: err instanceof Error ? err.message : String(err),
-          traceId: req.traceId,
-          correlationId: req.correlationId,
-          requestId: req.requestId
-        });
-        
-        if (!res.headersSent) {
-          res.status(502).json({ 
-            error: 'Bad Gateway', 
-            message: `Upstream server ${targetUrl} is not available`,
-            groupType,
-            traceId: req.traceId,
-            correlationId: req.correlationId
-          });
-        }
-      }
-    };
 
-    const proxy = createProxyMiddleware(proxyOptions);
+        return data;
+    }
 
-    return [headerMiddleware, proxy];
-  }
+    /**
+     * Create proxy middleware for a specific group type
+     */
+    createProxyMiddleware(
+        groupType: string,
+        backend: DownstreamConfig
+    ): RequestHandler[] {
+        const targetUrl = backend.url;
+
+        this.logger.info('Creating proxy middleware', { groupType, targetUrl });
+
+        // Middleware to inject base URL header
+        const headerMiddleware: RequestHandler = (req, res, next) => {
+            try {
+                req.headers[BASE_URL_HEADER] = BASE_URL;
+                next();
+            } catch (error) {
+                this.logger.error('Error in route header middleware', {
+                    error: error instanceof Error ? error.message : String(error),
+                    groupType
+                });
+                res.status(500).json({ error: 'Internal server error' });
+            }
+        };
+
+        // Create proxy middleware with options
+        const proxyOptions: Options = {
+            target: targetUrl,
+            changeOrigin: true,
+            selfHandleResponse: true,
+
+            // Intercept and rewrite response body
+            onProxyRes: (proxyRes, req, res) => {
+                // Add CORS headers
+                if (!proxyRes.headers['access-control-allow-origin']) {
+                    proxyRes.headers['access-control-allow-origin'] = '*';
+                }
+                if (!proxyRes.headers['access-control-allow-methods']) {
+                    proxyRes.headers['access-control-allow-methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH';
+                }
+                if (!proxyRes.headers['access-control-allow-headers']) {
+                    proxyRes.headers['access-control-allow-headers'] =
+                        'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-MS-Client-Principal, X-Base-Url, X-Correlation-Id, X-Trace-Id';
+                }
+
+                // Only rewrite JSON responses
+                const contentType = proxyRes.headers['content-type'] || '';
+                if (!contentType.includes('application/json')) {
+                    // Pass through non-JSON responses
+                    res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
+                    proxyRes.pipe(res);
+                    return;
+                }
+
+                // Collect response body
+                let body = '';
+                proxyRes.on('data', (chunk) => {
+                    body += chunk.toString('utf8');
+                });
+
+                proxyRes.on('end', () => {
+                    try {
+                        // Parse JSON and rewrite URLs
+                        const data = JSON.parse(body);
+                        const rewrittenData = this.rewriteUrls(data, targetUrl, BASE_URL);
+
+                        // Send rewritten response
+                        const rewrittenBody = JSON.stringify(rewrittenData);
+                        res.writeHead(proxyRes.statusCode || 200, {
+                            ...proxyRes.headers,
+                            'content-length': Buffer.byteLength(rewrittenBody).toString()
+                        });
+                        res.end(rewrittenBody);
+                    } catch (error) {
+                        this.logger.error('Error rewriting response URLs', {
+                            error: error instanceof Error ? error.message : String(error),
+                            groupType,
+                            targetUrl
+                        });
+                        // If rewriting fails, send original response
+                        res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
+                        res.end(body);
+                    }
+                });
+
+                proxyRes.on('error', (error) => {
+                    this.logger.error('Error reading proxy response', {
+                        error: error.message,
+                        groupType,
+                        targetUrl
+                    });
+                    if (!res.headersSent) {
+                        res.status(500).json({ error: 'Error reading upstream response' });
+                    }
+                });
+            },
+
+            // Inject API key and tracing headers
+            onProxyReq: (proxyReq, req: any) => {
+                try {
+                    if (backend.apiKey) {
+                        proxyReq.setHeader('Authorization', `Bearer ${backend.apiKey}`);
+                    }
+
+                    // Inject distributed tracing headers
+                    if (req.logger && req.logger.createDownstreamHeaders) {
+                        const traceHeaders = req.logger.createDownstreamHeaders(req);
+                        Object.entries(traceHeaders).forEach(([key, value]) => {
+                            proxyReq.setHeader(key, String(value));
+                        });
+
+                        this.logger.debug('Injected trace headers into proxy request', {
+                            groupType,
+                            targetUrl,
+                            traceId: req.traceId,
+                            correlationId: req.correlationId,
+                            requestId: req.requestId,
+                            injectedHeaders: Object.keys(traceHeaders)
+                        });
+                    }
+                } catch (error) {
+                    this.logger.error('Error in proxy request handler', {
+                        error: error instanceof Error ? error.message : String(error),
+                        groupType,
+                        targetUrl
+                    });
+                }
+            },
+
+            // Handle proxy errors
+            onError: (err, req: any, res) => {
+                this.logger.error('Proxy error', {
+                    groupType,
+                    targetUrl,
+                    error: err instanceof Error ? err.message : String(err),
+                    traceId: req.traceId,
+                    correlationId: req.correlationId,
+                    requestId: req.requestId
+                });
+
+                if (!res.headersSent) {
+                    res.status(502).json({
+                        error: 'Bad Gateway',
+                        message: `Upstream server ${targetUrl} is not available`,
+                        groupType,
+                        traceId: req.traceId,
+                        correlationId: req.correlationId
+                    });
+                }
+            }
+        };
+
+        const proxy = createProxyMiddleware(proxyOptions);
+
+        return [headerMiddleware, proxy];
+    }
 }

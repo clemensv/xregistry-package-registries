@@ -319,7 +319,7 @@ describe("Maven Basic Server Functionality", function () {
     });
   }); // Helper functions
   async function startServer(port) {
-    const serverPath = path.resolve(__dirname, "../../maven/server.js");
+    const serverPath = path.resolve(__dirname, "../../maven/dist/server.js");
 
     return new Promise((resolve, reject) => {
       let started = false;

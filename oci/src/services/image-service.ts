@@ -62,20 +62,42 @@ export class ImageService {
             options.query = query;
         }
 
-        const result = await this.ociService.getImages(backend, options);
+        try {
+            const result = await Promise.race([
+                this.ociService.getImages(backend, options),
+                new Promise<never>((_, reject) =>
+                    setTimeout(() => reject(new Error('Backend request timeout')), 10000)
+                )
+            ]);
 
-        // Convert repository names to full ImageMetadata
-        const images: ImageMetadata[] = await Promise.all(
-            result.images.map(async (repo) => {
-                const metadata = await this.ociService.getImageMetadata(backend, repo);
-                return metadata || this.createBasicImageMetadata(backend, repo);
-            })
-        );
+            // Convert repository names to full ImageMetadata
+            const images: ImageMetadata[] = await Promise.all(
+                result.images.map(async (repo) => {
+                    try {
+                        const metadata = await Promise.race([
+                            this.ociService.getImageMetadata(backend, repo),
+                            new Promise<null>((_, reject) =>
+                                setTimeout(() => reject(new Error('Metadata timeout')), 5000)
+                            )
+                        ]);
+                        return metadata || this.createBasicImageMetadata(backend, repo);
+                    } catch (error) {
+                        return this.createBasicImageMetadata(backend, repo);
+                    }
+                })
+            );
 
-        return {
-            images,
-            totalCount: result.total
-        };
+            return {
+                images,
+                totalCount: result.total
+            };
+        } catch (error) {
+            // Return empty result on timeout or error
+            return {
+                images: [],
+                totalCount: 0
+            };
+        }
     }
 
     /**

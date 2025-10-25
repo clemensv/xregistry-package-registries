@@ -119,17 +119,17 @@ RUN chmod +x /app/nuget/restart-wrapper.sh && \
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S xregistry -u 1001
 
-# Create logs directory and change ownership of the app directory
-RUN mkdir -p /app/logs && \
+# Create necessary directories and change ownership of the app directory
+RUN mkdir -p /app/logs /app/nuget/cache && \
     chown -R xregistry:nodejs /app
 USER xregistry
 
 # Expose port
 EXPOSE 3300
 
-# Enhanced health check
+# Enhanced health check - use PORT env var if set, otherwise default to 3300
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
-  CMD curl -f -s --max-time 5 http://localhost:3300/health || exit 1
+  CMD sh -c 'curl -f -s --max-time 5 http://localhost:${PORT:-3300}/ || exit 1'
 
 # Start the application with restart wrapper
 CMD ["bash", "/app/nuget/restart-wrapper.sh"] 

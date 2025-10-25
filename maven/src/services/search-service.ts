@@ -55,14 +55,17 @@ export class SearchService {
                 }
 
                 // Create packages table if it doesn't exist
+                // Note: Use snake_case column names to match test database
                 this.db!.run(
                     `CREATE TABLE IF NOT EXISTS packages (
-                        groupId TEXT NOT NULL,
-                        artifactId TEXT NOT NULL,
-                        latestVersion TEXT,
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        group_id TEXT NOT NULL,
+                        artifact_id TEXT NOT NULL,
+                        latest_version TEXT,
                         timestamp INTEGER,
-                        repositoryId TEXT,
-                        PRIMARY KEY (groupId, artifactId)
+                        repository_id TEXT,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(group_id, artifact_id)
                     )`,
                     (createErr) => {
                         if (createErr) {
@@ -70,15 +73,24 @@ export class SearchService {
                             return;
                         }
 
-                        // Create index for search
+                        // Create indexes for search
                         this.db!.run(
-                            `CREATE INDEX IF NOT EXISTS idx_artifact ON packages(artifactId)`,
-                            (indexErr) => {
-                                if (indexErr) {
-                                    reject(indexErr);
-                                } else {
-                                    resolve();
+                            `CREATE INDEX IF NOT EXISTS idx_group_id ON packages(group_id)`,
+                            (groupErr) => {
+                                if (groupErr) {
+                                    reject(groupErr);
+                                    return;
                                 }
+                                this.db!.run(
+                                    `CREATE INDEX IF NOT EXISTS idx_artifact_id ON packages(artifact_id)`,
+                                    (artifactErr) => {
+                                        if (artifactErr) {
+                                            reject(artifactErr);
+                                        } else {
+                                            resolve();
+                                        }
+                                    }
+                                );
                             }
                         );
                     }
@@ -109,8 +121,9 @@ export class SearchService {
             let countSql = 'SELECT COUNT(*) as count FROM packages';
             const params: any[] = [];
 
-            if (query) {
-                const searchCondition = ' WHERE groupId LIKE ? OR artifactId LIKE ?';
+            // Only add WHERE clause if query is provided and not a wildcard
+            if (query && query !== '*' && query.trim() !== '') {
+                const searchCondition = ' WHERE group_id LIKE ? OR artifact_id LIKE ?';
                 sql += searchCondition;
                 countSql += searchCondition;
                 const searchTerm = `%${query}%`;
@@ -127,7 +140,7 @@ export class SearchService {
                 const totalCount = countRow?.count || 0;
 
                 // Get paginated results
-                sql += ' ORDER BY artifactId LIMIT ? OFFSET ?';
+                sql += ' ORDER BY artifact_id LIMIT ? OFFSET ?';
                 const queryParams = [...params, limit, offset];
 
                 this.db!.all(sql, queryParams, (err, rows: any[]) => {
@@ -137,11 +150,11 @@ export class SearchService {
                     }
 
                     const results: SearchResult[] = rows.map((row) => ({
-                        groupId: row.groupId,
-                        artifactId: row.artifactId,
-                        latestVersion: row.latestVersion,
-                        timestamp: row.timestamp,
-                        repositoryId: row.repositoryId
+                        groupId: row.group_id,
+                        artifactId: row.artifact_id,
+                        latestVersion: row.latest_version || '1.0.0',
+                        timestamp: row.timestamp || Date.now(),
+                        repositoryId: row.repository_id || 'central'
                     }));
 
                     resolve({ results, totalCount });
@@ -165,7 +178,7 @@ export class SearchService {
             }
 
             this.db.run(
-                `INSERT OR REPLACE INTO packages (groupId, artifactId, latestVersion, timestamp, repositoryId)
+                `INSERT OR REPLACE INTO packages (group_id, artifact_id, latest_version, timestamp, repository_id)
                  VALUES (?, ?, ?, ?, ?)`,
                 [pkg.groupId, pkg.artifactId, pkg.latestVersion, pkg.timestamp, pkg.repositoryId],
                 (err) => {

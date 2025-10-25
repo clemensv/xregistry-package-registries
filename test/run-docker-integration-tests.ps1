@@ -68,9 +68,12 @@ function Test-Prerequisites {
     }
     
     # Check if npm dependencies are installed
-    if (-not (Test-Path "node_modules")) {
-        Write-Host "Installing npm dependencies..." -ForegroundColor Yellow
+    $testNodeModules = Join-Path $scriptDir "node_modules"
+    if (-not (Test-Path $testNodeModules)) {
+        Write-Host "Installing npm dependencies in test directory..." -ForegroundColor Yellow
+        Push-Location $scriptDir
         npm install
+        Pop-Location
     }
     
     Write-Host "Prerequisites check completed" -ForegroundColor Green
@@ -84,7 +87,7 @@ function Invoke-ServiceTest {
     
     Write-Host "Testing $ServiceName service..." -ForegroundColor Blue
     
-    $testFile = "test/integration/$ServiceName-docker.test.js"
+    $testFile = "$scriptDir/integration/$ServiceName-docker.test.js"
     
     if (-not (Test-Path $testFile)) {
         Write-Warning "Test file not found: $testFile"
@@ -94,18 +97,24 @@ function Invoke-ServiceTest {
     try {
         $startTime = Get-Date
         
-        # Run the specific test
+        # Run the specific test and capture exit code immediately
+        $prevErrorActionPreference = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        
         npx mocha $testFile --recursive --timeout 300000 --reporter spec
+        $exitCode = $LASTEXITCODE
+        
+        $ErrorActionPreference = $prevErrorActionPreference
         
         $endTime = Get-Date
         $duration = $endTime - $startTime
         
-        if ($LASTEXITCODE -eq 0) {
+        if ($exitCode -eq 0) {
             Write-Host "$ServiceName tests completed successfully in $($duration.TotalMinutes.ToString('F1')) minutes" -ForegroundColor Green
             return $true
         }
         else {
-            Write-Host "$ServiceName tests failed" -ForegroundColor Red
+            Write-Host "$ServiceName tests failed with exit code: $exitCode" -ForegroundColor Red
             return $false
         }
     }

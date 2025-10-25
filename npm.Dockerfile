@@ -26,6 +26,9 @@ WORKDIR /app/npm
 # Install dependencies
 RUN npm ci && npm cache clean --force
 
+# Build TypeScript
+RUN npm run build
+
 # Install shared logging dependencies
 WORKDIR /app/shared/logging
 RUN npm install && npm cache clean --force
@@ -94,7 +97,7 @@ while true; do
     log_with_timestamp "Starting NPM server (attempt \$((++RESTART_COUNT)))"
     
     # Start the server and capture its exit code
-    node server.js 2>&1 | tee -a "\$LOG_FILE"
+    node dist/server.js 2>&1 | tee -a "\$LOG_FILE"
     EXIT_CODE=\$?
     
     # Record this restart time
@@ -122,17 +125,17 @@ RUN chmod +x /app/npm/restart-wrapper.sh && \
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S xregistry -u 1001
 
-# Create logs directory and change ownership of the app directory
-RUN mkdir -p /app/logs && \
+# Create necessary directories and change ownership of the app directory
+RUN mkdir -p /app/logs /app/npm/cache /app/npm/all-packages && \
     chown -R xregistry:nodejs /app
 USER xregistry
 
-# Expose port
+# Expose port (default 3000, but can be overridden with PORT env var)
 EXPOSE 3000
 
-# Enhanced health check
+# Enhanced health check - use PORT env var if set, otherwise default to 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
-  CMD curl -f -s --max-time 5 http://localhost:3000/health || exit 1
+  CMD sh -c 'curl -f -s --max-time 5 http://localhost:${PORT:-3000}/health || exit 1'
 
 # Start the application with restart wrapper
 CMD ["bash", "/app/npm/restart-wrapper.sh"] 

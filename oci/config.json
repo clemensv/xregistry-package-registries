@@ -1,7 +1,7 @@
 {
   "ociBackends": [
     {
-      "name": "microsoft",
+      "name": "mcr.microsoft.com",
       "registryUrl": "https://mcr.microsoft.com/"
     }
   ]

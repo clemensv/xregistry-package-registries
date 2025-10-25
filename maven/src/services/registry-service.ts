@@ -28,9 +28,12 @@ export class RegistryService {
 
         const registry = {
             specversion: XREGISTRY_CONFIG.SPEC_VERSION,
+            registryid: 'maven-wrapper',
             xid: '/',
             self: `${baseUrl}/`,
             xregistryurl: `${baseUrl}/`,
+            modelurl: `${baseUrl}/model`,
+            capabilitiesurl: `${baseUrl}/capabilities`,
             epoch: 1,
             name: 'Maven Central xRegistry',
             description: 'xRegistry API wrapper for Maven Central repository',
@@ -38,7 +41,9 @@ export class RegistryService {
             createdat: new Date().toISOString(),
             modifiedat: new Date().toISOString(),
             [`${GROUP_CONFIG.TYPE}url`]: `${baseUrl}/${GROUP_CONFIG.TYPE}`,
-            [`${GROUP_CONFIG.TYPE}count`]: 1
+            [`${GROUP_CONFIG.TYPE}count`]: 1,
+            javaregistriesurl: `${baseUrl}/${GROUP_CONFIG.TYPE}`,
+            javaregistries: 1
         };
 
         // Apply xRegistry flags (inline expansion)
@@ -46,6 +51,23 @@ export class RegistryService {
 
         if (req.xregistryFlags?.inline?.includes(GROUP_CONFIG.TYPE)) {
             result[GROUP_CONFIG.TYPE] = await this.getGroupsInline(req);
+        }
+
+        // Support inline=true (includes meta)
+        const inlineParam = req.query['inline'];
+        if (inlineParam === 'true' || inlineParam === '*' ||
+            (req.xregistryFlags?.inline?.includes('*'))) {
+            result.meta = {
+                type: 'registry',
+                backend: 'maven-central',
+                version: '1.0.0'
+            };
+        }
+
+        // Support inline=model (includes model definition)
+        if (inlineParam === 'model' ||
+            (req.xregistryFlags?.inline?.includes('model'))) {
+            result.model = await this.getModelInline();
         }
 
         res.json(result);
@@ -56,6 +78,8 @@ export class RegistryService {
      */
     async getGroups(req: Request, res: Response): Promise<void> {
         const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const pagesize = parseInt(req.query['pagesize'] as string) || 100;
+        const page = parseInt(req.query['page'] as string) || 1;
 
         const groups = {
             [GROUP_CONFIG.TYPE]: {
@@ -74,7 +98,42 @@ export class RegistryService {
             }
         };
 
-        res.json(groups);
+        // Apply pagination if pagesize is set
+        const allGroupKeys = Object.keys(groups[GROUP_CONFIG.TYPE]);
+        if (pagesize) {
+            const startIndex = (page - 1) * pagesize;
+            const endIndex = startIndex + pagesize;
+            const paginatedKeys = allGroupKeys.slice(startIndex, endIndex);
+
+            const paginatedGroups: any = {
+                [GROUP_CONFIG.TYPE]: {}
+            };
+
+            paginatedKeys.forEach(key => {
+                paginatedGroups[GROUP_CONFIG.TYPE][key] = (groups[GROUP_CONFIG.TYPE] as any)[key];
+            });
+
+            // Add Link header for pagination
+            const linkHeaders: string[] = [];
+
+            // Always add self link when pagination is requested
+            linkHeaders.push(`<${baseUrl}/${GROUP_CONFIG.TYPE}?page=${page}&pagesize=${pagesize}>; rel="self"`);
+
+            if (endIndex < allGroupKeys.length) {
+                const nextPage = page + 1;
+                linkHeaders.push(`<${baseUrl}/${GROUP_CONFIG.TYPE}?page=${nextPage}&pagesize=${pagesize}>; rel="next"`);
+            }
+            if (page > 1) {
+                const prevPage = page - 1;
+                linkHeaders.push(`<${baseUrl}/${GROUP_CONFIG.TYPE}?page=${prevPage}&pagesize=${pagesize}>; rel="prev"`);
+            }
+
+            res.setHeader('Link', linkHeaders.join(', '));
+
+            res.json(paginatedGroups);
+        } else {
+            res.json(groups);
+        }
     }
 
     /**
@@ -113,22 +172,14 @@ export class RegistryService {
      */
     async getCapabilities(_req: Request, res: Response): Promise<void> {
         res.json({
-            features: {
+            capabilities: {
+                apis: ['registry', 'groups', 'packages', 'versions'],
+                flags: ['inline', 'filter', 'sort', 'xregistry'],
+                mutable: [],
                 pagination: true,
-                filtering: true,
-                sorting: true,
-                search: true,
-                versions: true,
-                metadata: true
-            },
-            endpoints: {
-                registry: '/',
-                groups: `/${GROUP_CONFIG.TYPE}`,
-                packages: `/${GROUP_CONFIG.TYPE}/{groupId}/${RESOURCE_CONFIG.TYPE}`,
-                versions: `/${GROUP_CONFIG.TYPE}/{groupId}/${RESOURCE_CONFIG.TYPE}/{packageId}/versions`,
-                model: '/model'
-            },
-            xregistryVersion: XREGISTRY_CONFIG.SPEC_VERSION
+                schemas: [XREGISTRY_CONFIG.SCHEMA_VERSION],
+                specversions: [XREGISTRY_CONFIG.SPEC_VERSION]
+            }
         });
     }
 
@@ -136,7 +187,11 @@ export class RegistryService {
      * Get model
      */
     async getModel(_req: Request, res: Response): Promise<void> {
-        res.json({
+        res.json(this.getModelInline());
+    }
+
+    private getModelInline(): any {
+        return {
             schemas: [XREGISTRY_CONFIG.SCHEMA_VERSION],
             groups: {
                 [GROUP_CONFIG.TYPE]: {
@@ -151,7 +206,7 @@ export class RegistryService {
                     }
                 }
             }
-        });
+        };
     }
 
     /**

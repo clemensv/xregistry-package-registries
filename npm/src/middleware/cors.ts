@@ -101,11 +101,13 @@ export function createCorsMiddleware(options: CorsOptions = {}): (req: Request, 
             res.setHeader('Access-Control-Allow-Credentials', 'true');
         }
 
+        // Set allowed methods for all requests
+        if (config.methods) {
+            res.setHeader('Access-Control-Allow-Methods', config.methods.join(', '));
+        }
+
         // Handle preflight requests
         if (req.method === 'OPTIONS') {
-            if (config.methods) {
-                res.setHeader('Access-Control-Allow-Methods', config.methods.join(', '));
-            }
             if (config.allowedHeaders) {
                 res.setHeader('Access-Control-Allow-Headers', config.allowedHeaders.join(', '));
             }

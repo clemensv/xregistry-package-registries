@@ -13,6 +13,11 @@ import { createLoggingMiddleware } from './middleware/logging';
 import { xregistryErrorHandler } from './middleware/xregistry-error-handler';
 import { parseXRegistryFlags } from './middleware/xregistry-flags';
 import { NpmService } from './services/npm-service';
+import { normalizePackageId } from './utils/package-utils';
+
+// Import shared filter utilities for two-step filtering
+// @ts-ignore - JavaScript module without TypeScript declarations
+import { FilterOptimizer } from '../../shared/filter/index.js';
 
 // Simple console logger
 class SimpleLogger {
@@ -28,6 +33,20 @@ class SimpleLogger {
     debug(message: string, data?: any) {
         console.debug(`[DEBUG] ${message}`, data ? JSON.stringify(data, null, 2) : '');
     }
+}
+
+/**
+ * Create RFC 9457 Problem Details response
+ * @see https://www.rfc-editor.org/rfc/rfc9457.html
+ */
+function createProblemDetails(status: number, title: string, detail?: string, instance?: string) {
+    return {
+        type: `about:blank`,
+        title,
+        status,
+        ...(detail && { detail }),
+        ...(instance && { instance })
+    };
 }
 
 export interface ServerOptions {
@@ -48,6 +67,9 @@ export class XRegistryServer {
     private cacheManager!: CacheManager;
     private logger!: SimpleLogger;
     private options: Required<ServerOptions>;
+    private filterOptimizer: any; // FilterOptimizer instance
+    private packageNamesCache: Array<{ name: string;[key: string]: any }> = [];
+    private cacheLoadingPromise: Promise<void> | null = null;
 
     constructor(options: ServerOptions = {}) {
         this.options = {
@@ -98,6 +120,24 @@ export class XRegistryServer {
                 cacheTtl: this.options.cacheTtl
             });
         }
+
+        // Initialize FilterOptimizer for two-step filtering
+        this.filterOptimizer = new FilterOptimizer({
+            cacheSize: 2000,
+            maxCacheAge: 600000, // 10 minutes
+            enableTwoStepFiltering: true,
+            maxMetadataFetches: 100 // Increased to improve chance of finding metadata matches
+        });
+
+        // Set metadata fetcher function
+        this.filterOptimizer.setMetadataFetcher(this.fetchPackageMetadata.bind(this));
+
+        // Load package names cache
+        this.cacheLoadingPromise = this.loadPackageNamesCache().then(() => {
+            this.logger.info('Cache loading complete');
+        }).catch(err => {
+            this.logger.error('Failed to load package names cache', { error: err.message });
+        });
     }
 
     /**
@@ -111,6 +151,18 @@ export class XRegistryServer {
         this.app.use(createLoggingMiddleware({ logger: this.logger }));
         // xRegistry request flags parsing (must be after body parser)
         this.app.use(parseXRegistryFlags);
+        // Intercept res.writeHead to add schema parameter to Content-Type after Express sets it
+        this.app.use((_req, res, next) => {
+            const originalWriteHead = res.writeHead;
+            res.writeHead = function (this: typeof res, statusCode: number, ...rest: any[]) {
+                const contentType = this.getHeader('Content-Type');
+                if (contentType && contentType.toString().startsWith('application/json')) {
+                    this.setHeader('Content-Type', 'application/json; schema=https://xregistry.io/schemas/xregistry-v1.0-rc1.json');
+                }
+                return originalWriteHead.call(this, statusCode, ...rest);
+            };
+            next();
+        });
     }
 
     /**
@@ -135,7 +187,10 @@ export class XRegistryServer {
         this.app.get('/', async (req, res) => {
             try {
                 const baseUrl = `${req.protocol}://${req.get('host')}`;
-                const registryInfo = {
+                const flags = (req as any).xregistryFlags;
+                const inline = flags?.inline || [];
+
+                const registryInfo: any = {
                     specversion: '1.0-rc1',
                     registryid: 'npm-wrapper',
                     xid: '/',
@@ -149,16 +204,53 @@ export class XRegistryServer {
                     modelurl: `${baseUrl}/model`,
                     capabilitiesurl: `${baseUrl}/capabilities`,
                     noderegistriesurl: `${baseUrl}/noderegistries`,
-                    noderegistriescount: 1,
-                    noderegistries: {
+                    noderegistriescount: 1
+                };
+
+                // Handle inline flags
+                if (inline.includes('*') || inline.includes('model')) {
+                    registryInfo.model = {
+                        groups: {
+                            noderegistries: {
+                                plural: 'noderegistries',
+                                singular: 'noderegistry',
+                                resources: {
+                                    packages: {
+                                        plural: 'packages',
+                                        singular: 'package',
+                                        versions: {
+                                            plural: 'versions',
+                                            singular: 'version'
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    };
+                }
+
+                // Default: show noderegistries collection (not inlined)
+                // Only inline if explicitly requested with inline=endpoints or inline=*
+                if (inline.includes('*') || inline.includes('endpoints')) {
+                    registryInfo.endpoints = {
                         'npmjs.org': {
                             name: 'npmjs.org',
                             xid: '/noderegistries/npmjs.org',
                             self: `${baseUrl}/noderegistries/npmjs.org`,
                             packagesurl: `${baseUrl}/noderegistries/npmjs.org/packages`
                         }
-                    }
-                };
+                    };
+                } else {
+                    // Default: noderegistries as URL references
+                    registryInfo.noderegistries = {
+                        'npmjs.org': {
+                            name: 'npmjs.org',
+                            xid: '/noderegistries/npmjs.org',
+                            self: `${baseUrl}/noderegistries/npmjs.org`,
+                            packagesurl: `${baseUrl}/noderegistries/npmjs.org/packages`
+                        }
+                    };
+                }
 
                 res.set('Content-Type', 'application/json');
                 res.set('xRegistry-Version', '1.0-rc1');
@@ -206,6 +298,25 @@ export class XRegistryServer {
             res.json(model);
         });
 
+        // Performance stats endpoint
+        this.app.get('/performance/stats', (_req, res) => {
+            const stats = {
+                filterOptimizer: {
+                    twoStepFilteringEnabled: this.filterOptimizer.config?.enableTwoStepFiltering !== false,
+                    hasMetadataFetcher: !!this.filterOptimizer.metadataFetcher,
+                    indexedEntities: this.packageNamesCache.length,
+                    nameIndexSize: this.packageNamesCache.length,
+                    maxMetadataFetches: this.filterOptimizer.config?.maxMetadataFetches || 20,
+                    cacheSize: this.filterOptimizer.config?.cacheSize || 2000,
+                    maxCacheAge: this.filterOptimizer.config?.maxCacheAge || 600000
+                },
+                packageCache: {
+                    size: this.packageNamesCache.length
+                }
+            };
+            res.json(stats);
+        });
+
         // Node registries collection
         this.app.get('/noderegistries', (req, res) => {
             const baseUrl = `${req.protocol}://${req.get('host')}`;
@@ -225,7 +336,7 @@ export class XRegistryServer {
         this.app.get('/noderegistries/:registryId', (req, res) => {
             const registryId = req.params['registryId'];
             if (registryId !== 'npmjs.org') {
-                res.status(404).json({ error: 'Registry not found' });
+                res.status(404).json(createProblemDetails(404, 'Registry not found', `Registry '${registryId}' does not exist`, req.originalUrl));
                 return;
             }
 
@@ -245,7 +356,7 @@ export class XRegistryServer {
             try {
                 const registryId = req.params['registryId'];
                 if (registryId !== 'npmjs.org') {
-                    res.status(404).json({ error: 'Registry not found' });
+                    res.status(404).json(createProblemDetails(404, 'Registry not found', `Registry '${registryId}' does not exist`, req.originalUrl));
                     return;
                 }
 
@@ -253,6 +364,13 @@ export class XRegistryServer {
                 const limit = parseInt(req.query['limit'] as string || '20', 10);
                 const offset = parseInt(req.query['offset'] as string || '0', 10);
                 const filter = req.query['filter'] as string;
+                const sort = req.query['sort'] as string;
+
+                // Validate limit parameter
+                if (limit <= 0) {
+                    res.status(400).json(createProblemDetails(400, 'Invalid Request', 'The limit parameter must be greater than 0', req.originalUrl));
+                    return;
+                }
 
                 let packages: any = {};
 
@@ -263,46 +381,119 @@ export class XRegistryServer {
                         searchResults.forEach((pkg: any) => {
                             const packageName = pkg.name || pkg.package?.name;
                             if (packageName) {
+                                const normalizedPackageName = normalizePackageId(packageName);
                                 packages[packageName] = {
                                     name: packageName,
                                     xid: `/noderegistries/npmjs.org/packages/${packageName}`,
                                     self: `${baseUrl}/noderegistries/npmjs.org/packages/${encodeURIComponent(packageName)}`,
-                                    packageid: packageName,
+                                    packageid: normalizedPackageName,
                                     epoch: 1,
                                     createdat: pkg.date || new Date().toISOString(),
-                                    modifiedat: pkg.date || new Date().toISOString(),
-                                    description: pkg.description || pkg.package?.description || '',
-                                    version: pkg.version || pkg.package?.version || '1.0.0'
+                                    modifiedat: pkg.date || new Date().toISOString()
                                 };
+                                // Only add metadata if it's defined AND not empty (two-step filtering enrichment)
+                                if (pkg.description && pkg.description !== '') packages[packageName].description = pkg.description;
+                                if (pkg.version && pkg.version !== '') packages[packageName].version = pkg.version;
+                                if (pkg.author && pkg.author !== '') packages[packageName].author = pkg.author;
+                                if (pkg.license && pkg.license !== '') packages[packageName].license = pkg.license;
+                                if (pkg.homepage && pkg.homepage !== '') packages[packageName].homepage = pkg.homepage;
+                                if (pkg.keywords && pkg.keywords.length > 0) packages[packageName].keywords = pkg.keywords;
+                                if (pkg.repository && pkg.repository !== '') packages[packageName].repository = pkg.repository;
                             }
                         });
                     }
                 } else {
-                    // Get popular packages when no filter
-                    const searchResults = await this.npmService.searchPackages('', { size: limit, from: offset });
-                    if (searchResults?.objects) {
-                        searchResults.objects.forEach((result: any) => {
-                            const packageName = result.package?.name;
-                            if (packageName) {
-                                packages[packageName] = {
-                                    name: packageName,
-                                    xid: `/noderegistries/npmjs.org/packages/${packageName}`,
-                                    self: `${baseUrl}/noderegistries/npmjs.org/packages/${encodeURIComponent(packageName)}`,
-                                    packageid: packageName,
-                                    epoch: 1,
-                                    createdat: result.package?.date || new Date().toISOString(),
-                                    modifiedat: result.package?.date || new Date().toISOString(),
-                                    description: result.package?.description || '',
-                                    version: result.package?.version || '1.0.0'
-                                };
-                            }
+                    // Get packages when no filter
+                    // If sorting is requested, wait for cache to load
+                    if (sort && this.cacheLoadingPromise) {
+                        this.logger.info('Waiting for cache to load for sort request');
+                        await this.cacheLoadingPromise;
+                        this.logger.info('Cache loaded, size:', { size: this.packageNamesCache.length });
+                    }
+
+                    if (sort && this.packageNamesCache.length > 0) {
+                        // For sorting, use packageNamesCache to get a slice of packages
+                        this.logger.info('Using cache for sort', { offset, limit });
+
+                        // Parse sort parameter (format: "field=asc" or "field=desc")
+                        const sortParts = sort.split('=');
+                        let sortedCache = [...this.packageNamesCache];
+
+                        if (sortParts.length === 2 && sortParts[0] && sortParts[1]) {
+                            const sortField = sortParts[0];
+                            const sortOrder = sortParts[1].toLowerCase();
+
+                            // Sort the entire cache first
+                            sortedCache.sort((a, b) => {
+                                let aValue: string;
+                                let bValue: string;
+
+                                if (sortField === 'name' || sortField === 'packageid') {
+                                    aValue = a.name;
+                                    bValue = b.name;
+                                } else {
+                                    aValue = a[sortField] ? String(a[sortField]) : a.name;
+                                    bValue = b[sortField] ? String(b[sortField]) : b.name;
+                                }
+
+                                const comparison = aValue.localeCompare(bValue, undefined, { sensitivity: 'base' });
+                                return sortOrder === 'desc' ? -comparison : comparison;
+                            });
+                        }
+
+                        // Now slice the sorted cache
+                        const startIdx = offset;
+                        const endIdx = Math.min(offset + limit, sortedCache.length);
+                        const packageSlice = sortedCache.slice(startIdx, endIdx);
+                        this.logger.info('Package slice', { sliceLength: packageSlice.length });
+
+                        packageSlice.forEach((pkg: { name: string;[key: string]: any }) => {
+                            const packageName = pkg.name;
+                            const normalizedPackageName = normalizePackageId(packageName);
+                            packages[packageName] = {
+                                name: packageName,
+                                xid: `/noderegistries/npmjs.org/packages/${packageName}`,
+                                self: `${baseUrl}/noderegistries/npmjs.org/packages/${encodeURIComponent(packageName)}`,
+                                packageid: normalizedPackageName,
+                                epoch: 1,
+                                createdat: new Date().toISOString(),
+                                modifiedat: new Date().toISOString()
+                            };
                         });
+                        this.logger.info('Packages created from cache', { count: Object.keys(packages).length });
+                    } else {
+                        this.logger.info('Falling back to search', { sort, cacheLength: this.packageNamesCache.length });
+                        // For non-sort queries, use NPM search with a popular term
+                        const searchResults = await this.npmService.searchPackages('react', { size: limit, from: offset, popularity: 1.0 });
+                        if (searchResults?.objects && searchResults.objects.length > 0) {
+                            searchResults.objects.forEach((result: any) => {
+                                const packageName = result.package?.name;
+                                if (packageName) {
+                                    const normalizedPackageName = normalizePackageId(packageName);
+                                    packages[packageName] = {
+                                        name: packageName,
+                                        xid: `/noderegistries/npmjs.org/packages/${packageName}`,
+                                        self: `${baseUrl}/noderegistries/npmjs.org/packages/${encodeURIComponent(packageName)}`,
+                                        packageid: normalizedPackageName,
+                                        epoch: 1,
+                                        createdat: result.package?.date || new Date().toISOString(),
+                                        modifiedat: result.package?.date || new Date().toISOString()
+                                    };
+                                    // Only add metadata if it's defined (two-step filtering enrichment)
+                                    if (result.package?.description) packages[packageName].description = result.package.description;
+                                    if (result.package?.version) packages[packageName].version = result.package.version;
+                                }
+                            });
+                        }
                     }
                 }
 
                 // Add pagination headers
-                const totalCount = Object.keys(packages).length;
-                if (totalCount >= limit) {
+                const returnedCount = Object.keys(packages).length;
+                // For filtered queries, always set Link header if we have any results
+                // For unfiltered queries, only set if we got a full page
+                const shouldSetLink = filter ? returnedCount > 0 : returnedCount >= limit;
+                if (shouldSetLink) {
                     const nextOffset = offset + limit;
                     const nextUrl = `${baseUrl}/noderegistries/npmjs.org/packages?limit=${limit}&offset=${nextOffset}`;
                     if (filter) {
@@ -326,22 +517,23 @@ export class XRegistryServer {
                 const packageName = req.params['packageName'];
 
                 if (registryId !== 'npmjs.org') {
-                    res.status(404).json({ error: 'Registry not found' });
+                    res.status(404).json(createProblemDetails(404, 'Registry not found', `Registry '${registryId}' does not exist`, req.originalUrl));
                     return;
                 }
 
                 const metadata = await this.npmService.getPackageMetadata(packageName);
                 if (!metadata) {
-                    res.status(404).json({ error: 'Package not found' });
+                    res.status(404).json(createProblemDetails(404, 'Package not found', `Package '${packageName}' does not exist in registry`, req.originalUrl));
                     return;
                 }
 
                 const baseUrl = `${req.protocol}://${req.get('host')}`;
+                const normalizedPackageName = normalizePackageId(packageName);
                 const packageInfo = {
                     name: packageName,
                     xid: `/noderegistries/npmjs.org/packages/${packageName}`,
                     self: `${baseUrl}/noderegistries/npmjs.org/packages/${encodeURIComponent(packageName)}`,
-                    packageid: packageName,
+                    packageid: normalizedPackageName,
                     epoch: 1,
                     createdat: metadata.time?.['created'] || new Date().toISOString(),
                     modifiedat: metadata.time?.['modified'] || new Date().toISOString(),
@@ -363,22 +555,217 @@ export class XRegistryServer {
             }
         });
 
+        // Package versions endpoint
+        this.app.get('/noderegistries/:registryId/packages/:packageName/versions', async (req, res) => {
+            try {
+                const registryId = req.params['registryId'];
+                const packageName = req.params['packageName'];
+                const limit = parseInt(req.query['limit'] as string || '100', 10);
+                const sort = req.query['sort'] as string;
+
+                if (registryId !== 'npmjs.org') {
+                    res.status(404).json(createProblemDetails(404, 'Registry not found', `Registry '${registryId}' does not exist`, req.originalUrl));
+                    return;
+                }
+
+                const metadata = await this.npmService.getPackageMetadata(packageName);
+                if (!metadata || !metadata.versions) {
+                    res.status(404).json(createProblemDetails(404, 'Package not found', `Package '${packageName}' does not exist in registry`, req.originalUrl));
+                    return;
+                }
+
+                const baseUrl = `${req.protocol}://${req.get('host')}`;
+                const versionsObj: any = {};
+
+                // Get version keys and limit them
+                let versionKeys = Object.keys(metadata.versions).slice(0, limit);
+
+                // Apply sorting if specified (default is ascending)
+                const sortParts = sort ? sort.split('=') : [];
+                const sortOrder = sortParts.length === 2 && sortParts[1] ? sortParts[1].toLowerCase() : 'asc';
+
+                // Sort versions
+                versionKeys.sort((a, b) => {
+                    const comparison = a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+                    return sortOrder === 'desc' ? -comparison : comparison;
+                });
+
+                // Build versions response
+                versionKeys.forEach(versionId => {
+                    const versionData = metadata.versions ? (metadata.versions as any)[versionId] : null;
+                    versionsObj[versionId] = {
+                        versionid: versionId,
+                        xid: `/noderegistries/npmjs.org/packages/${packageName}/versions/${versionId}`,
+                        self: `${baseUrl}/noderegistries/npmjs.org/packages/${encodeURIComponent(packageName)}/versions/${encodeURIComponent(versionId)}`,
+                        name: versionId,
+                        epoch: 1,
+                        createdat: (metadata.time && metadata.time[versionId]) ? metadata.time[versionId] : new Date().toISOString(),
+                        modifiedat: (metadata.time && metadata.time[versionId]) ? metadata.time[versionId] : new Date().toISOString(),
+                        description: (versionData && versionData['description']) ? versionData['description'] : (metadata['description'] || ''),
+                        deprecated: (versionData && versionData['deprecated']) ? versionData['deprecated'] : false
+                    };
+                });
+
+                res.json(versionsObj);
+            } catch (error) {
+                this.logger.error('Failed to retrieve package versions', { error });
+                res.status(500).json({ error: 'Failed to retrieve package versions' });
+            }
+        });
+
         // 404 handler
         this.app.use('*', (req, res) => {
-            res.status(404).json({
-                error: 'Not Found',
-                message: `Route ${req.method} ${req.originalUrl} not found`,
-                timestamp: new Date().toISOString()
-            });
+            res.status(404).json(createProblemDetails(
+                404,
+                'Not Found',
+                `Route ${req.method} ${req.originalUrl} not found`,
+                req.originalUrl
+            ));
         });
     }
 
     /**
-     * Handle package filtering
+     * Load package names cache for two-step filtering
+     */
+    private async loadPackageNamesCache(): Promise<void> {
+        try {
+            // Load from all-the-package-names module using require for simplicity
+            const fs = require('fs');
+            const path = require('path');
+
+            // Try to load package names from the installed module
+            try {
+                // Try multiple potential locations for the module
+                const potentialPaths = [
+                    // Relative to the server's directory (npm/dist -> npm/node_modules)
+                    path.join(__dirname, '..', 'node_modules', 'all-the-package-names', 'names.json'),
+                    // Relative to cwd
+                    path.join(process.cwd(), 'node_modules', 'all-the-package-names', 'names.json'),
+                    // Relative to cwd/npm
+                    path.join(process.cwd(), 'npm', 'node_modules', 'all-the-package-names', 'names.json')
+                ];
+
+                let packageNamesPath: string | null = null;
+                for (const testPath of potentialPaths) {
+                    if (fs.existsSync(testPath)) {
+                        packageNamesPath = testPath;
+                        break;
+                    }
+                }
+
+                if (packageNamesPath) {
+                    this.logger.info('Loading package names from all-the-package-names...');
+                    const namesContent = fs.readFileSync(packageNamesPath, 'utf8');
+                    const allPackageNames = JSON.parse(namesContent);
+
+                    if (Array.isArray(allPackageNames)) {
+                        // Store objects with a 'name' property and sort them
+                        this.packageNamesCache = allPackageNames
+                            .map((name: string) => ({ name }))
+                            .sort((a: any, b: any) => a.name.localeCompare(b.name));
+
+                        this.logger.info('Package names cache loaded from all-the-package-names', {
+                            count: this.packageNamesCache.length
+                        });
+                    }
+                } else {
+                    this.logger.warn('all-the-package-names module not found, two-step filtering will use fallback');
+                }
+            } catch (loadError: any) {
+                this.logger.warn('Failed to load all-the-package-names', {
+                    error: loadError.message
+                });
+            }
+
+            // Build indices for FilterOptimizer
+            if (this.packageNamesCache.length > 0) {
+                this.filterOptimizer.buildIndices(
+                    this.packageNamesCache,
+                    (entity: any) => entity.name
+                );
+
+                this.logger.info('FilterOptimizer indices built', {
+                    packageCount: this.packageNamesCache.length
+                });
+            }
+        } catch (error: any) {
+            this.logger.error('Failed to load package names cache', {
+                error: error.message
+            });
+        }
+    }
+
+    /**
+     * Fetch package metadata for two-step filtering
+     */
+    private async fetchPackageMetadata(packageName: string): Promise<any> {
+        try {
+            const packageData: any = await this.npmService.getPackageMetadata(packageName);
+
+            if (!packageData) {
+                throw new Error('Package data is null');
+            }
+
+            // Extract metadata for filtering
+            const latestVersion = packageData['dist-tags']?.latest ||
+                Object.keys(packageData.versions || {})[0];
+            const versionData: any = packageData.versions?.[latestVersion] || {};
+
+            const result: any = {
+                name: packageName
+            };
+
+            // Only include metadata fields if they have actual values
+            const description = packageData.description || versionData.description;
+            // Always include description - use package name as fallback if missing
+            result.description = description || packageName;
+
+            const author = packageData.author?.name || versionData.author?.name ||
+                packageData.author || versionData.author;
+            if (author) result.author = author;
+
+            const license = packageData.license || versionData.license;
+            if (license) result.license = license;
+
+            const homepage = packageData.homepage || versionData.homepage;
+            if (homepage) result.homepage = homepage;
+
+            const keywords = packageData.keywords || versionData.keywords;
+            if (keywords && keywords.length > 0) result.keywords = keywords;
+
+            if (latestVersion) result.version = latestVersion;
+
+            const repository = packageData.repository?.url || versionData.repository?.url;
+            if (repository) result.repository = repository;
+
+            return result;
+        } catch (error: any) {
+            // Return minimal metadata if fetch fails (just name)
+            return {
+                name: packageName
+            };
+        }
+    }
+
+    /**
+     * Handle package filtering using FilterOptimizer with two-step filtering support
      */
     private async handlePackageFilter(filter: string, limit: number, offset: number): Promise<any[]> {
         try {
-            // Parse filter expressions
+            // If we have cached packages, use FilterOptimizer for advanced filtering
+            if (this.packageNamesCache.length > 0) {
+                // Use optimized filter which handles both name-only and metadata queries
+                const filteredResults = await this.filterOptimizer.optimizedFilter(
+                    filter,
+                    (entity: any) => entity.name,
+                    this.logger
+                );
+
+                // Return paginated results
+                return filteredResults.slice(offset, offset + limit);
+            }
+
+            // Fallback: Use NPM search API for simple name filtering
             const filters = this.parseFilterExpressions(filter);
 
             for (const filterExpr of filters) {

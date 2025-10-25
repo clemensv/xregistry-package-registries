@@ -19,7 +19,10 @@ describe("OCI Basic Server Functionality", function () {
     const configPath = path.join(__dirname, "../../oci/config.json");
     const testConfig = {
       ociBackends: [
-        { name: "microsoft", registryUrl: "https://mcr.microsoft.com/" },
+        {
+          name: "mcr.microsoft.com",
+          registryUrl: "https://mcr.microsoft.com/",
+        },
       ],
     };
     fs.writeFileSync(configPath, JSON.stringify(testConfig, null, 2), "utf8");
@@ -300,7 +303,7 @@ describe("OCI Basic Server Functionality", function () {
 
   // Helper functions
   async function startServer(port, configPath) {
-    const serverPath = path.resolve(__dirname, "../../oci/server.js");
+    const serverPath = path.resolve(__dirname, "../../oci/dist/server.js");
     return new Promise((resolve, reject) => {
       const childProcess = spawn(
         "node",

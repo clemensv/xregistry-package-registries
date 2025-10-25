@@ -1,0 +1,3450 @@
+
+> xregistry-tests@1.0.0 test:npm
+> mocha npm/*.test.js --timeout 120000 --exit
+
+
+
+  Basic Server Functionality
+Starting xRegistry NPM server for basic tests...
+Server is ready for basic tests
+    Core Endpoints
+      Γ£ö should return registry root with correct structure
+      Γ£ö should return capabilities
+      Γ£ö should return model
+      Γ£ö should return noderegistries collection
+      Γ£ö should return specific noderegistry
+    Package Operations
+      Γ£ö should return packages collection with pagination (126ms)
+      Γ£ö should support filtering packages (43ms)
+      Γ£ö should support xRegistry filter operators (108ms)
+      Γ£ö should reject filters without name constraint
+React packages: found 5 packages
+Angular packages: found 5 packages
+Express packages: found 5 packages
+      Γ£ö should handle common package filters (128ms)
+      Γ£ö should handle well-known package retrieval
+      1) should handle scoped package encoding correctly
+      Γ£ö should return xRegistry conformant packages collection format (44ms)
+    Error Handling
+      Γ£ö should return 404 for non-existent group
+      Γ£ö should return 404 for non-existent package (39ms)
+      Γ£ö should handle invalid limit parameter
+    HTTP Headers and Standards Compliance
+      Γ£ö should include proper Content-Type headers
+      Γ£ö should include CORS headers
+      Γ£ö should handle OPTIONS requests
+      Γ£ö should include pagination Link headers when appropriate (38ms)
+    Sort Flag
+      2) should sort packages by packageid descending
+      Γ£ö should sort versions ascending by default
+    Inline Flag
+      Γ£ö should inline model at root with inline=model
+      Γ£ö should inline packages collection with inline=endpoints
+Stopping server...
+Server stopped
+
+  Angular Packages Integration Test
+Fetching Angular packages from npm...
+Found 12 Angular packages
+Testing with 10 packages: [
+  '@angular/material',
+  '@angular/cli',
+  '@angular/core',
+  '@angular/compiler',
+  '@angular/router',
+  '@angular/platform-browser',
+  '@angular/cdk',
+  '@angular/build',
+  '@angular/common',
+  '@angular/animations'
+]
+Starting xRegistry NPM server...
+Server stderr: [WARN] all-the-package-names module not found, two-step filtering will use fallback
+Server stdout: [INFO] xRegistry NPM Wrapper Server started {
+  "port": 3101,
+  "host": "localhost",
+  "npmRegistry": "https://registry.npmjs.org",
+  "cacheEnabled": true
+}
+Waiting for server to become ready at http://localhost:3101 (timeout: 30000ms)...
+Attempting to connect to http://localhost:3101...
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294131029_67xk7czcn",
+  "method": "GET",
+  "path": "/",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+Server is ready: 200
+Server is ready
+    Server Health Check
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294131029_67xk7czcn",
+  "method": "GET",
+  "path": "/",
+  "statusCode": 200,
+  "responseTime": 6,
+  "ip": "127.0.0.1"
+}
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294131038_cgeozuqua",
+  "method": "GET",
+  "path": "/",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+      Γ£ö should respond to root endpoint
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294131038_cgeozuqua",
+  "method": "GET",
+  "path": "/",
+  "statusCode": 200,
+  "responseTime": 1,
+  "ip": "127.0.0.1"
+}
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294131042_z0gkyl2ht",
+  "method": "GET",
+  "path": "/capabilities",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+      Γ£ö should respond to capabilities endpoint
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294131042_z0gkyl2ht",
+  "method": "GET",
+  "path": "/capabilities",
+  "statusCode": 200,
+  "responseTime": 0,
+  "ip": "127.0.0.1"
+}
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294131045_q9ugl9znr",
+  "method": "GET",
+  "path": "/model",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+      Γ£ö should respond to model endpoint
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294131045_q9ugl9znr",
+  "method": "GET",
+  "path": "/model",
+  "statusCode": 200,
+  "responseTime": 1,
+  "ip": "127.0.0.1"
+}
+    Angular Package Discovery
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294131050_r8im5hj26",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+Found 18 Angular packages through filtering
+      Γ£ö should find Angular packages in the package list (103ms)
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294131050_r8im5hj26",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "statusCode": 200,
+  "responseTime": 99,
+  "ip": "127.0.0.1"
+}
+    Edge Cases and Error Handling
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294131152_ezwjen647",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages/this-package-definitely-does-not-exist-12345",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+Server stderr: Failed to fetch package metadata for this-package-definitely-does-not-exist-12345: AxiosError: Request failed with status code 404
+    at settle (C:\git\xregistry-package-registries\npm\node_modules\axios\dist\node\axios.cjs:2049:12)
+    at IncomingMessage.handleStreamEnd (C:\git\xregistry-package-registries\npm\node_modules\axios\dist\node\axios.cjs:3166:11)
+    at IncomingMessage.emit (node:events:536:35)
+    at endReadableNT (node:internal/streams/readable:1698:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:82:21)
+    at Axios.request (C:\git\xregistry-package-registries\npm\node_modules\axios\dist\node\axios.cjs:4276:41)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async NpmService.getPackageMetadata (C:\git\xregistry-package-registries\npm\dist\services\npm-service.js:49:30)
+    at async C:\git\xregistry-package-registries\npm\dist\server.js:459:34 {
+  code: 'ERR_BAD_REQUEST',
+  config: {
+    transitional: {
+      silentJSONParsing: true,
+      forcedJSONParsing: true,
+      clarifyTimeoutError: false
+    },
+    adapter: [ 'xhr', 'http', 'fetch' ],
+    transformRequest: [ [Function: transformRequest] ],
+    transformResponse: [ [Function: transformResponse] ],
+    timeout: 30000,
+    xsrfCookieName: 'XSRF-TOKEN',
+    xsrfHeaderName: 'X-XSRF-TOKEN',
+    maxContentLength: -1,
+    maxBodyLength: -1,
+    env: { FormData: [Function [FormData]], Blob: [class Blob] },
+    validateStatus: [Function: validateStatus],
+    headers: Object [AxiosHeaders] {
+      Accept: 'application/json',
+      'Content-Type': undefined,
+      'User-Agent': 'xRegistry-NPM-Wrapper/1.0',
+      'Accept-Encoding': 'gzip, compress, deflate, br'
+    },
+    baseURL: 'https://registry.npmjs.org',
+    method: 'get',
+    url: '/this-package-definitely-does-not-exist-12345',
+    allowAbsoluteUrls: true,
+    data: undefined
+  },
+  request: <ref *1> ClientRequest {
+    _events: [Object: null prototype] {
+      abort: [Function (anonymous)],
+      aborted: [Function (anonymous)],
+      connect: [Function (anonymous)],
+      error: [Function (anonymous)],
+      socket: [Function (anonymous)],
+      timeout: [Function (anonymous)],
+      finish: [Function: requestOnFinish]
+    },
+    _eventsCount: 7,
+    _maxListeners: undefined,
+    outputData: [],
+    outputSize: 0,
+    writable: true,
+    destroyed: true,
+    _last: true,
+    chunkedEncoding: false,
+    shouldKeepAlive: true,
+    maxRequestsOnConnectionReached: false,
+    _defaultKeepAlive: true,
+    useChunkedEncodingByDefault: false,
+    sendDate: false,
+    _removedConnection: false,
+    _removedContLen: false,
+    _removedTE: false,
+    strictContentLength: false,
+    _contentLength: 0,
+    _hasBody: true,
+    _trailer: '',
+    finished: true,
+    _headerSent: true,
+    _closed: true,
+    socket: TLSSocket {
+      _tlsOptions: [Object],
+      _secureEstablished: true,
+      _securePending: false,
+      _newSessionPending: false,
+      _controlReleased: true,
+      secureConnecting: false,
+      _SNICallback: null,
+      servername: 'registry.npmjs.org',
+      alpnProtocol: false,
+      authorized: true,
+      authorizationError: null,
+      encrypted: true,
+      _events: [Object: null prototype],
+      _eventsCount: 9,
+      connecting: false,
+      _hadError: false,
+      _parent: null,
+      _host: 'registry.npmjs.org',
+      _closeAfterHandlingError: false,
+      _readableState: [ReadableState],
+      _writableState: [WritableState],
+      allowHalfOpen: false,
+      _maxListeners: undefined,
+      _sockname: null,
+      _pendingData: null,
+      _pendingEncoding: '',
+      server: undefined,
+      _server: null,
+      ssl: [TLSWrap],
+      _requestCert: true,
+      _rejectUnauthorized: true,
+      timeout: 5000,
+      parser: null,
+      _httpMessage: null,
+      autoSelectFamilyAttemptedAddresses: [Array],
+      [Symbol(alpncallback)]: null,
+      [Symbol(res)]: [TLSWrap],
+      [Symbol(verified)]: true,
+      [Symbol(pendingSession)]: null,
+      [Symbol(async_id_symbol)]: -1,
+      [Symbol(kHandle)]: [TLSWrap],
+      [Symbol(lastWriteQueueSize)]: 0,
+      [Symbol(timeout)]: Timeout {
+        _idleTimeout: 5000,
+        _idlePrev: [TimersList],
+        _idleNext: [TimersList],
+        _idleStart: 10144,
+        _onTimeout: [Function: bound ],
+        _timerArgs: undefined,
+        _repeat: null,
+        _destroyed: false,
+        [Symbol(refed)]: false,
+        [Symbol(kHasPrimitive)]: false,
+        [Symbol(asyncId)]: 176,
+        [Symbol(triggerId)]: 174
+      },
+      [Symbol(kBuffer)]: null,
+      [Symbol(kBufferCb)]: null,
+      [Symbol(kBufferGen)]: null,
+      [Symbol(shapeMode)]: true,
+      [Symbol(kCapture)]: false,
+      [Symbol(kSetNoDelay)]: false,
+      [Symbol(kSetKeepAlive)]: true,
+      [Symbol(kSetKeepAliveInitialDelay)]: 1,
+      [Symbol(kBytesRead)]: 0,
+      [Symbol(kBytesWritten)]: 0,
+      [Symbol(connect-options)]: [Object]
+    },
+    _header: 'GET /this-package-definitely-does-not-exist-12345 HTTP/1.1\r\n' +
+      'Accept: application/json\r\n' +
+      'User-Agent: xRegistry-NPM-Wrapper/1.0\r\n' +
+      'Accept-Encoding: gzip, compress, deflate, br\r\n' +
+      'Host: registry.npmjs.org\r\n' +
+      'Connection: keep-alive\r\n' +
+      '\r\n',
+    _keepAliveTimeout: 0,
+    _onPendingData: [Function: nop],
+    agent: Agent {
+      _events: [Object: null prototype],
+      _eventsCount: 2,
+      _maxListeners: undefined,
+      defaultPort: 443,
+      protocol: 'https:',
+      options: [Object: null prototype],
+      requests: [Object: null prototype] {},
+      sockets: [Object: null prototype] {},
+      freeSockets: [Object: null prototype],
+      keepAliveMsecs: 1000,
+      keepAlive: true,
+      maxSockets: Infinity,
+      maxFreeSockets: 256,
+      scheduling: 'lifo',
+      maxTotalSockets: Infinity,
+      totalSocketCount: 1,
+      maxCachedSessions: 100,
+      _sessionCache: [Object],
+      [Symbol(shapeMode)]: false,
+      [Symbol(kCapture)]: false
+    },
+    socketPath: undefined,
+    method: 'GET',
+    maxHeaderSize: undefined,
+    insecureHTTPParser: undefined,
+    joinDuplicateHeaders: undefined,
+    path: '/this-package-definitely-does-not-exist-12345',
+    _ended: true,
+    res: IncomingMessage {
+      _events: [Object],
+      _readableState: [ReadableState],
+      _maxListeners: undefined,
+      socket: null,
+      httpVersionMajor: 1,
+      httpVersionMinor: 1,
+      httpVersion: '1.1',
+      complete: true,
+      rawHeaders: [Array],
+      rawTrailers: [],
+      joinDuplicateHeaders: undefined,
+      aborted: false,
+      upgrade: false,
+      url: '',
+      method: null,
+      statusCode: 404,
+      statusMessage: 'Not Found',
+      client: [TLSSocket],
+      _consuming: true,
+      _dumped: false,
+      req: [Circular *1],
+      _eventsCount: 4,
+      responseUrl: 'https://registry.npmjs.org/this-package-definitely-does-not-exist-12345',
+      redirects: [],
+      [Symbol(shapeMode)]: true,
+      [Symbol(kCapture)]: false,
+      [Symbol(kHeaders)]: [Object],
+      [Symbol(kHeadersCount)]: 22,
+      [Symbol(kTrailers)]: null,
+      [Symbol(kTrailersCount)]: 0
+    },
+    aborted: false,
+    timeoutCb: null,
+    upgradeOrConnect: false,
+    parser: null,
+    maxHeadersCount: null,
+    reusedSocket: true,
+    host: 'registry.npmjs.org',
+    protocol: 'https:',
+    _redirectable: Writable {
+      _events: [Object],
+      _writableState: [WritableState],
+      _maxListeners: undefined,
+      _options: [Object],
+      _ended: true,
+      _ending: true,
+      _redirectCount: 0,
+      _redirects: [],
+      _requestBodyLength: 0,
+      _requestBodyBuffers: [],
+      _eventsCount: 3,
+      _onNativeResponse: [Function (anonymous)],
+      _currentRequest: [Circular *1],
+      _currentUrl: 'https://registry.npmjs.org/this-package-definitely-does-not-exist-12345',
+      _timeout: null,
+      [Symbol(shapeMode)]: true,
+      [Symbol(kCapture)]: false
+    },
+    [Symbol(shapeMode)]: false,
+    [Symbol(kCapture)]: false,
+    [Symbol(kBytesWritten)]: 0,
+    [Symbol(kNeedDrain)]: false,
+    [Symbol(corked)]: 0,
+    [Symbol(kOutHeaders)]: [Object: null prototype] {
+      accept: [Array],
+      'user-agent': [Array],
+      'accept-encoding': [Array],
+      host: [Array]
+    },
+    [Symbol(errored)]: null,
+    [Symbol(kHighWaterMark)]: 16384,
+    [Symbol(kRejectNonStandardBodyWrites)]: false,
+    [Symbol(kUniqueHeaders)]: null
+  },
+  response: {
+    status: 404,
+    statusText: 'Not Found',
+    headers: Object [AxiosHeaders] {
+      date: 'Fri, 24 Oct 2025 08:22:11 GMT',
+      'content-type': 'application/json',
+      'content-length': '21',
+      connection: 'keep-alive',
+      server: 'cloudflare',
+      'cf-ray': '9938109fbc06d919-AMS',
+      'access-control-allow-origin': '*',
+      age: '259',
+      'cache-control': 'public, max-age=300',
+      vary: 'Accept-Encoding',
+      'set-cookie': [Array]
+    },
+    config: {
+      transitional: [Object],
+      adapter: [Array],
+      transformRequest: [Array],
+      transformResponse: [Array],
+      timeout: 30000,
+      xsrfCookieName: 'XSRF-TOKEN',
+      xsrfHeaderName: 'X-XSRF-TOKEN',
+      maxContentLength: -1,
+      maxBodyLength: -1,
+      env: [Object],
+      validateStatus: [Function: validateStatus],
+      headers: [Object [AxiosHeaders]],
+      baseURL: 'https://registry.npmjs.org',
+      method: 'get',
+      url: '/this-package-definitely-does-not-exist-12345',
+      allowAbsoluteUrls: true,
+      data: undefined
+    },
+    request: <ref *1> ClientRequest {
+      _events: [Object: null prototype],
+      _eventsCount: 7,
+      _maxListeners: undefined,
+      outputData: [],
+      outputSize: 0,
+      writable: true,
+      destroyed: true,
+      _last: true,
+      chunkedEncoding: false,
+      shouldKeepAlive: true,
+      maxRequestsOnConnectionReached: false,
+      _defaultKeepAlive: true,
+      useChunkedEncodingByDefault: false,
+      sendDate: false,
+      _removedConnection: false,
+      _removedContLen: false,
+      _removedTE: false,
+      strictContentLength: false,
+      _contentLength: 0,
+      _hasBody: true,
+      _trailer: '',
+      finished: true,
+      _headerSent: true,
+      _closed: true,
+      socket: [TLSSocket],
+      _header: 'GET /this-package-definitely-does-not-exist-12345 HTTP/1.1\r\n' +
+        'Accept: application/json\r\n' +
+        'User-Agent: xRegistry-NPM-Wrapper/1.0\r\n' +
+        'Accept-Encoding: gzip, compress, deflate, br\r\n' +
+        'Host: registry.npmjs.org\r\n' +
+        'Connection: keep-alive\r\n' +
+        '\r\n',
+      _keepAliveTimeout: 0,
+      _onPendingData: [Function: nop],
+      agent: [Agent],
+      socketPath: undefined,
+      method: 'GET',
+      maxHeaderSize: undefined,
+      insecureHTTPParser: undefined,
+      joinDuplicateHeaders: undefined,
+      path: '/this-package-definitely-does-not-exist-12345',
+      _ended: true,
+      res: [IncomingMessage],
+      aborted: false,
+      timeoutCb: null,
+      upgradeOrConnect: false,
+      parser: null,
+      maxHeadersCount: null,
+      reusedSocket: true,
+      host: 'registry.npmjs.org',
+      protocol: 'https:',
+      _redirectable: [Writable],
+      [Symbol(shapeMode)]: false,
+      [Symbol(kCapture)]: false,
+      [Symbol(kBytesWritten)]: 0,
+      [Symbol(kNeedDrain)]: false,
+      [Symbol(corked)]: 0,
+      [Symbol(kOutHeaders)]: [Object: null prototype],
+      [Symbol(errored)]: null,
+      [Symbol(kHighWaterMark)]: 16384,
+      [Symbol(kRejectNonStandardBodyWrites)]: false,
+      [Symbol(kUniqueHeaders)]: null
+    },
+    data: { error: 'Not found' }
+  },
+  status: 404
+}
+      Γ£ö should handle non-existent package gracefully
+Server stderr: [WARN] Request completed with error {
+  "requestId": "req_1761294131152_ezwjen647",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages/this-package-definitely-does-not-exist-12345",
+  "statusCode": 404,
+  "responseTime": 35,
+  "ip": "127.0.0.1"
+}
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294131190_mymiiapkm",
+  "method": "GET",
+  "path": "/noderegistries/invalid-group/packages/@angular/core",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+      Γ£ö should handle invalid group ID
+Server stderr: [WARN] Request completed with error {
+  "requestId": "req_1761294131190_mymiiapkm",
+  "method": "GET",
+  "path": "/",
+  "statusCode": 404,
+  "responseTime": 1,
+  "ip": "127.0.0.1"
+}
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294131194_es5bs4vtg",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages/",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+Malformed name did not return error: 
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294131194_es5bs4vtg",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages/",
+  "statusCode": 200,
+  "responseTime": 28,
+  "ip": "127.0.0.1"
+}
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294131225_zpbwg49g7",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages/%2F",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+Server stderr: Failed to fetch package metadata for /: AxiosError: Request failed with status code 404
+    at settle (C:\git\xregistry-package-registries\npm\node_modules\axios\dist\node\axios.cjs:2049:12)
+    at IncomingMessage.handleStreamEnd (C:\git\xregistry-package-registries\npm\node_modules\axios\dist\node\axios.cjs:3166:11)
+    at IncomingMessage.emit (node:events:536:35)
+    at endReadableNT (node:internal/streams/readable:1698:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:82:21)
+    at Axios.request (C:\git\xregistry-package-registries\npm\node_modules\axios\dist\node\axios.cjs:4276:41)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async NpmService.getPackageMetadata (C:\git\xregistry-package-registries\npm\dist\services\npm-service.js:49:30)
+    at async C:\git\xregistry-package-registries\npm\dist\server.js:459:34 {
+  code: 'ERR_BAD_REQUEST',
+  config: {
+    transitional: {
+      silentJSONParsing: true,
+      forcedJSONParsing: true,
+      clarifyTimeoutError: false
+    },
+    adapter: [ 'xhr', 'http', 'fetch' ],
+    transformRequest: [ [Function: transformRequest] ],
+    transformResponse: [ [Function: transformResponse] ],
+    timeout: 30000,
+    xsrfCookieName: 'XSRF-TOKEN',
+    xsrfHeaderName: 'X-XSRF-TOKEN',
+    maxContentLength: -1,
+    maxBodyLength: -1,
+    env: { FormData: [Function [FormData]], Blob: [class Blob] },
+    validateStatus: [Function: validateStatus],
+    headers: Object [AxiosHeaders] {
+      Accept: 'application/json',
+      'Content-Type': undefined,
+      'User-Agent': 'xRegistry-NPM-Wrapper/1.0',
+      'Accept-Encoding': 'gzip, compress, deflate, br'
+    },
+    baseURL: 'https://registry.npmjs.org',
+    method: 'get',
+    url: '/_2F',
+    allowAbsoluteUrls: true,
+    data: undefined
+  },
+  request: <ref *1> ClientRequest {
+    _events: [Object: null prototype] {
+      abort: [Function (anonymous)],
+      aborted: [Function (anonymous)],
+      connect: [Function (anonymous)],
+      error: [Function (anonymous)],
+      socket: [Function (anonymous)],
+      timeout: [Function (anonymous)],
+      finish: [Function: requestOnFinish]
+    },
+    _eventsCount: 7,
+    _maxListeners: undefined,
+    outputData: [],
+    outputSize: 0,
+    writable: true,
+    destroyed: true,
+    _last: true,
+    chunkedEncoding: false,
+    shouldKeepAlive: true,
+    maxRequestsOnConnectionReached: false,
+    _defaultKeepAlive: true,
+    useChunkedEncodingByDefault: false,
+    sendDate: false,
+    _removedConnection: false,
+    _removedContLen: false,
+    _removedTE: false,
+    strictContentLength: false,
+    _contentLength: 0,
+    _hasBody: true,
+    _trailer: '',
+    finished: true,
+    _headerSent: true,
+    _closed: true,
+    socket: TLSSocket {
+      _tlsOptions: [Object],
+      _secureEstablished: true,
+      _securePending: false,
+      _newSessionPending: false,
+      _controlReleased: true,
+      secureConnecting: false,
+      _SNICallback: null,
+      servername: 'registry.npmjs.org',
+      alpnProtocol: false,
+      authorized: true,
+      authorizationError: null,
+      encrypted: true,
+      _events: [Object: null prototype],
+      _eventsCount: 9,
+      connecting: false,
+      _hadError: false,
+      _parent: null,
+      _host: 'registry.npmjs.org',
+      _closeAfterHandlingError: false,
+      _readableState: [ReadableState],
+      _writableState: [WritableState],
+      allowHalfOpen: false,
+      _maxListeners: undefined,
+      _sockname: null,
+      _pendingData: null,
+      _pendingEncoding: '',
+      server: undefined,
+      _server: null,
+      ssl: [TLSWrap],
+      _requestCert: true,
+      _rejectUnauthorized: true,
+      timeout: 5000,
+      parser: null,
+      _httpMessage: null,
+      autoSelectFamilyAttemptedAddresses: [Array],
+      [Symbol(alpncallback)]: null,
+      [Symbol(res)]: [TLSWrap],
+      [Symbol(verified)]: true,
+      [Symbol(pendingSession)]: null,
+      [Symbol(async_id_symbol)]: -1,
+      [Symbol(kHandle)]: [TLSWrap],
+      [Symbol(lastWriteQueueSize)]: 0,
+      [Symbol(timeout)]: Timeout {
+        _idleTimeout: 5000,
+        _idlePrev: [TimersList],
+        _idleNext: [TimersList],
+        _idleStart: 10229,
+        _onTimeout: [Function: bound ],
+        _timerArgs: undefined,
+        _repeat: null,
+        _destroyed: false,
+        [Symbol(refed)]: false,
+        [Symbol(kHasPrimitive)]: false,
+        [Symbol(asyncId)]: 289,
+        [Symbol(triggerId)]: 287
+      },
+      [Symbol(kBuffer)]: null,
+      [Symbol(kBufferCb)]: null,
+      [Symbol(kBufferGen)]: null,
+      [Symbol(shapeMode)]: true,
+      [Symbol(kCapture)]: false,
+      [Symbol(kSetNoDelay)]: false,
+      [Symbol(kSetKeepAlive)]: true,
+      [Symbol(kSetKeepAliveInitialDelay)]: 1,
+      [Symbol(kBytesRead)]: 0,
+      [Symbol(kBytesWritten)]: 0,
+      [Symbol(connect-options)]: [Object]
+    },
+    _header: 'GET /_2F HTTP/1.1\r\n' +
+      'Accept: application/json\r\n' +
+      'User-Agent: xRegistry-NPM-Wrapper/1.0\r\n' +
+      'Accept-Encoding: gzip, compress, deflate, br\r\n' +
+      'Host: registry.npmjs.org\r\n' +
+      'Connection: keep-alive\r\n' +
+      '\r\n',
+    _keepAliveTimeout: 0,
+    _onPendingData: [Function: nop],
+    agent: Agent {
+      _events: [Object: null prototype],
+      _eventsCount: 2,
+      _maxListeners: undefined,
+      defaultPort: 443,
+      protocol: 'https:',
+      options: [Object: null prototype],
+      requests: [Object: null prototype] {},
+      sockets: [Object: null prototype] {},
+      freeSockets: [Object: null prototype],
+      keepAliveMsecs: 1000,
+      keepAlive: true,
+      maxSockets: Infinity,
+      maxFreeSockets: 256,
+      scheduling: 'lifo',
+      maxTotalSockets: Infinity,
+      totalSocketCount: 1,
+      maxCachedSessions: 100,
+      _sessionCache: [Object],
+      [Symbol(shapeMode)]: false,
+      [Symbol(kCapture)]: false
+    },
+    socketPath: undefined,
+    method: 'GET',
+    maxHeaderSize: undefined,
+    insecureHTTPParser: undefined,
+    joinDuplicateHeaders: undefined,
+    path: '/_2F',
+    _ended: true,
+    res: IncomingMessage {
+      _events: [Object],
+      _readableState: [ReadableState],
+      _maxListeners: undefined,
+      socket: null,
+      httpVersionMajor: 1,
+      httpVersionMinor: 1,
+      httpVersion: '1.1',
+      complete: true,
+      rawHeaders: [Array],
+      rawTrailers: [],
+      joinDuplicateHeaders: undefined,
+      aborted: false,
+      upgrade: false,
+      url: '',
+      method: null,
+      statusCode: 404,
+      statusMessage: 'Not Found',
+      client: [TLSSocket],
+      _consuming: false,
+      _dumped: false,
+      req: [Circular *1],
+      _eventsCount: 4,
+      responseUrl: 'https://registry.npmjs.org/_2F',
+      redirects: [],
+      [Symbol(shapeMode)]: true,
+      [Symbol(kCapture)]: false,
+      [Symbol(kHeaders)]: [Object],
+      [Symbol(kHeadersCount)]: 22,
+      [Symbol(kTrailers)]: null,
+      [Symbol(kTrailersCount)]: 0
+    },
+    aborted: false,
+    timeoutCb: null,
+    upgradeOrConnect: false,
+    parser: null,
+    maxHeadersCount: null,
+    reusedSocket: true,
+    host: 'registry.npmjs.org',
+    protocol: 'https:',
+    _redirectable: Writable {
+      _events: [Object],
+      _writableState: [WritableState],
+      _maxListeners: undefined,
+      _options: [Object],
+      _ended: true,
+      _ending: true,
+      _redirectCount: 0,
+      _redirects: [],
+      _requestBodyLength: 0,
+      _requestBodyBuffers: [],
+      _eventsCount: 3,
+      _onNativeResponse: [Function (anonymous)],
+      _currentRequest: [Circular *1],
+      _currentUrl: 'https://registry.npmjs.org/_2F',
+      _timeout: null,
+      [Symbol(shapeMode)]: true,
+      [Symbol(kCapture)]: false
+    },
+    [Symbol(shapeMode)]: false,
+    [Symbol(kCapture)]: false,
+    [Symbol(kBytesWritten)]: 0,
+    [Symbol(kNeedDrain)]: false,
+    [Symbol(corked)]: 0,
+    [Symbol(kOutHeaders)]: [Object: null prototype] {
+      accept: [Array],
+      'user-agent': [Array],
+      'accept-encoding': [Array],
+      host: [Array]
+    },
+    [Symbol(errored)]: null,
+    [Symbol(kHighWaterMark)]: 16384,
+    [Symbol(kRejectNonStandardBodyWrites)]: false,
+    [Symbol(kUniqueHeaders)]: null
+  },
+  response: {
+    status: 404,
+    statusText: 'Not Found',
+    headers: Object [AxiosHeaders] {
+      date: 'Fri, 24 Oct 2025 08:22:11 GMT',
+      'content-type': 'application/json',
+      'content-length': '21',
+      connection: 'keep-alive',
+      server: 'cloudflare',
+      'cf-ray': '993810a03cdcd919-AMS',
+      'access-control-allow-origin': '*',
+      age: '258',
+      'cache-control': 'public, max-age=300',
+      vary: 'Accept-Encoding',
+      'set-cookie': [Array]
+    },
+    config: {
+      transitional: [Object],
+      adapter: [Array],
+      transformRequest: [Array],
+      transformResponse: [Array],
+      timeout: 30000,
+      xsrfCookieName: 'XSRF-TOKEN',
+      xsrfHeaderName: 'X-XSRF-TOKEN',
+      maxContentLength: -1,
+      maxBodyLength: -1,
+      env: [Object],
+      validateStatus: [Function: validateStatus],
+      headers: [Object [AxiosHeaders]],
+      baseURL: 'https://registry.npmjs.org',
+      method: 'get',
+      url: '/_2F',
+      allowAbsoluteUrls: true,
+      data: undefined
+    },
+    request: <ref *1> ClientRequest {
+      _events: [Object: null prototype],
+      _eventsCount: 7,
+      _maxListeners: undefined,
+      outputData: [],
+      outputSize: 0,
+      writable: true,
+      destroyed: true,
+      _last: true,
+      chunkedEncoding: false,
+      shouldKeepAlive: true,
+      maxRequestsOnConnectionReached: false,
+      _defaultKeepAlive: true,
+      useChunkedEncodingByDefault: false,
+      sendDate: false,
+      _removedConnection: false,
+      _removedContLen: false,
+      _removedTE: false,
+      strictContentLength: false,
+      _contentLength: 0,
+      _hasBody: true,
+      _trailer: '',
+      finished: true,
+      _headerSent: true,
+      _closed: true,
+      socket: [TLSSocket],
+      _header: 'GET /_2F HTTP/1.1\r\n' +
+        'Accept: application/json\r\n' +
+        'User-Agent: xRegistry-NPM-Wrapper/1.0\r\n' +
+        'Accept-Encoding: gzip, compress, deflate, br\r\n' +
+        'Host: registry.npmjs.org\r\n' +
+        'Connection: keep-alive\r\n' +
+        '\r\n',
+      _keepAliveTimeout: 0,
+      _onPendingData: [Function: nop],
+      agent: [Agent],
+      socketPath: undefined,
+      method: 'GET',
+      maxHeaderSize: undefined,
+      insecureHTTPParser: undefined,
+      joinDuplicateHeaders: undefined,
+      path: '/_2F',
+      _ended: true,
+      res: [IncomingMessage],
+      aborted: false,
+      timeoutCb: null,
+      upgradeOrConnect: false,
+      parser: null,
+      maxHeadersCount: null,
+      reusedSocket: true,
+      host: 'registry.npmjs.org',
+      protocol: 'https:',
+      _redirectable: [Writable],
+      [Symbol(shapeMode)]: false,
+      [Symbol(kCapture)]: false,
+      [Symbol(kBytesWritten)]: 0,
+      [Symbol(kNeedDrain)]: false,
+      [Symbol(corked)]: 0,
+      [Symbol(kOutHeaders)]: [Object: null prototype],
+      [Symbol(errored)]: null,
+      [Symbol(kHighWaterMark)]: 16384,
+      [Symbol(kRejectNonStandardBodyWrites)]: false,
+      [Symbol(kUniqueHeaders)]: null
+    },
+    data: { error: 'Not found' }
+  },
+  status: 404
+}
+Server stderr: [WARN] Request completed with error {
+  "requestId": "req_1761294131225_zpbwg49g7",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages/%2F",
+  "statusCode": 404,
+  "responseTime": 42,
+  "ip": "127.0.0.1"
+}
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294131270_tb84b1gr4",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+Malformed name did not return error: ..
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294131270_tb84b1gr4",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/",
+  "statusCode": 200,
+  "responseTime": 1,
+  "ip": "127.0.0.1"
+}
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294131273_hy80nzksj",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages/..%2F..%2F..%2Fetc%2Fpasswd",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+Server stderr: Failed to fetch package metadata for ../../../etc/passwd: AxiosError: Request failed with status code 404
+    at settle (C:\git\xregistry-package-registries\npm\node_modules\axios\dist\node\axios.cjs:2049:12)
+    at IncomingMessage.handleStreamEnd (C:\git\xregistry-package-registries\npm\node_modules\axios\dist\node\axios.cjs:3166:11)
+    at IncomingMessage.emit (node:events:536:35)
+    at endReadableNT (node:internal/streams/readable:1698:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:82:21)
+    at Axios.request (C:\git\xregistry-package-registries\npm\node_modules\axios\dist\node\axios.cjs:4276:41)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async NpmService.getPackageMetadata (C:\git\xregistry-package-registries\npm\dist\services\npm-service.js:49:30)
+    at async C:\git\xregistry-package-registries\npm\dist\server.js:459:34 {
+  code: 'ERR_BAD_REQUEST',
+  config: {
+    transitional: {
+      silentJSONParsing: true,
+      forcedJSONParsing: true,
+      clarifyTimeoutError: false
+    },
+    adapter: [ 'xhr', 'http', 'fetch' ],
+    transformRequest: [ [Function: transformRequest] ],
+    transformResponse: [ [Function: transformResponse] ],
+    timeout: 30000,
+    xsrfCookieName: 'XSRF-TOKEN',
+    xsrfHeaderName: 'X-XSRF-TOKEN',
+    maxContentLength: -1,
+    maxBodyLength: -1,
+    env: { FormData: [Function [FormData]], Blob: [class Blob] },
+    validateStatus: [Function: validateStatus],
+    headers: Object [AxiosHeaders] {
+      Accept: 'application/json',
+      'Content-Type': undefined,
+      'User-Agent': 'xRegistry-NPM-Wrapper/1.0',
+      'Accept-Encoding': 'gzip, compress, deflate, br'
+    },
+    baseURL: 'https://registry.npmjs.org',
+    method: 'get',
+    url: '/_.._2F.._2F.._2Fetc_2Fpasswd',
+    allowAbsoluteUrls: true,
+    data: undefined
+  },
+  request: <ref *1> ClientRequest {
+    _events: [Object: null prototype] {
+      abort: [Function (anonymous)],
+      aborted: [Function (anonymous)],
+      connect: [Function (anonymous)],
+      error: [Function (anonymous)],
+      socket: [Function (anonymous)],
+      timeout: [Function (anonymous)],
+      finish: [Function: requestOnFinish]
+    },
+    _eventsCount: 7,
+    _maxListeners: undefined,
+    outputData: [],
+    outputSize: 0,
+    writable: true,
+    destroyed: true,
+    _last: true,
+    chunkedEncoding: false,
+    shouldKeepAlive: true,
+    maxRequestsOnConnectionReached: false,
+    _defaultKeepAlive: true,
+    useChunkedEncodingByDefault: false,
+    sendDate: false,
+    _removedConnection: false,
+    _removedContLen: false,
+    _removedTE: false,
+    strictContentLength: false,
+    _contentLength: 0,
+    _hasBody: true,
+    _trailer: '',
+    finished: true,
+    _headerSent: true,
+    _closed: true,
+    socket: TLSSocket {
+      _tlsOptions: [Object],
+      _secureEstablished: true,
+      _securePending: false,
+      _newSessionPending: false,
+      _controlReleased: true,
+      secureConnecting: false,
+      _SNICallback: null,
+      servername: 'registry.npmjs.org',
+      alpnProtocol: false,
+      authorized: true,
+      authorizationError: null,
+      encrypted: true,
+      _events: [Object: null prototype],
+      _eventsCount: 9,
+      connecting: false,
+      _hadError: false,
+      _parent: null,
+      _host: 'registry.npmjs.org',
+      _closeAfterHandlingError: false,
+      _readableState: [ReadableState],
+      _writableState: [WritableState],
+      allowHalfOpen: false,
+      _maxListeners: undefined,
+      _sockname: null,
+      _pendingData: null,
+      _pendingEncoding: '',
+      server: undefined,
+      _server: null,
+      ssl: [TLSWrap],
+      _requestCert: true,
+      _rejectUnauthorized: true,
+      timeout: 5000,
+      parser: null,
+      _httpMessage: null,
+      autoSelectFamilyAttemptedAddresses: [Array],
+      [Symbol(alpncallback)]: null,
+      [Symbol(res)]: [TLSWrap],
+      [Symbol(verified)]: true,
+      [Symbol(pendingSession)]: null,
+      [Symbol(async_id_symbol)]: -1,
+      [Symbol(kHandle)]: [TLSWrap],
+      [Symbol(lastWriteQueueSize)]: 0,
+      [Symbol(timeout)]: Timeout {
+        _idleTimeout: 5000,
+        _idlePrev: [TimersList],
+        _idleNext: [TimersList],
+        _idleStart: 10263,
+        _onTimeout: [Function: bound ],
+        _timerArgs: undefined,
+        _repeat: null,
+        _destroyed: false,
+        [Symbol(refed)]: false,
+        [Symbol(kHasPrimitive)]: false,
+        [Symbol(asyncId)]: 350,
+        [Symbol(triggerId)]: 348
+      },
+      [Symbol(kBuffer)]: null,
+      [Symbol(kBufferCb)]: null,
+      [Symbol(kBufferGen)]: null,
+      [Symbol(shapeMode)]: true,
+      [Symbol(kCapture)]: false,
+      [Symbol(kSetNoDelay)]: false,
+      [Symbol(kSetKeepAlive)]: true,
+      [Symbol(kSetKeepAliveInitialDelay)]: 1,
+      [Symbol(kBytesRead)]: 0,
+      [Symbol(kBytesWritten)]: 0,
+      [Symbol(connect-options)]: [Object]
+    },
+    _header: 'GET /_.._2F.._2F.._2Fetc_2Fpasswd HTTP/1.1\r\n' +
+      'Accept: application/json\r\n' +
+      'User-Agent: xRegistry-NPM-Wrapper/1.0\r\n' +
+      'Accept-Encoding: gzip, compress, deflate, br\r\n' +
+      'Host: registry.npmjs.org\r\n' +
+      'Connection: keep-alive\r\n' +
+      '\r\n',
+    _keepAliveTimeout: 0,
+    _onPendingData: [Function: nop],
+    agent: Agent {
+      _events: [Object: null prototype],
+      _eventsCount: 2,
+      _maxListeners: undefined,
+      defaultPort: 443,
+      protocol: 'https:',
+      options: [Object: null prototype],
+      requests: [Object: null prototype] {},
+      sockets: [Object: null prototype] {},
+      freeSockets: [Object: null prototype],
+      keepAliveMsecs: 1000,
+      keepAlive: true,
+      maxSockets: Infinity,
+      maxFreeSockets: 256,
+      scheduling: 'lifo',
+      maxTotalSockets: Infinity,
+      totalSocketCount: 1,
+      maxCachedSessions: 100,
+      _sessionCache: [Object],
+      [Symbol(shapeMode)]: false,
+      [Symbol(kCapture)]: false
+    },
+    socketPath: undefined,
+    method: 'GET',
+    maxHeaderSize: undefined,
+    insecureHTTPParser: undefined,
+    joinDuplicateHeaders: undefined,
+    path: '/_.._2F.._2F.._2Fetc_2Fpasswd',
+    _ended: true,
+    res: IncomingMessage {
+      _events: [Object],
+      _readableState: [ReadableState],
+      _maxListeners: undefined,
+      socket: null,
+      httpVersionMajor: 1,
+      httpVersionMinor: 1,
+      httpVersion: '1.1',
+      complete: true,
+      rawHeaders: [Array],
+      rawTrailers: [],
+      joinDuplicateHeaders: undefined,
+      aborted: false,
+      upgrade: false,
+      url: '',
+      method: null,
+      statusCode: 404,
+      statusMessage: 'Not Found',
+      client: [TLSSocket],
+      _consuming: false,
+      _dumped: false,
+      req: [Circular *1],
+      _eventsCount: 4,
+      responseUrl: 'https://registry.npmjs.org/_.._2F.._2F.._2Fetc_2Fpasswd',
+      redirects: [],
+      [Symbol(shapeMode)]: true,
+      [Symbol(kCapture)]: false,
+      [Symbol(kHeaders)]: [Object],
+      [Symbol(kHeadersCount)]: 22,
+      [Symbol(kTrailers)]: null,
+      [Symbol(kTrailersCount)]: 0
+    },
+    aborted: false,
+    timeoutCb: null,
+    upgradeOrConnect: false,
+    parser: null,
+    maxHeadersCount: null,
+    reusedSocket: true,
+    host: 'registry.npmjs.org',
+    protocol: 'https:',
+    _redirectable: Writable {
+      _events: [Object],
+      _writableState: [WritableState],
+      _maxListeners: undefined,
+      _options: [Object],
+      _ended: true,
+      _ending: true,
+      _redirectCount: 0,
+      _redirects: [],
+      _requestBodyLength: 0,
+      _requestBodyBuffers: [],
+      _eventsCount: 3,
+      _onNativeResponse: [Function (anonymous)],
+      _currentRequest: [Circular *1],
+      _currentUrl: 'https://registry.npmjs.org/_.._2F.._2F.._2Fetc_2Fpasswd',
+      _timeout: null,
+      [Symbol(shapeMode)]: true,
+      [Symbol(kCapture)]: false
+    },
+    [Symbol(shapeMode)]: false,
+    [Symbol(kCapture)]: false,
+    [Symbol(kBytesWritten)]: 0,
+    [Symbol(kNeedDrain)]: false,
+    [Symbol(corked)]: 0,
+    [Symbol(kOutHeaders)]: [Object: null prototype] {
+      accept: [Array],
+      'user-agent': [Array],
+      'accept-encoding': [Array],
+      host: [Array]
+    },
+    [Symbol(errored)]: null,
+    [Symbol(kHighWaterMark)]: 16384,
+    [Symbol(kRejectNonStandardBodyWrites)]: false,
+    [Symbol(kUniqueHeaders)]: null
+  },
+  response: {
+    status: 404,
+    statusText: 'Not Found',
+    headers: Object [AxiosHeaders] {
+      date: 'Fri, 24 Oct 2025 08:22:11 GMT',
+      'content-type': 'application/json',
+      'content-length': '21',
+      connection: 'keep-alive',
+      server: 'cloudflare',
+      'cf-ray': '993810a07d61d919-AMS',
+      'access-control-allow-origin': '*',
+      age: '257',
+      'cache-control': 'public, max-age=300',
+      vary: 'Accept-Encoding',
+      'set-cookie': [Array]
+    },
+    config: {
+      transitional: [Object],
+      adapter: [Array],
+      transformRequest: [Array],
+      transformResponse: [Array],
+      timeout: 30000,
+      xsrfCookieName: 'XSRF-TOKEN',
+      xsrfHeaderName: 'X-XSRF-TOKEN',
+      maxContentLength: -1,
+      maxBodyLength: -1,
+      env: [Object],
+      validateStatus: [Function: validateStatus],
+      headers: [Object [AxiosHeaders]],
+      baseURL: 'https://registry.npmjs.org',
+      method: 'get',
+      url: '/_.._2F.._2F.._2Fetc_2Fpasswd',
+      allowAbsoluteUrls: true,
+      data: undefined
+    },
+    request: <ref *1> ClientRequest {
+      _events: [Object: null prototype],
+      _eventsCount: 7,
+      _maxListeners: undefined,
+      outputData: [],
+      outputSize: 0,
+      writable: true,
+      destroyed: true,
+      _last: true,
+      chunkedEncoding: false,
+      shouldKeepAlive: true,
+      maxRequestsOnConnectionReached: false,
+      _defaultKeepAlive: true,
+      useChunkedEncodingByDefault: false,
+      sendDate: false,
+      _removedConnection: false,
+      _removedContLen: false,
+      _removedTE: false,
+      strictContentLength: false,
+      _contentLength: 0,
+      _hasBody: true,
+      _trailer: '',
+      finished: true,
+      _headerSent: true,
+      _closed: true,
+      socket: [TLSSocket],
+      _header: 'GET /_.._2F.._2F.._2Fetc_2Fpasswd HTTP/1.1\r\n' +
+        'Accept: application/json\r\n' +
+        'User-Agent: xRegistry-NPM-Wrapper/1.0\r\n' +
+        'Accept-Encoding: gzip, compress, deflate, br\r\n' +
+        'Host: registry.npmjs.org\r\n' +
+        'Connection: keep-alive\r\n' +
+        '\r\n',
+      _keepAliveTimeout: 0,
+      _onPendingData: [Function: nop],
+      agent: [Agent],
+      socketPath: undefined,
+      method: 'GET',
+      maxHeaderSize: undefined,
+      insecureHTTPParser: undefined,
+      joinDuplicateHeaders: undefined,
+      path: '/_.._2F.._2F.._2Fetc_2Fpasswd',
+      _ended: true,
+      res: [IncomingMessage],
+      aborted: false,
+      timeoutCb: null,
+      upgradeOrConnect: false,
+      parser: null,
+      maxHeadersCount: null,
+      reusedSocket: true,
+      host: 'registry.npmjs.org',
+      protocol: 'https:',
+      _redirectable: [Writable],
+      [Symbol(shapeMode)]: false,
+      [Symbol(kCapture)]: false,
+      [Symbol(kBytesWritten)]: 0,
+      [Symbol(kNeedDrain)]: false,
+      [Symbol(corked)]: 0,
+      [Symbol(kOutHeaders)]: [Object: null prototype],
+      [Symbol(errored)]: null,
+      [Symbol(kHighWaterMark)]: 16384,
+      [Symbol(kRejectNonStandardBodyWrites)]: false,
+      [Symbol(kUniqueHeaders)]: null
+    },
+    data: { error: 'Not found' }
+  },
+  status: 404
+}
+      Γ£ö should handle malformed package names (111ms)
+Server stderr: [WARN] Request completed with error {
+  "requestId": "req_1761294131273_hy80nzksj",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages/..%2F..%2F..%2Fetc%2Fpasswd",
+  "statusCode": 404,
+  "responseTime": 28,
+  "ip": "127.0.0.1"
+}
+Stopping server...
+Server stopped
+
+  NPM Two-Step Filtering
+Starting xRegistry NPM server for two-step filtering tests...
+Server stdout: [INFO] Loading package names from all-the-package-names...
+Server stdout: [INFO] Package names cache loaded from all-the-package-names {
+  "count": 3629880
+}
+Server stdout: [INFO] FilterOptimizer indices built {
+  "packageCount": 3629880
+}
+Server stdout: [INFO] xRegistry NPM Wrapper Server started {
+  "port": 3103,
+  "host": "localhost",
+  "npmRegistry": "https://registry.npmjs.org",
+  "cacheEnabled": true
+}
+Waiting for server to become ready at http://localhost:3103 (timeout: 45000ms)...
+Attempting to connect to http://localhost:3103...
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294176344_pqmwmd7y1",
+  "method": "GET",
+  "path": "/",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+Server is ready: 200
+Server is ready for two-step filtering tests
+    Server Health and Capabilities
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294176344_pqmwmd7y1",
+  "method": "GET",
+  "path": "/",
+  "statusCode": 200,
+  "responseTime": 8,
+  "ip": "127.0.0.1"
+}
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294176356_1w1bnf67j",
+  "method": "GET",
+  "path": "/performance/stats",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+      Γ£ö should have two-step filtering enabled
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294176356_1w1bnf67j",
+  "method": "GET",
+  "path": "/performance/stats",
+  "statusCode": 200,
+  "responseTime": 1,
+  "ip": "127.0.0.1"
+}
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294176360_2riazj8zp",
+  "method": "GET",
+  "path": "/performance/stats",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+      Γ£ö should have a large package index loaded
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294176360_2riazj8zp",
+  "method": "GET",
+  "path": "/performance/stats",
+  "statusCode": 200,
+  "responseTime": 1,
+  "ip": "127.0.0.1"
+}
+    Name-Only Filtering (Baseline Performance)
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294176364_jcdcmfs69",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+      Γ£ö should perform fast name-only filtering (484ms)
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294176364_jcdcmfs69",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "statusCode": 200,
+  "responseTime": 480,
+  "ip": "127.0.0.1"
+}
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294176849_dwerghp88",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294176849_dwerghp88",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "statusCode": 200,
+  "responseTime": 2,
+  "ip": "127.0.0.1"
+}
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294176853_3fecrk0wn",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294176853_3fecrk0wn",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "statusCode": 200,
+  "responseTime": 1,
+  "ip": "127.0.0.1"
+}
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294176856_97wnejoe7",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294176856_97wnejoe7",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "statusCode": 200,
+  "responseTime": 208,
+  "ip": "127.0.0.1"
+}
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294177067_oitgfmbbf",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+      Γ£ö should handle wildcard patterns efficiently (457ms)
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294177067_oitgfmbbf",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "statusCode": 200,
+  "responseTime": 236,
+  "ip": "127.0.0.1"
+}
+    Two-Step Filtering (Metadata Enrichment)
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294177307_mn29nuhfg",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+Server stdout: [DEBUG] Two-step filtering: Phase 1 (name) complete {
+  "originalCount": 3629880,
+  "nameFilteredCount": 10418,
+  "hasMetadataFilters": true,
+  "phase1Duration": 218
+}
+Server stderr: [WARN] Two-step filtering: Limited metadata fetches due to large result set {
+  "totalResults": 10418,
+  "limitedTo": 100,
+  "maxFetches": 100
+}
+Server stderr: Failed to fetch package metadata for @23people/the-prompts-typescript: AxiosError: Request failed with status code 404
+    at settle (C:\git\xregistry-package-registries\npm\node_modules\axios\dist\node\axios.cjs:2049:12)
+    at IncomingMessage.handleStreamEnd (C:\git\xregistry-package-registries\npm\node_modules\axios\dist\node\axios.cjs:3166:11)
+    at IncomingMessage.emit (node:events:536:35)
+    at endReadableNT (node:internal/streams/readable:1698:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:82:21)
+    at Axios.request (C:\git\xregistry-package-registries\npm\node_modules\axios\dist\node\axios.cjs:4276:41)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async NpmService.getPackageMetadata (C:\git\xregistry-package-registries\npm\dist\services\npm-service.js:49:30)
+    at async XRegistryServer.fetchPackageMetadata (C:\git\xregistry-package-registries\npm\dist\server.js:598:33)
+    at async FilterOptimizer.twoStepFilter (C:\git\xregistry-package-registries\shared\filter\index.js:499:26)
+    at async FilterOptimizer.optimizedFilter (C:\git\xregistry-package-registries\shared\filter\index.js:566:14)
+    at async XRegistryServer.handlePackageFilter (C:\git\xregistry-package-registries\npm\dist\server.js:648:41)
+    at async C:\git\xregistry-package-registries\npm\dist\server.js:336:43 {
+  code: 'ERR_BAD_REQUEST',
+  config: {
+    transitional: {
+      silentJSONParsing: true,
+      forcedJSONParsing: true,
+      clarifyTimeoutError: false
+    },
+    adapter: [ 'xhr', 'http', 'fetch' ],
+    transformRequest: [ [Function: transformRequest] ],
+    transformResponse: [ [Function: transformResponse] ],
+    timeout: 30000,
+    xsrfCookieName: 'XSRF-TOKEN',
+    xsrfHeaderName: 'X-XSRF-TOKEN',
+    maxContentLength: -1,
+    maxBodyLength: -1,
+    env: { FormData: [Function [FormData]], Blob: [class Blob] },
+    validateStatus: [Function: validateStatus],
+    headers: Object [AxiosHeaders] {
+      Accept: 'application/json',
+      'Content-Type': undefined,
+      'User-Agent': 'xRegistry-NPM-Wrapper/1.0',
+      'Accept-Encoding': 'gzip, compress, deflate, br'
+    },
+    baseURL: 'https://registry.npmjs.org',
+    method: 'get',
+    url: '/@23people%2Fthe-prompts-typescript',
+    allowAbsoluteUrls: true,
+    data: undefined
+  },
+  request: <ref *1> ClientRequest {
+    _events: [Object: null prototype] {
+      abort: [Function (anonymous)],
+      aborted: [Function (anonymous)],
+      connect: [Function (anonymous)],
+      error: [Function (anonymous)],
+      socket: [Function (anonymous)],
+      timeout: [Function (anonymous)],
+      finish: [Function: requestOnFinish]
+    },
+    _eventsCount: 7,
+    _maxListeners: undefined,
+    outputData: [],
+    outputSize: 0,
+    writable: true,
+    destroyed: true,
+    _last: true,
+    chunkedEncoding: false,
+    shouldKeepAlive: true,
+    maxRequestsOnConnectionReached: false,
+    _defaultKeepAlive: true,
+    useChunkedEncodingByDefault: false,
+    sendDate: false,
+    _removedConnection: false,
+    _removedContLen: false,
+    _removedTE: false,
+    strictContentLength: false,
+    _contentLength: 0,
+    _hasBody: true,
+    _trailer: '',
+    finished: true,
+    _headerSent: true,
+    _closed: true,
+    socket: TLSSocket {
+      _tlsOptions: [Object],
+      _secureEstablished: true,
+      _securePending: false,
+      _newSessionPending: false,
+      _controlReleased: true,
+      secureConnecting: false,
+      _SNICallback: null,
+      servername: 'registry.npmjs.org',
+      alpnProtocol: false,
+      authorized: true,
+      authorizationError: null,
+      encrypted: true,
+      _events: [Object: null prototype],
+      _eventsCount: 9,
+      connecting: false,
+      _hadError: false,
+      _parent: null,
+      _host: 'registry.npmjs.org',
+      _closeAfterHandlingError: false,
+      _readableState: [ReadableState],
+      _writableState: [WritableState],
+      allowHalfOpen: false,
+      _maxListeners: undefined,
+      _sockname: null,
+      _pendingData: null,
+      _pendingEncoding: '',
+      server: undefined,
+      _server: null,
+      ssl: [TLSWrap],
+      _requestCert: true,
+      _rejectUnauthorized: true,
+      timeout: 5000,
+      parser: null,
+      _httpMessage: null,
+      autoSelectFamilyAttemptedAddresses: [Array],
+      [Symbol(alpncallback)]: null,
+      [Symbol(res)]: [TLSWrap],
+      [Symbol(verified)]: true,
+      [Symbol(pendingSession)]: null,
+      [Symbol(async_id_symbol)]: -1,
+      [Symbol(kHandle)]: [TLSWrap],
+      [Symbol(lastWriteQueueSize)]: 0,
+      [Symbol(timeout)]: Timeout {
+        _idleTimeout: 5000,
+        _idlePrev: [TimersList],
+        _idleNext: [TimersList],
+        _idleStart: 47076,
+        _onTimeout: [Function: bound ],
+        _timerArgs: undefined,
+        _repeat: null,
+        _destroyed: false,
+        [Symbol(refed)]: false,
+        [Symbol(kHasPrimitive)]: false,
+        [Symbol(asyncId)]: 310,
+        [Symbol(triggerId)]: 308
+      },
+      [Symbol(kBuffer)]: null,
+      [Symbol(kBufferCb)]: null,
+      [Symbol(kBufferGen)]: null,
+      [Symbol(shapeMode)]: true,
+      [Symbol(kCapture)]: false,
+      [Symbol(kSetNoDelay)]: false,
+      [Symbol(kSetKeepAlive)]: true,
+      [Symbol(kSetKeepAliveInitialDelay)]: 1,
+      [Symbol(kBytesRead)]: 0,
+      [Symbol(kBytesWritten)]: 0,
+      [Symbol(connect-options)]: [Object]
+    },
+    _header: 'GET /@23people%2Fthe-prompts-typescript HTTP/1.1\r\n' +
+      'Accept: application/json\r\n' +
+      'User-Agent: xRegistry-NPM-Wrapper/1.0\r\n' +
+      'Accept-Encoding: gzip, compress, deflate, br\r\n' +
+      'Host: registry.npmjs.org\r\n' +
+      'Connection: keep-alive\r\n' +
+      '\r\n',
+    _keepAliveTimeout: 0,
+    _onPendingData: [Function: nop],
+    agent: Agent {
+      _events: [Object: null prototype],
+      _eventsCount: 2,
+      _maxListeners: undefined,
+      defaultPort: 443,
+      protocol: 'https:',
+      options: [Object: null prototype],
+      requests: [Object: null prototype] {},
+      sockets: [Object: null prototype] {},
+      freeSockets: [Object: null prototype],
+      keepAliveMsecs: 1000,
+      keepAlive: true,
+      maxSockets: Infinity,
+      maxFreeSockets: 256,
+      scheduling: 'lifo',
+      maxTotalSockets: Infinity,
+      totalSocketCount: 1,
+      maxCachedSessions: 100,
+      _sessionCache: [Object],
+      [Symbol(shapeMode)]: false,
+      [Symbol(kCapture)]: false
+    },
+    socketPath: undefined,
+    method: 'GET',
+    maxHeaderSize: undefined,
+    insecureHTTPParser: undefined,
+    joinDuplicateHeaders: undefined,
+    path: '/@23people%2Fthe-prompts-typescript',
+    _ended: true,
+    res: IncomingMessage {
+      _events: [Object],
+      _readableState: [ReadableState],
+      _maxListeners: undefined,
+      socket: null,
+      httpVersionMajor: 1,
+      httpVersionMinor: 1,
+      httpVersion: '1.1',
+      complete: true,
+      rawHeaders: [Array],
+      rawTrailers: [],
+      joinDuplicateHeaders: undefined,
+      aborted: false,
+      upgrade: false,
+      url: '',
+      method: null,
+      statusCode: 404,
+      statusMessage: 'Not Found',
+      client: [TLSSocket],
+      _consuming: false,
+      _dumped: false,
+      req: [Circular *1],
+      _eventsCount: 4,
+      responseUrl: 'https://registry.npmjs.org/@23people%2Fthe-prompts-typescript',
+      redirects: [],
+      [Symbol(shapeMode)]: true,
+      [Symbol(kCapture)]: false,
+      [Symbol(kHeaders)]: [Object],
+      [Symbol(kHeadersCount)]: 16,
+      [Symbol(kTrailers)]: null,
+      [Symbol(kTrailersCount)]: 0
+    },
+    aborted: false,
+    timeoutCb: null,
+    upgradeOrConnect: false,
+    parser: null,
+    maxHeadersCount: null,
+    reusedSocket: false,
+    host: 'registry.npmjs.org',
+    protocol: 'https:',
+    _redirectable: Writable {
+      _events: [Object],
+      _writableState: [WritableState],
+      _maxListeners: undefined,
+      _options: [Object],
+      _ended: true,
+      _ending: true,
+      _redirectCount: 0,
+      _redirects: [],
+      _requestBodyLength: 0,
+      _requestBodyBuffers: [],
+      _eventsCount: 3,
+      _onNativeResponse: [Function (anonymous)],
+      _currentRequest: [Circular *1],
+      _currentUrl: 'https://registry.npmjs.org/@23people%2Fthe-prompts-typescript',
+      _timeout: null,
+      [Symbol(shapeMode)]: true,
+      [Symbol(kCapture)]: false
+    },
+    [Symbol(shapeMode)]: false,
+    [Symbol(kCapture)]: false,
+    [Symbol(kBytesWritten)]: 0,
+    [Symbol(kNeedDrain)]: false,
+    [Symbol(corked)]: 0,
+    [Symbol(kOutHeaders)]: [Object: null prototype] {
+      accept: [Array],
+      'user-agent': [Array],
+      'accept-encoding': [Array],
+      host: [Array]
+    },
+    [Symbol(errored)]: null,
+    [Symbol(kHighWaterMark)]: 16384,
+    [Symbol(kRejectNonStandardBodyWrites)]: false,
+    [Symbol(kUniqueHeaders)]: null
+  },
+  response: {
+    status: 404,
+    statusText: 'Not Found',
+    headers: Object [AxiosHeaders] {
+      date: 'Fri, 24 Oct 2025 08:22:58 GMT',
+      'content-type': 'application/json',
+      'content-length': '21',
+      connection: 'keep-alive',
+      'cf-ray': '993811c22eb8df30-AMS',
+      vary: 'Accept-Encoding',
+      'set-cookie': [Array],
+      server: 'cloudflare'
+    },
+    config: {
+      transitional: [Object],
+      adapter: [Array],
+      transformRequest: [Array],
+      transformResponse: [Array],
+      timeout: 30000,
+      xsrfCookieName: 'XSRF-TOKEN',
+      xsrfHeaderName: 'X-XSRF-TOKEN',
+      maxContentLength: -1,
+      maxBodyLength: -1,
+      env: [Object],
+      validateStatus: [Function: validateStatus],
+      headers: [Object [AxiosHeaders]],
+      baseURL: 'https://registry.npmjs.org',
+      method: 'get',
+      url: '/@23people%2Fthe-prompts-typescript',
+      allowAbsoluteUrls: true,
+      data: undefined
+    },
+    request: <ref *1> ClientRequest {
+      _events: [Object: null prototype],
+      _eventsCount: 7,
+      _maxListeners: undefined,
+      outputData: [],
+      outputSize: 0,
+      writable: true,
+      destroyed: true,
+      _last: true,
+      chunkedEncoding: false,
+      shouldKeepAlive: true,
+      maxRequestsOnConnectionReached: false,
+      _defaultKeepAlive: true,
+      useChunkedEncodingByDefault: false,
+      sendDate: false,
+      _removedConnection: false,
+      _removedContLen: false,
+      _removedTE: false,
+      strictContentLength: false,
+      _contentLength: 0,
+      _hasBody: true,
+      _trailer: '',
+      finished: true,
+      _headerSent: true,
+      _closed: true,
+      socket: [TLSSocket],
+      _header: 'GET /@23people%2Fthe-prompts-typescript HTTP/1.1\r\n' +
+        'Accept: application/json\r\n' +
+        'User-Agent: xRegistry-NPM-Wrapper/1.0\r\n' +
+        'Accept-Encoding: gzip, compress, deflate, br\r\n' +
+        'Host: registry.npmjs.org\r\n' +
+        'Connection: keep-alive\r\n' +
+        '\r\n',
+      _keepAliveTimeout: 0,
+      _onPendingData: [Function: nop],
+      agent: [Agent],
+      socketPath: undefined,
+      method: 'GET',
+      maxHeaderSize: undefined,
+      insecureHTTPParser: undefined,
+      joinDuplicateHeaders: undefined,
+      path: '/@23people%2Fthe-prompts-typescript',
+      _ended: true,
+      res: [IncomingMessage],
+      aborted: false,
+      timeoutCb: null,
+      upgradeOrConnect: false,
+      parser: null,
+      maxHeadersCount: null,
+      reusedSocket: false,
+      host: 'registry.npmjs.org',
+      protocol: 'https:',
+      _redirectable: [Writable],
+      [Symbol(shapeMode)]: false,
+      [Symbol(kCapture)]: false,
+      [Symbol(kBytesWritten)]: 0,
+      [Symbol(kNeedDrain)]: false,
+      [Symbol(corked)]: 0,
+      [Symbol(kOutHeaders)]: [Object: null prototype],
+      [Symbol(errored)]: null,
+      [Symbol(kHighWaterMark)]: 16384,
+      [Symbol(kRejectNonStandardBodyWrites)]: false,
+      [Symbol(kUniqueHeaders)]: null
+    },
+    data: { error: 'Not found' }
+  },
+  status: 404
+}
+Server stdout: [INFO] Two-step filtering: Complete {
+  "originalCount": 3629880,
+  "nameFilteredCount": 10418,
+  "metadataFetchedCount": 100,
+  "finalResultCount": 69,
+  "totalDuration": 1242,
+  "metadataDuration": 1024
+}
+      Γ£ö should solve the original user request: Angular packages with CSS in description (1247ms)
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294177307_mn29nuhfg",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "statusCode": 200,
+  "responseTime": 1244,
+  "ip": "127.0.0.1"
+}
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294178555_a4b5z92j6",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+Server stdout: [DEBUG] Two-step filtering: Phase 1 (name) complete {
+  "originalCount": 3629880,
+  "nameFilteredCount": 194726,
+  "hasMetadataFilters": true,
+  "phase1Duration": 323
+}
+Server stderr: [WARN] Two-step filtering: Limited metadata fetches due to large result set {
+  "totalResults": 194726,
+  "limitedTo": 100,
+  "maxFetches": 100
+}
+Server stdout: [INFO] Two-step filtering: Complete {
+  "originalCount": 3629880,
+  "nameFilteredCount": 194726,
+  "metadataFetchedCount": 100,
+  "finalResultCount": 0,
+  "totalDuration": 473,
+  "metadataDuration": 150
+}
+      Γ£ö should find React packages by specific authors (477ms)
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294178555_a4b5z92j6",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "statusCode": 200,
+  "responseTime": 474,
+  "ip": "127.0.0.1"
+}
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294179033_ofe4hp2uw",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+Server stdout: [DEBUG] Two-step filtering: Phase 1 (name) complete {
+  "originalCount": 3629880,
+  "nameFilteredCount": 54542,
+  "hasMetadataFilters": true,
+  "phase1Duration": 296
+}
+Server stderr: [WARN] Two-step filtering: Limited metadata fetches due to large result set {
+  "totalResults": 54542,
+  "limitedTo": 100,
+  "maxFetches": 100
+}
+Server stderr: Failed to fetch package metadata for @_almahllawi/utils: AxiosError: Request failed with status code 404
+    at settle (C:\git\xregistry-package-registries\npm\node_modules\axios\dist\node\axios.cjs:2049:12)
+    at IncomingMessage.handleStreamEnd (C:\git\xregistry-package-registries\npm\node_modules\axios\dist\node\axios.cjs:3166:11)
+    at IncomingMessage.emit (node:events:536:35)
+    at endReadableNT (node:internal/streams/readable:1698:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:82:21)
+    at Axios.request (C:\git\xregistry-package-registries\npm\node_modules\axios\dist\node\axios.cjs:4276:41)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async NpmService.getPackageMetadata (C:\git\xregistry-package-registries\npm\dist\services\npm-service.js:49:30)
+    at async XRegistryServer.fetchPackageMetadata (C:\git\xregistry-package-registries\npm\dist\server.js:598:33)
+    at async FilterOptimizer.twoStepFilter (C:\git\xregistry-package-registries\shared\filter\index.js:499:26)
+    at async FilterOptimizer.optimizedFilter (C:\git\xregistry-package-registries\shared\filter\index.js:566:14)
+    at async XRegistryServer.handlePackageFilter (C:\git\xregistry-package-registries\npm\dist\server.js:648:41)
+    at async C:\git\xregistry-package-registries\npm\dist\server.js:336:43 {
+  code: 'ERR_BAD_REQUEST',
+  config: {
+    transitional: {
+      silentJSONParsing: true,
+      forcedJSONParsing: true,
+      clarifyTimeoutError: false
+    },
+    adapter: [ 'xhr', 'http', 'fetch' ],
+    transformRequest: [ [Function: transformRequest] ],
+    transformResponse: [ [Function: transformResponse] ],
+    timeout: 30000,
+    xsrfCookieName: 'XSRF-TOKEN',
+    xsrfHeaderName: 'X-XSRF-TOKEN',
+    maxContentLength: -1,
+    maxBodyLength: -1,
+    env: { FormData: [Function [FormData]], Blob: [class Blob] },
+    validateStatus: [Function: validateStatus],
+    headers: Object [AxiosHeaders] {
+      Accept: 'application/json',
+      'Content-Type': undefined,
+      'User-Agent': 'xRegistry-NPM-Wrapper/1.0',
+      'Accept-Encoding': 'gzip, compress, deflate, br'
+    },
+    baseURL: 'https://registry.npmjs.org',
+    method: 'get',
+    url: '/@_almahllawi%2Futils',
+    allowAbsoluteUrls: true,
+    data: undefined
+  },
+  request: <ref *1> ClientRequest {
+    _events: [Object: null prototype] {
+      abort: [Function (anonymous)],
+      aborted: [Function (anonymous)],
+      connect: [Function (anonymous)],
+      error: [Function (anonymous)],
+      socket: [Function (anonymous)],
+      timeout: [Function (anonymous)],
+      finish: [Function: requestOnFinish]
+    },
+    _eventsCount: 7,
+    _maxListeners: undefined,
+    outputData: [],
+    outputSize: 0,
+    writable: true,
+    destroyed: true,
+    _last: true,
+    chunkedEncoding: false,
+    shouldKeepAlive: true,
+    maxRequestsOnConnectionReached: false,
+    _defaultKeepAlive: true,
+    useChunkedEncodingByDefault: false,
+    sendDate: false,
+    _removedConnection: false,
+    _removedContLen: false,
+    _removedTE: false,
+    strictContentLength: false,
+    _contentLength: 0,
+    _hasBody: true,
+    _trailer: '',
+    finished: true,
+    _headerSent: true,
+    _closed: true,
+    socket: TLSSocket {
+      _tlsOptions: [Object],
+      _secureEstablished: true,
+      _securePending: false,
+      _newSessionPending: false,
+      _controlReleased: true,
+      secureConnecting: false,
+      _SNICallback: null,
+      servername: 'registry.npmjs.org',
+      alpnProtocol: false,
+      authorized: true,
+      authorizationError: null,
+      encrypted: true,
+      _events: [Object: null prototype],
+      _eventsCount: 9,
+      connecting: false,
+      _hadError: false,
+      _parent: null,
+      _host: 'registry.npmjs.org',
+      _closeAfterHandlingError: false,
+      _readableState: [ReadableState],
+      _writableState: [WritableState],
+      allowHalfOpen: false,
+      _maxListeners: undefined,
+      _sockname: null,
+      _pendingData: null,
+      _pendingEncoding: '',
+      server: undefined,
+      _server: null,
+      ssl: [TLSWrap],
+      _requestCert: true,
+      _rejectUnauthorized: true,
+      timeout: 5000,
+      parser: null,
+      _httpMessage: null,
+      autoSelectFamilyAttemptedAddresses: [Array],
+      [Symbol(alpncallback)]: null,
+      [Symbol(res)]: [TLSWrap],
+      [Symbol(verified)]: true,
+      [Symbol(pendingSession)]: null,
+      [Symbol(async_id_symbol)]: -1,
+      [Symbol(kHandle)]: [TLSWrap],
+      [Symbol(lastWriteQueueSize)]: 0,
+      [Symbol(timeout)]: Timeout {
+        _idleTimeout: 5000,
+        _idlePrev: [TimersList],
+        _idleNext: [TimersList],
+        _idleStart: 48731,
+        _onTimeout: [Function: bound ],
+        _timerArgs: undefined,
+        _repeat: null,
+        _destroyed: false,
+        [Symbol(refed)]: false,
+        [Symbol(kHasPrimitive)]: false,
+        [Symbol(asyncId)]: 1281,
+        [Symbol(triggerId)]: 1279
+      },
+      [Symbol(kBuffer)]: null,
+      [Symbol(kBufferCb)]: null,
+      [Symbol(kBufferGen)]: null,
+      [Symbol(shapeMode)]: true,
+      [Symbol(kCapture)]: false,
+      [Symbol(kSetNoDelay)]: false,
+      [Symbol(kSetKeepAlive)]: true,
+      [Symbol(kSetKeepAliveInitialDelay)]: 1,
+      [Symbol(kBytesRead)]: 0,
+      [Symbol(kBytesWritten)]: 0,
+      [Symbol(connect-options)]: [Object]
+    },
+    _header: 'GET /@_almahllawi%2Futils HTTP/1.1\r\n' +
+      'Accept: application/json\r\n' +
+      'User-Agent: xRegistry-NPM-Wrapper/1.0\r\n' +
+      'Accept-Encoding: gzip, compress, deflate, br\r\n' +
+      'Host: registry.npmjs.org\r\n' +
+      'Connection: keep-alive\r\n' +
+      '\r\n',
+    _keepAliveTimeout: 0,
+    _onPendingData: [Function: nop],
+    agent: Agent {
+      _events: [Object: null prototype],
+      _eventsCount: 2,
+      _maxListeners: undefined,
+      defaultPort: 443,
+      protocol: 'https:',
+      options: [Object: null prototype],
+      requests: [Object: null prototype] {},
+      sockets: [Object: null prototype] {},
+      freeSockets: [Object: null prototype],
+      keepAliveMsecs: 1000,
+      keepAlive: true,
+      maxSockets: Infinity,
+      maxFreeSockets: 256,
+      scheduling: 'lifo',
+      maxTotalSockets: Infinity,
+      totalSocketCount: 1,
+      maxCachedSessions: 100,
+      _sessionCache: [Object],
+      [Symbol(shapeMode)]: false,
+      [Symbol(kCapture)]: false
+    },
+    socketPath: undefined,
+    method: 'GET',
+    maxHeaderSize: undefined,
+    insecureHTTPParser: undefined,
+    joinDuplicateHeaders: undefined,
+    path: '/@_almahllawi%2Futils',
+    _ended: true,
+    res: IncomingMessage {
+      _events: [Object],
+      _readableState: [ReadableState],
+      _maxListeners: undefined,
+      socket: null,
+      httpVersionMajor: 1,
+      httpVersionMinor: 1,
+      httpVersion: '1.1',
+      complete: true,
+      rawHeaders: [Array],
+      rawTrailers: [],
+      joinDuplicateHeaders: undefined,
+      aborted: false,
+      upgrade: false,
+      url: '',
+      method: null,
+      statusCode: 404,
+      statusMessage: 'Not Found',
+      client: [TLSSocket],
+      _consuming: false,
+      _dumped: false,
+      req: [Circular *1],
+      _eventsCount: 4,
+      responseUrl: 'https://registry.npmjs.org/@_almahllawi%2Futils',
+      redirects: [],
+      [Symbol(shapeMode)]: true,
+      [Symbol(kCapture)]: false,
+      [Symbol(kHeaders)]: [Object],
+      [Symbol(kHeadersCount)]: 16,
+      [Symbol(kTrailers)]: null,
+      [Symbol(kTrailersCount)]: 0
+    },
+    aborted: false,
+    timeoutCb: null,
+    upgradeOrConnect: false,
+    parser: null,
+    maxHeadersCount: null,
+    reusedSocket: true,
+    host: 'registry.npmjs.org',
+    protocol: 'https:',
+    _redirectable: Writable {
+      _events: [Object],
+      _writableState: [WritableState],
+      _maxListeners: undefined,
+      _options: [Object],
+      _ended: true,
+      _ending: true,
+      _redirectCount: 0,
+      _redirects: [],
+      _requestBodyLength: 0,
+      _requestBodyBuffers: [],
+      _eventsCount: 3,
+      _onNativeResponse: [Function (anonymous)],
+      _currentRequest: [Circular *1],
+      _currentUrl: 'https://registry.npmjs.org/@_almahllawi%2Futils',
+      _timeout: null,
+      [Symbol(shapeMode)]: true,
+      [Symbol(kCapture)]: false
+    },
+    [Symbol(shapeMode)]: false,
+    [Symbol(kCapture)]: false,
+    [Symbol(kBytesWritten)]: 0,
+    [Symbol(kNeedDrain)]: false,
+    [Symbol(corked)]: 0,
+    [Symbol(kOutHeaders)]: [Object: null prototype] {
+      accept: [Array],
+      'user-agent': [Array],
+      'accept-encoding': [Array],
+      host: [Array]
+    },
+    [Symbol(errored)]: null,
+    [Symbol(kHighWaterMark)]: 16384,
+    [Symbol(kRejectNonStandardBodyWrites)]: false,
+    [Symbol(kUniqueHeaders)]: null
+  },
+  response: {
+    status: 404,
+    statusText: 'Not Found',
+    headers: Object [AxiosHeaders] {
+      date: 'Fri, 24 Oct 2025 08:23:00 GMT',
+      'content-type': 'application/json',
+      'content-length': '21',
+      connection: 'keep-alive',
+      'cf-ray': '993811ccddafdf30-AMS',
+      vary: 'Accept-Encoding',
+      'set-cookie': [Array],
+      server: 'cloudflare'
+    },
+    config: {
+      transitional: [Object],
+      adapter: [Array],
+      transformRequest: [Array],
+      transformResponse: [Array],
+      timeout: 30000,
+      xsrfCookieName: 'XSRF-TOKEN',
+      xsrfHeaderName: 'X-XSRF-TOKEN',
+      maxContentLength: -1,
+      maxBodyLength: -1,
+      env: [Object],
+      validateStatus: [Function: validateStatus],
+      headers: [Object [AxiosHeaders]],
+      baseURL: 'https://registry.npmjs.org',
+      method: 'get',
+      url: '/@_almahllawi%2Futils',
+      allowAbsoluteUrls: true,
+      data: undefined
+    },
+    request: <ref *1> ClientRequest {
+      _events: [Object: null prototype],
+      _eventsCount: 7,
+      _maxListeners: undefined,
+      outputData: [],
+      outputSize: 0,
+      writable: true,
+      destroyed: true,
+      _last: true,
+      chunkedEncoding: false,
+      shouldKeepAlive: true,
+      maxRequestsOnConnectionReached: false,
+      _defaultKeepAlive: true,
+      useChunkedEncodingByDefault: false,
+      sendDate: false,
+      _removedConnection: false,
+      _removedContLen: false,
+      _removedTE: false,
+      strictContentLength: false,
+      _contentLength: 0,
+      _hasBody: true,
+      _trailer: '',
+      finished: true,
+      _headerSent: true,
+      _closed: true,
+      socket: [TLSSocket],
+      _header: 'GET /@_almahllawi%2Futils HTTP/1.1\r\n' +
+        'Accept: application/json\r\n' +
+        'User-Agent: xRegistry-NPM-Wrapper/1.0\r\n' +
+        'Accept-Encoding: gzip, compress, deflate, br\r\n' +
+        'Host: registry.npmjs.org\r\n' +
+        'Connection: keep-alive\r\n' +
+        '\r\n',
+      _keepAliveTimeout: 0,
+      _onPendingData: [Function: nop],
+      agent: [Agent],
+      socketPath: undefined,
+      method: 'GET',
+      maxHeaderSize: undefined,
+      insecureHTTPParser: undefined,
+      joinDuplicateHeaders: undefined,
+      path: '/@_almahllawi%2Futils',
+      _ended: true,
+      res: [IncomingMessage],
+      aborted: false,
+      timeoutCb: null,
+      upgradeOrConnect: false,
+      parser: null,
+      maxHeadersCount: null,
+      reusedSocket: true,
+      host: 'registry.npmjs.org',
+      protocol: 'https:',
+      _redirectable: [Writable],
+      [Symbol(shapeMode)]: false,
+      [Symbol(kCapture)]: false,
+      [Symbol(kBytesWritten)]: 0,
+      [Symbol(kNeedDrain)]: false,
+      [Symbol(corked)]: 0,
+      [Symbol(kOutHeaders)]: [Object: null prototype],
+      [Symbol(errored)]: null,
+      [Symbol(kHighWaterMark)]: 16384,
+      [Symbol(kRejectNonStandardBodyWrites)]: false,
+      [Symbol(kUniqueHeaders)]: null
+    },
+    data: { error: 'Not found' }
+  },
+  status: 404
+}
+Server stderr: Failed to fetch package metadata for @06albert/string-utils: AxiosError: Request failed with status code 404
+    at settle (C:\git\xregistry-package-registries\npm\node_modules\axios\dist\node\axios.cjs:2049:12)
+    at IncomingMessage.handleStreamEnd (C:\git\xregistry-package-registries\npm\node_modules\axios\dist\node\axios.cjs:3166:11)
+    at IncomingMessage.emit (node:events:536:35)
+    at endReadableNT (node:internal/streams/readable:1698:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:82:21)
+    at Axios.request (C:\git\xregistry-package-registries\npm\node_modules\axios\dist\node\axios.cjs:4276:41)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async NpmService.getPackageMetadata (C:\git\xregistry-package-registries\npm\dist\services\npm-service.js:49:30)
+    at async XRegistryServer.fetchPackageMetadata (C:\git\xregistry-package-registries\npm\dist\server.js:598:33)
+    at async FilterOptimizer.twoStepFilter (C:\git\xregistry-package-registries\shared\filter\index.js:499:26)
+    at async FilterOptimizer.optimizedFilter (C:\git\xregistry-package-registries\shared\filter\index.js:566:14)
+    at async XRegistryServer.handlePackageFilter (C:\git\xregistry-package-registries\npm\dist\server.js:648:41)
+    at async C:\git\xregistry-package-registries\npm\dist\server.js:336:43 {
+  code: 'ERR_BAD_REQUEST',
+  config: {
+    transitional: {
+      silentJSONParsing: true,
+      forcedJSONParsing: true,
+      clarifyTimeoutError: false
+    },
+    adapter: [ 'xhr', 'http', 'fetch' ],
+    transformRequest: [ [Function: transformRequest] ],
+    transformResponse: [ [Function: transformResponse] ],
+    timeout: 30000,
+    xsrfCookieName: 'XSRF-TOKEN',
+    xsrfHeaderName: 'X-XSRF-TOKEN',
+    maxContentLength: -1,
+    maxBodyLength: -1,
+    env: { FormData: [Function [FormData]], Blob: [class Blob] },
+    validateStatus: [Function: validateStatus],
+    headers: Object [AxiosHeaders] {
+      Accept: 'application/json',
+      'Content-Type': undefined,
+      'User-Agent': 'xRegistry-NPM-Wrapper/1.0',
+      'Accept-Encoding': 'gzip, compress, deflate, br'
+    },
+    baseURL: 'https://registry.npmjs.org',
+    method: 'get',
+    url: '/@06albert%2Fstring-utils',
+    allowAbsoluteUrls: true,
+    data: undefined
+  },
+  request: <ref *1> ClientRequest {
+    _events: [Object: null prototype] {
+      abort: [Function (anonymous)],
+      aborted: [Function (anonymous)],
+      connect: [Function (anonymous)],
+      error: [Function (anonymous)],
+      socket: [Function (anonymous)],
+      timeout: [Function (anonymous)],
+      finish: [Function: requestOnFinish]
+    },
+    _eventsCount: 7,
+    _maxListeners: undefined,
+    outputData: [],
+    outputSize: 0,
+    writable: true,
+    destroyed: true,
+    _last: true,
+    chunkedEncoding: false,
+    shouldKeepAlive: true,
+    maxRequestsOnConnectionReached: false,
+    _defaultKeepAlive: true,
+    useChunkedEncodingByDefault: false,
+    sendDate: false,
+    _removedConnection: false,
+    _removedContLen: false,
+    _removedTE: false,
+    strictContentLength: false,
+    _contentLength: 0,
+    _hasBody: true,
+    _trailer: '',
+    finished: true,
+    _headerSent: true,
+    _closed: true,
+    socket: TLSSocket {
+      _tlsOptions: [Object],
+      _secureEstablished: true,
+      _securePending: false,
+      _newSessionPending: false,
+      _controlReleased: true,
+      secureConnecting: false,
+      _SNICallback: null,
+      servername: 'registry.npmjs.org',
+      alpnProtocol: false,
+      authorized: true,
+      authorizationError: null,
+      encrypted: true,
+      _events: [Object: null prototype],
+      _eventsCount: 9,
+      connecting: false,
+      _hadError: false,
+      _parent: null,
+      _host: 'registry.npmjs.org',
+      _closeAfterHandlingError: false,
+      _readableState: [ReadableState],
+      _writableState: [WritableState],
+      allowHalfOpen: false,
+      _maxListeners: undefined,
+      _sockname: null,
+      _pendingData: null,
+      _pendingEncoding: '',
+      server: undefined,
+      _server: null,
+      ssl: [TLSWrap],
+      _requestCert: true,
+      _rejectUnauthorized: true,
+      timeout: 5000,
+      parser: null,
+      _httpMessage: null,
+      autoSelectFamilyAttemptedAddresses: [Array],
+      [Symbol(alpncallback)]: null,
+      [Symbol(res)]: [TLSWrap],
+      [Symbol(verified)]: true,
+      [Symbol(pendingSession)]: null,
+      [Symbol(async_id_symbol)]: -1,
+      [Symbol(kHandle)]: [TLSWrap],
+      [Symbol(lastWriteQueueSize)]: 0,
+      [Symbol(timeout)]: Timeout {
+        _idleTimeout: 5000,
+        _idlePrev: [TimersList],
+        _idleNext: [TimersList],
+        _idleStart: 49566,
+        _onTimeout: [Function: bound ],
+        _timerArgs: undefined,
+        _repeat: null,
+        _destroyed: false,
+        [Symbol(refed)]: false,
+        [Symbol(kHasPrimitive)]: false,
+        [Symbol(asyncId)]: 1381,
+        [Symbol(triggerId)]: 1379
+      },
+      [Symbol(kBuffer)]: null,
+      [Symbol(kBufferCb)]: null,
+      [Symbol(kBufferGen)]: null,
+      [Symbol(shapeMode)]: true,
+      [Symbol(kCapture)]: false,
+      [Symbol(kSetNoDelay)]: false,
+      [Symbol(kSetKeepAlive)]: true,
+      [Symbol(kSetKeepAliveInitialDelay)]: 1,
+      [Symbol(kBytesRead)]: 0,
+      [Symbol(kBytesWritten)]: 0,
+      [Symbol(connect-options)]: [Object]
+    },
+    _header: 'GET /@06albert%2Fstring-utils HTTP/1.1\r\n' +
+      'Accept: application/json\r\n' +
+      'User-Agent: xRegistry-NPM-Wrapper/1.0\r\n' +
+      'Accept-Encoding: gzip, compress, deflate, br\r\n' +
+      'Host: registry.npmjs.org\r\n' +
+      'Connection: keep-alive\r\n' +
+      '\r\n',
+    _keepAliveTimeout: 0,
+    _onPendingData: [Function: nop],
+    agent: Agent {
+      _events: [Object: null prototype],
+      _eventsCount: 2,
+      _maxListeners: undefined,
+      defaultPort: 443,
+      protocol: 'https:',
+      options: [Object: null prototype],
+      requests: [Object: null prototype] {},
+      sockets: [Object: null prototype] {},
+      freeSockets: [Object: null prototype],
+      keepAliveMsecs: 1000,
+      keepAlive: true,
+      maxSockets: Infinity,
+      maxFreeSockets: 256,
+      scheduling: 'lifo',
+      maxTotalSockets: Infinity,
+      totalSocketCount: 1,
+      maxCachedSessions: 100,
+      _sessionCache: [Object],
+      [Symbol(shapeMode)]: false,
+      [Symbol(kCapture)]: false
+    },
+    socketPath: undefined,
+    method: 'GET',
+    maxHeaderSize: undefined,
+    insecureHTTPParser: undefined,
+    joinDuplicateHeaders: undefined,
+    path: '/@06albert%2Fstring-utils',
+    _ended: true,
+    res: IncomingMessage {
+      _events: [Object],
+      _readableState: [ReadableState],
+      _maxListeners: undefined,
+      socket: null,
+      httpVersionMajor: 1,
+      httpVersionMinor: 1,
+      httpVersion: '1.1',
+      complete: true,
+      rawHeaders: [Array],
+      rawTrailers: [],
+      joinDuplicateHeaders: undefined,
+      aborted: false,
+      upgrade: false,
+      url: '',
+      method: null,
+      statusCode: 404,
+      statusMessage: 'Not Found',
+      client: [TLSSocket],
+      _consuming: false,
+      _dumped: false,
+      req: [Circular *1],
+      _eventsCount: 4,
+      responseUrl: 'https://registry.npmjs.org/@06albert%2Fstring-utils',
+      redirects: [],
+      [Symbol(shapeMode)]: true,
+      [Symbol(kCapture)]: false,
+      [Symbol(kHeaders)]: [Object],
+      [Symbol(kHeadersCount)]: 16,
+      [Symbol(kTrailers)]: null,
+      [Symbol(kTrailersCount)]: 0
+    },
+    aborted: false,
+    timeoutCb: null,
+    upgradeOrConnect: false,
+    parser: null,
+    maxHeadersCount: null,
+    reusedSocket: true,
+    host: 'registry.npmjs.org',
+    protocol: 'https:',
+    _redirectable: Writable {
+      _events: [Object],
+      _writableState: [WritableState],
+      _maxListeners: undefined,
+      _options: [Object],
+      _ended: true,
+      _ending: true,
+      _redirectCount: 0,
+      _redirects: [],
+      _requestBodyLength: 0,
+      _requestBodyBuffers: [],
+      _eventsCount: 3,
+      _onNativeResponse: [Function (anonymous)],
+      _currentRequest: [Circular *1],
+      _currentUrl: 'https://registry.npmjs.org/@06albert%2Fstring-utils',
+      _timeout: null,
+      [Symbol(shapeMode)]: true,
+      [Symbol(kCapture)]: false
+    },
+    [Symbol(shapeMode)]: false,
+    [Symbol(kCapture)]: false,
+    [Symbol(kBytesWritten)]: 0,
+    [Symbol(kNeedDrain)]: false,
+    [Symbol(corked)]: 0,
+    [Symbol(kOutHeaders)]: [Object: null prototype] {
+      accept: [Array],
+      'user-agent': [Array],
+      'accept-encoding': [Array],
+      host: [Array]
+    },
+    [Symbol(errored)]: null,
+    [Symbol(kHighWaterMark)]: 16384,
+    [Symbol(kRejectNonStandardBodyWrites)]: false,
+    [Symbol(kUniqueHeaders)]: null
+  },
+  response: {
+    status: 404,
+    statusText: 'Not Found',
+    headers: Object [AxiosHeaders] {
+      date: 'Fri, 24 Oct 2025 08:23:00 GMT',
+      'content-type': 'application/json',
+      'content-length': '21',
+      connection: 'keep-alive',
+      'cf-ray': '993811d1bf5cdf30-AMS',
+      vary: 'Accept-Encoding',
+      'set-cookie': [Array],
+      server: 'cloudflare'
+    },
+    config: {
+      transitional: [Object],
+      adapter: [Array],
+      transformRequest: [Array],
+      transformResponse: [Array],
+      timeout: 30000,
+      xsrfCookieName: 'XSRF-TOKEN',
+      xsrfHeaderName: 'X-XSRF-TOKEN',
+      maxContentLength: -1,
+      maxBodyLength: -1,
+      env: [Object],
+      validateStatus: [Function: validateStatus],
+      headers: [Object [AxiosHeaders]],
+      baseURL: 'https://registry.npmjs.org',
+      method: 'get',
+      url: '/@06albert%2Fstring-utils',
+      allowAbsoluteUrls: true,
+      data: undefined
+    },
+    request: <ref *1> ClientRequest {
+      _events: [Object: null prototype],
+      _eventsCount: 7,
+      _maxListeners: undefined,
+      outputData: [],
+      outputSize: 0,
+      writable: true,
+      destroyed: true,
+      _last: true,
+      chunkedEncoding: false,
+      shouldKeepAlive: true,
+      maxRequestsOnConnectionReached: false,
+      _defaultKeepAlive: true,
+      useChunkedEncodingByDefault: false,
+      sendDate: false,
+      _removedConnection: false,
+      _removedContLen: false,
+      _removedTE: false,
+      strictContentLength: false,
+      _contentLength: 0,
+      _hasBody: true,
+      _trailer: '',
+      finished: true,
+      _headerSent: true,
+      _closed: true,
+      socket: [TLSSocket],
+      _header: 'GET /@06albert%2Fstring-utils HTTP/1.1\r\n' +
+        'Accept: application/json\r\n' +
+        'User-Agent: xRegistry-NPM-Wrapper/1.0\r\n' +
+        'Accept-Encoding: gzip, compress, deflate, br\r\n' +
+        'Host: registry.npmjs.org\r\n' +
+        'Connection: keep-alive\r\n' +
+        '\r\n',
+      _keepAliveTimeout: 0,
+      _onPendingData: [Function: nop],
+      agent: [Agent],
+      socketPath: undefined,
+      method: 'GET',
+      maxHeaderSize: undefined,
+      insecureHTTPParser: undefined,
+      joinDuplicateHeaders: undefined,
+      path: '/@06albert%2Fstring-utils',
+      _ended: true,
+      res: [IncomingMessage],
+      aborted: false,
+      timeoutCb: null,
+      upgradeOrConnect: false,
+      parser: null,
+      maxHeadersCount: null,
+      reusedSocket: true,
+      host: 'registry.npmjs.org',
+      protocol: 'https:',
+      _redirectable: [Writable],
+      [Symbol(shapeMode)]: false,
+      [Symbol(kCapture)]: false,
+      [Symbol(kBytesWritten)]: 0,
+      [Symbol(kNeedDrain)]: false,
+      [Symbol(corked)]: 0,
+      [Symbol(kOutHeaders)]: [Object: null prototype],
+      [Symbol(errored)]: null,
+      [Symbol(kHighWaterMark)]: 16384,
+      [Symbol(kRejectNonStandardBodyWrites)]: false,
+      [Symbol(kUniqueHeaders)]: null
+    },
+    data: { error: 'Not found' }
+  },
+  status: 404
+}
+Server stdout: [INFO] Two-step filtering: Complete {
+  "originalCount": 3629880,
+  "nameFilteredCount": 54542,
+  "metadataFetchedCount": 100,
+  "finalResultCount": 40,
+  "totalDuration": 1998,
+  "metadataDuration": 1702
+}
+      3) should filter by license type with metadata enrichment
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294179033_ofe4hp2uw",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "statusCode": 200,
+  "responseTime": 1999,
+  "ip": "127.0.0.1"
+}
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294181036_evc8tp78c",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+Server stdout: [DEBUG] Two-step filtering: Phase 1 (name) complete {
+  "originalCount": 3629880,
+  "nameFilteredCount": 10418,
+  "hasMetadataFilters": true,
+  "phase1Duration": 218
+}
+Server stderr: [WARN] Two-step filtering: Limited metadata fetches due to large result set {
+  "totalResults": 10418,
+  "limitedTo": 100,
+  "maxFetches": 100
+}
+Server stderr: Failed to fetch package metadata for @23people/the-prompts-typescript: AxiosError: Request failed with status code 404
+    at settle (C:\git\xregistry-package-registries\npm\node_modules\axios\dist\node\axios.cjs:2049:12)
+    at IncomingMessage.handleStreamEnd (C:\git\xregistry-package-registries\npm\node_modules\axios\dist\node\axios.cjs:3166:11)
+    at IncomingMessage.emit (node:events:536:35)
+    at endReadableNT (node:internal/streams/readable:1698:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:82:21)
+    at Axios.request (C:\git\xregistry-package-registries\npm\node_modules\axios\dist\node\axios.cjs:4276:41)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async NpmService.getPackageMetadata (C:\git\xregistry-package-registries\npm\dist\services\npm-service.js:49:30)
+    at async XRegistryServer.fetchPackageMetadata (C:\git\xregistry-package-registries\npm\dist\server.js:598:33)
+    at async FilterOptimizer.twoStepFilter (C:\git\xregistry-package-registries\shared\filter\index.js:499:26)
+    at async FilterOptimizer.optimizedFilter (C:\git\xregistry-package-registries\shared\filter\index.js:566:14)
+    at async XRegistryServer.handlePackageFilter (C:\git\xregistry-package-registries\npm\dist\server.js:648:41)
+    at async C:\git\xregistry-package-registries\npm\dist\server.js:336:43 {
+  code: 'ERR_BAD_REQUEST',
+  config: {
+    transitional: {
+      silentJSONParsing: true,
+      forcedJSONParsing: true,
+      clarifyTimeoutError: false
+    },
+    adapter: [ 'xhr', 'http', 'fetch' ],
+    transformRequest: [ [Function: transformRequest] ],
+    transformResponse: [ [Function: transformResponse] ],
+    timeout: 30000,
+    xsrfCookieName: 'XSRF-TOKEN',
+    xsrfHeaderName: 'X-XSRF-TOKEN',
+    maxContentLength: -1,
+    maxBodyLength: -1,
+    env: { FormData: [Function [FormData]], Blob: [class Blob] },
+    validateStatus: [Function: validateStatus],
+    headers: Object [AxiosHeaders] {
+      Accept: 'application/json',
+      'Content-Type': undefined,
+      'User-Agent': 'xRegistry-NPM-Wrapper/1.0',
+      'Accept-Encoding': 'gzip, compress, deflate, br'
+    },
+    baseURL: 'https://registry.npmjs.org',
+    method: 'get',
+    url: '/@23people%2Fthe-prompts-typescript',
+    allowAbsoluteUrls: true,
+    data: undefined
+  },
+  request: <ref *1> ClientRequest {
+    _events: [Object: null prototype] {
+      abort: [Function (anonymous)],
+      aborted: [Function (anonymous)],
+      connect: [Function (anonymous)],
+      error: [Function (anonymous)],
+      socket: [Function (anonymous)],
+      timeout: [Function (anonymous)],
+      finish: [Function: requestOnFinish]
+    },
+    _eventsCount: 7,
+    _maxListeners: undefined,
+    outputData: [],
+    outputSize: 0,
+    writable: true,
+    destroyed: true,
+    _last: true,
+    chunkedEncoding: false,
+    shouldKeepAlive: true,
+    maxRequestsOnConnectionReached: false,
+    _defaultKeepAlive: true,
+    useChunkedEncodingByDefault: false,
+    sendDate: false,
+    _removedConnection: false,
+    _removedContLen: false,
+    _removedTE: false,
+    strictContentLength: false,
+    _contentLength: 0,
+    _hasBody: true,
+    _trailer: '',
+    finished: true,
+    _headerSent: true,
+    _closed: true,
+    socket: TLSSocket {
+      _tlsOptions: [Object],
+      _secureEstablished: true,
+      _securePending: false,
+      _newSessionPending: false,
+      _controlReleased: true,
+      secureConnecting: false,
+      _SNICallback: null,
+      servername: 'registry.npmjs.org',
+      alpnProtocol: false,
+      authorized: true,
+      authorizationError: null,
+      encrypted: true,
+      _events: [Object: null prototype],
+      _eventsCount: 9,
+      connecting: false,
+      _hadError: false,
+      _parent: null,
+      _host: 'registry.npmjs.org',
+      _closeAfterHandlingError: false,
+      _readableState: [ReadableState],
+      _writableState: [WritableState],
+      allowHalfOpen: false,
+      _maxListeners: undefined,
+      _sockname: null,
+      _pendingData: null,
+      _pendingEncoding: '',
+      server: undefined,
+      _server: null,
+      ssl: [TLSWrap],
+      _requestCert: true,
+      _rejectUnauthorized: true,
+      timeout: 5000,
+      parser: null,
+      _httpMessage: null,
+      autoSelectFamilyAttemptedAddresses: [Array],
+      [Symbol(alpncallback)]: null,
+      [Symbol(res)]: [TLSWrap],
+      [Symbol(verified)]: true,
+      [Symbol(pendingSession)]: null,
+      [Symbol(async_id_symbol)]: -1,
+      [Symbol(kHandle)]: [TLSWrap],
+      [Symbol(lastWriteQueueSize)]: 0,
+      [Symbol(timeout)]: Timeout {
+        _idleTimeout: 5000,
+        _idlePrev: [TimersList],
+        _idleNext: [TimersList],
+        _idleStart: 50180,
+        _onTimeout: [Function: bound ],
+        _timerArgs: undefined,
+        _repeat: null,
+        _destroyed: false,
+        [Symbol(refed)]: false,
+        [Symbol(kHasPrimitive)]: false,
+        [Symbol(asyncId)]: 1924,
+        [Symbol(triggerId)]: 1922
+      },
+      [Symbol(kBuffer)]: null,
+      [Symbol(kBufferCb)]: null,
+      [Symbol(kBufferGen)]: null,
+      [Symbol(shapeMode)]: true,
+      [Symbol(kCapture)]: false,
+      [Symbol(kSetNoDelay)]: false,
+      [Symbol(kSetKeepAlive)]: true,
+      [Symbol(kSetKeepAliveInitialDelay)]: 1,
+      [Symbol(kBytesRead)]: 0,
+      [Symbol(kBytesWritten)]: 0,
+      [Symbol(connect-options)]: [Object]
+    },
+    _header: 'GET /@23people%2Fthe-prompts-typescript HTTP/1.1\r\n' +
+      'Accept: application/json\r\n' +
+      'User-Agent: xRegistry-NPM-Wrapper/1.0\r\n' +
+      'Accept-Encoding: gzip, compress, deflate, br\r\n' +
+      'Host: registry.npmjs.org\r\n' +
+      'Connection: keep-alive\r\n' +
+      '\r\n',
+    _keepAliveTimeout: 0,
+    _onPendingData: [Function: nop],
+    agent: Agent {
+      _events: [Object: null prototype],
+      _eventsCount: 2,
+      _maxListeners: undefined,
+      defaultPort: 443,
+      protocol: 'https:',
+      options: [Object: null prototype],
+      requests: [Object: null prototype] {},
+      sockets: [Object: null prototype] {},
+      freeSockets: [Object: null prototype],
+      keepAliveMsecs: 1000,
+      keepAlive: true,
+      maxSockets: Infinity,
+      maxFreeSockets: 256,
+      scheduling: 'lifo',
+      maxTotalSockets: Infinity,
+      totalSocketCount: 1,
+      maxCachedSessions: 100,
+      _sessionCache: [Object],
+      [Symbol(shapeMode)]: false,
+      [Symbol(kCapture)]: false
+    },
+    socketPath: undefined,
+    method: 'GET',
+    maxHeaderSize: undefined,
+    insecureHTTPParser: undefined,
+    joinDuplicateHeaders: undefined,
+    path: '/@23people%2Fthe-prompts-typescript',
+    _ended: true,
+    res: IncomingMessage {
+      _events: [Object],
+      _readableState: [ReadableState],
+      _maxListeners: undefined,
+      socket: null,
+      httpVersionMajor: 1,
+      httpVersionMinor: 1,
+      httpVersion: '1.1',
+      complete: true,
+      rawHeaders: [Array],
+      rawTrailers: [],
+      joinDuplicateHeaders: undefined,
+      aborted: false,
+      upgrade: false,
+      url: '',
+      method: null,
+      statusCode: 404,
+      statusMessage: 'Not Found',
+      client: [TLSSocket],
+      _consuming: false,
+      _dumped: false,
+      req: [Circular *1],
+      _eventsCount: 4,
+      responseUrl: 'https://registry.npmjs.org/@23people%2Fthe-prompts-typescript',
+      redirects: [],
+      [Symbol(shapeMode)]: true,
+      [Symbol(kCapture)]: false,
+      [Symbol(kHeaders)]: [Object],
+      [Symbol(kHeadersCount)]: 16,
+      [Symbol(kTrailers)]: null,
+      [Symbol(kTrailersCount)]: 0
+    },
+    aborted: false,
+    timeoutCb: null,
+    upgradeOrConnect: false,
+    parser: null,
+    maxHeadersCount: null,
+    reusedSocket: true,
+    host: 'registry.npmjs.org',
+    protocol: 'https:',
+    _redirectable: Writable {
+      _events: [Object],
+      _writableState: [WritableState],
+      _maxListeners: undefined,
+      _options: [Object],
+      _ended: true,
+      _ending: true,
+      _redirectCount: 0,
+      _redirects: [],
+      _requestBodyLength: 0,
+      _requestBodyBuffers: [],
+      _eventsCount: 3,
+      _onNativeResponse: [Function (anonymous)],
+      _currentRequest: [Circular *1],
+      _currentUrl: 'https://registry.npmjs.org/@23people%2Fthe-prompts-typescript',
+      _timeout: null,
+      [Symbol(shapeMode)]: true,
+      [Symbol(kCapture)]: false
+    },
+    [Symbol(shapeMode)]: false,
+    [Symbol(kCapture)]: false,
+    [Symbol(kBytesWritten)]: 0,
+    [Symbol(kNeedDrain)]: false,
+    [Symbol(corked)]: 0,
+    [Symbol(kOutHeaders)]: [Object: null prototype] {
+      accept: [Array],
+      'user-agent': [Array],
+      'accept-encoding': [Array],
+      host: [Array]
+    },
+    [Symbol(errored)]: null,
+    [Symbol(kHighWaterMark)]: 16384,
+    [Symbol(kRejectNonStandardBodyWrites)]: false,
+    [Symbol(kUniqueHeaders)]: null
+  },
+  response: {
+    status: 404,
+    statusText: 'Not Found',
+    headers: Object [AxiosHeaders] {
+      date: 'Fri, 24 Oct 2025 08:23:01 GMT',
+      'content-type': 'application/json',
+      'content-length': '21',
+      connection: 'keep-alive',
+      'cf-ray': '993811d90e26df30-AMS',
+      vary: 'Accept-Encoding',
+      'set-cookie': [Array],
+      server: 'cloudflare'
+    },
+    config: {
+      transitional: [Object],
+      adapter: [Array],
+      transformRequest: [Array],
+      transformResponse: [Array],
+      timeout: 30000,
+      xsrfCookieName: 'XSRF-TOKEN',
+      xsrfHeaderName: 'X-XSRF-TOKEN',
+      maxContentLength: -1,
+      maxBodyLength: -1,
+      env: [Object],
+      validateStatus: [Function: validateStatus],
+      headers: [Object [AxiosHeaders]],
+      baseURL: 'https://registry.npmjs.org',
+      method: 'get',
+      url: '/@23people%2Fthe-prompts-typescript',
+      allowAbsoluteUrls: true,
+      data: undefined
+    },
+    request: <ref *1> ClientRequest {
+      _events: [Object: null prototype],
+      _eventsCount: 7,
+      _maxListeners: undefined,
+      outputData: [],
+      outputSize: 0,
+      writable: true,
+      destroyed: true,
+      _last: true,
+      chunkedEncoding: false,
+      shouldKeepAlive: true,
+      maxRequestsOnConnectionReached: false,
+      _defaultKeepAlive: true,
+      useChunkedEncodingByDefault: false,
+      sendDate: false,
+      _removedConnection: false,
+      _removedContLen: false,
+      _removedTE: false,
+      strictContentLength: false,
+      _contentLength: 0,
+      _hasBody: true,
+      _trailer: '',
+      finished: true,
+      _headerSent: true,
+      _closed: true,
+      socket: [TLSSocket],
+      _header: 'GET /@23people%2Fthe-prompts-typescript HTTP/1.1\r\n' +
+        'Accept: application/json\r\n' +
+        'User-Agent: xRegistry-NPM-Wrapper/1.0\r\n' +
+        'Accept-Encoding: gzip, compress, deflate, br\r\n' +
+        'Host: registry.npmjs.org\r\n' +
+        'Connection: keep-alive\r\n' +
+        '\r\n',
+      _keepAliveTimeout: 0,
+      _onPendingData: [Function: nop],
+      agent: [Agent],
+      socketPath: undefined,
+      method: 'GET',
+      maxHeaderSize: undefined,
+      insecureHTTPParser: undefined,
+      joinDuplicateHeaders: undefined,
+      path: '/@23people%2Fthe-prompts-typescript',
+      _ended: true,
+      res: [IncomingMessage],
+      aborted: false,
+      timeoutCb: null,
+      upgradeOrConnect: false,
+      parser: null,
+      maxHeadersCount: null,
+      reusedSocket: true,
+      host: 'registry.npmjs.org',
+      protocol: 'https:',
+      _redirectable: [Writable],
+      [Symbol(shapeMode)]: false,
+      [Symbol(kCapture)]: false,
+      [Symbol(kBytesWritten)]: 0,
+      [Symbol(kNeedDrain)]: false,
+      [Symbol(corked)]: 0,
+      [Symbol(kOutHeaders)]: [Object: null prototype],
+      [Symbol(errored)]: null,
+      [Symbol(kHighWaterMark)]: 16384,
+      [Symbol(kRejectNonStandardBodyWrites)]: false,
+      [Symbol(kUniqueHeaders)]: null
+    },
+    data: { error: 'Not found' }
+  },
+  status: 404
+}
+Server stdout: [INFO] Two-step filtering: Complete {
+  "originalCount": 3629880,
+  "nameFilteredCount": 10418,
+  "metadataFetchedCount": 100,
+  "finalResultCount": 69,
+  "totalDuration": 633,
+  "metadataDuration": 415
+}
+      Γ£ö should handle TypeScript-related queries (638ms)
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294181036_evc8tp78c",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "statusCode": 200,
+  "responseTime": 634,
+  "ip": "127.0.0.1"
+}
+    Performance Characteristics
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294181675_ah3f4dtbd",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294181675_ah3f4dtbd",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "statusCode": 200,
+  "responseTime": 279,
+  "ip": "127.0.0.1"
+}
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294181957_w3y88pom2",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+Server stdout: [DEBUG] Two-step filtering: Phase 1 (name) complete {
+  "originalCount": 3629880,
+  "nameFilteredCount": 19459,
+  "hasMetadataFilters": true,
+  "phase1Duration": 240
+}
+Server stderr: [WARN] Two-step filtering: Limited metadata fetches due to large result set {
+  "totalResults": 19459,
+  "limitedTo": 100,
+  "maxFetches": 100
+}
+Server stdout: [INFO] Two-step filtering: Complete {
+  "originalCount": 3629880,
+  "nameFilteredCount": 19459,
+  "metadataFetchedCount": 100,
+  "finalResultCount": 3,
+  "totalDuration": 399,
+  "metadataDuration": 159
+}
+      Γ£ö should demonstrate performance difference between name-only and two-step filtering (686ms)
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294181957_w3y88pom2",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "statusCode": 200,
+  "responseTime": 401,
+  "ip": "127.0.0.1"
+}
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294182361_vvb8inzxv",
+  "method": "GET",
+  "path": "/performance/stats",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+      Γ£ö should respect metadata fetch limits
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294182361_vvb8inzxv",
+  "method": "GET",
+  "path": "/performance/stats",
+  "statusCode": 200,
+  "responseTime": 0,
+  "ip": "127.0.0.1"
+}
+    Error Handling and Edge Cases
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294182364_ipo7fg4wo",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+Server stdout: [DEBUG] Two-step filtering: Phase 1 (name) complete {
+  "originalCount": 3629880,
+  "nameFilteredCount": 0,
+  "hasMetadataFilters": true,
+  "phase1Duration": 212
+}
+Server stdout: [INFO] Two-step filtering: Complete {
+  "originalCount": 3629880,
+  "nameFilteredCount": 0,
+  "metadataFetchedCount": 0,
+  "finalResultCount": 0,
+  "totalDuration": 212,
+  "metadataDuration": 0
+}
+      Γ£ö should handle missing metadata gracefully (215ms)
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294182364_ipo7fg4wo",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "statusCode": 200,
+  "responseTime": 213,
+  "ip": "127.0.0.1"
+}
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294182580_mf96zdafx",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+      Γ£ö should require name filter for metadata filtering
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294182580_mf96zdafx",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "statusCode": 200,
+  "responseTime": 1,
+  "ip": "127.0.0.1"
+}
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294182583_kydflmh58",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294182583_kydflmh58",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "statusCode": 200,
+  "responseTime": 1,
+  "ip": "127.0.0.1"
+}
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294182585_gcgrobvsk",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294182585_gcgrobvsk",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "statusCode": 200,
+  "responseTime": 1,
+  "ip": "127.0.0.1"
+}
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294182588_1yuqjxzt0",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+Server stdout: [DEBUG] Two-step filtering: Phase 1 (name) complete {
+  "originalCount": 3629880,
+  "nameFilteredCount": 1,
+  "hasMetadataFilters": true,
+  "phase1Duration": 1
+}
+Server stdout: [INFO] Two-step filtering: Complete {
+  "originalCount": 3629880,
+  "nameFilteredCount": 1,
+  "metadataFetchedCount": 1,
+  "finalResultCount": 0,
+  "totalDuration": 2,
+  "metadataDuration": 1
+}
+      Γ£ö should handle invalid filter expressions gracefully
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294182588_1yuqjxzt0",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "statusCode": 200,
+  "responseTime": 3,
+  "ip": "127.0.0.1"
+}
+    xRegistry Compliance
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294182593_ewu9qbbo4",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294182593_ewu9qbbo4",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "statusCode": 200,
+  "responseTime": 1,
+  "ip": "127.0.0.1"
+}
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294182596_prwux3nsv",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294182596_prwux3nsv",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "statusCode": 200,
+  "responseTime": 473,
+  "ip": "127.0.0.1"
+}
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294183072_jljkzba8e",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294183072_jljkzba8e",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "statusCode": 200,
+  "responseTime": 1,
+  "ip": "127.0.0.1"
+}
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294183075_6bkj9c3mg",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+      Γ£ö should support all xRegistry filter operators (3302ms)
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294183075_6bkj9c3mg",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "statusCode": 200,
+  "responseTime": 2819,
+  "ip": "127.0.0.1"
+}
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294185897_9enjlkpyb",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+      Γ£ö should handle multiple filter expressions (OR logic)
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294185897_9enjlkpyb",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "statusCode": 200,
+  "responseTime": 1,
+  "ip": "127.0.0.1"
+}
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294185901_l5eackzh4",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294185901_l5eackzh4",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "statusCode": 200,
+  "responseTime": 1,
+  "ip": "127.0.0.1"
+}
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294185904_4rei4wfke",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294185904_4rei4wfke",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "statusCode": 200,
+  "responseTime": 0,
+  "ip": "127.0.0.1"
+}
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294185906_4j4br7hlr",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+      Γ£ö should not accept filters without name constraint
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294185906_4j4br7hlr",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "statusCode": 200,
+  "responseTime": 0,
+  "ip": "127.0.0.1"
+}
+    Integration with existing features
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294185910_fg1u2vr3p",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+Server stdout: [DEBUG] Two-step filtering: Phase 1 (name) complete {
+  "originalCount": 3629880,
+  "nameFilteredCount": 194726,
+  "hasMetadataFilters": true,
+  "phase1Duration": 286
+}
+Server stderr: [WARN] Two-step filtering: Limited metadata fetches due to large result set {
+  "totalResults": 194726,
+  "limitedTo": 100,
+  "maxFetches": 100
+}
+Server stdout: [INFO] Two-step filtering: Complete {
+  "originalCount": 3629880,
+  "nameFilteredCount": 194726,
+  "metadataFetchedCount": 100,
+  "finalResultCount": 66,
+  "totalDuration": 447,
+  "metadataDuration": 160
+}
+      Γ£ö should work with pagination (451ms)
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294185910_fg1u2vr3p",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "statusCode": 200,
+  "responseTime": 448,
+  "ip": "127.0.0.1"
+}
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294186361_vr75kwiks",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+      Γ£ö should work with sorting (301ms)
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294186361_vr75kwiks",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "statusCode": 200,
+  "responseTime": 298,
+  "ip": "127.0.0.1"
+}
+Server stdout: [INFO] Incoming request {
+  "requestId": "req_1761294186663_wnyilzisb",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "ip": "127.0.0.1",
+  "userAgent": "axios/1.9.0"
+}
+      Γ£ö should work with inline flags
+Server stdout: [INFO] Request completed {
+  "requestId": "req_1761294186663_wnyilzisb",
+  "method": "GET",
+  "path": "/noderegistries/npmjs.org/packages",
+  "statusCode": 200,
+  "responseTime": 1,
+  "ip": "127.0.0.1"
+}
+Stopping server...
+Server stopped
+
+
+  47 passing (2m)
+  3 failing
+
+  1) Basic Server Functionality
+       Package Operations
+         should handle scoped package encoding correctly:
+
+      AssertionError: expected { name: '@types/node', ΓÇª(15) } to have property 'packageid' of '@types~node', but got '@types/node'
+      + expected - actual
+
+      -@types/node
+      +@types~node
+      
+      at Context.<anonymous> (npm\basic-server.test.js:316:39)
+      at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+
+  2) Basic Server Functionality
+       Sort Flag
+         should sort packages by packageid descending:
+
+      AssertionError: expected +0 to be above +0
+      + expected - actual
+
+
+      at Context.<anonymous> (npm\basic-server.test.js:474:41)
+      at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+
+  3) NPM Two-Step Filtering
+       Two-Step Filtering (Metadata Enrichment)
+         should filter by license type with metadata enrichment:
+     AssertionError: expected { name: '@01/core-utils', ΓÇª(11) } to have property 'description'
+      at C:\git\xregistry-package-registries\test\npm\two-step-filtering.test.js:374:29
+      at Array.forEach (<anonymous>)
+      at Context.<anonymous> (npm\two-step-filtering.test.js:367:20)
+      at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+
+
+

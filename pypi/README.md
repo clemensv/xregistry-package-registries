@@ -117,12 +117,12 @@ The helper scripts build the Docker image and run the container with one command
 
 The server supports several configuration options that can be set with environment variables:
 
-| Environment Variable | Description | Default |
-|---------------------|-------------|---------|
-| `XREGISTRY_PYPI_PORT` | Port inside the container to run the server on | 3000 |
-| `XREGISTRY_PYPI_LOG` | Path to log file (inside container) | None |
-| `XREGISTRY_PYPI_QUIET` | Set to 'true' to disable console logging | false |
-| `XREGISTRY_PYPI_BASEURL` | Base URL for all links in responses | Auto-detected |
+| Environment Variable     | Description                                    | Default       |
+| ------------------------ | ---------------------------------------------- | ------------- |
+| `XREGISTRY_PYPI_PORT`    | Port inside the container to run the server on | 3000          |
+| `XREGISTRY_PYPI_LOG`     | Path to log file (inside container)            | None          |
+| `XREGISTRY_PYPI_QUIET`   | Set to 'true' to disable console logging       | false         |
+| `XREGISTRY_PYPI_BASEURL` | Base URL for all links in responses            | Auto-detected |
 
 ### Manual Docker Commands
 

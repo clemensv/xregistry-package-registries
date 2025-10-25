@@ -46,7 +46,7 @@ export const MAVEN_REGISTRY = {
  */
 export const MAVEN_INDEX_CONFIG = {
     DIR_NAME: 'maven-index-cache',
-    DIR: path.join(process.cwd(), 'maven-index-cache'),
+    DIR: path.join(__dirname, '../../maven-index-cache'),
     GZ_FILE: 'nexus-maven-repository-index.gz',
     LUCENE_DIR_NAME: 'central-lucene-index',
     GA_LIST_FILE_NAME: 'all-maven-ga.txt',
