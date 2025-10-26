@@ -4,6 +4,7 @@
  */
 
 import { Request, Response } from 'express';
+import { EntityStateManager } from '../../../shared/entity-state-manager';
 import { GROUP_CONFIG, REGISTRY_CONFIG, RESOURCE_CONFIG } from '../config/constants';
 import { generateETag } from '../utils/xregistry-utils';
 import { ImageService } from './image-service';
@@ -16,16 +17,20 @@ export interface RegistryServiceOptions {
 export class RegistryService {
     private readonly imageService: ImageService;
     private readonly logger: any;
+    private readonly entityState: EntityStateManager;
 
-    constructor(options: RegistryServiceOptions) {
+    constructor(options: RegistryServiceOptions, entityState: EntityStateManager) {
         this.imageService = options.imageService;
         this.logger = options.logger || console;
+        this.entityState = entityState;
     }
 
     async getRegistry(req: Request, res: Response): Promise<void> {
         try {
             const baseUrl = `${req.protocol}://${req.get('host')}`;
             const backends = this.imageService.getBackends();
+
+            const registryPath = '/';
 
             const registry: any = {
                 specversion: REGISTRY_CONFIG.SPEC_VERSION,
@@ -35,12 +40,12 @@ export class RegistryService {
                 xregistryurl: `${baseUrl}/`,
                 modelurl: `${baseUrl}/model`,
                 capabilitiesurl: `${baseUrl}/capabilities`,
-                epoch: 1,
+                epoch: this.entityState.getEpoch(registryPath),
                 name: 'OCI Registry Service',
                 description: 'xRegistry-compliant OCI Image registry',
                 docs: 'https://opencontainers.org/',
-                createdat: new Date().toISOString(),
-                modifiedat: new Date().toISOString(),
+                createdat: this.entityState.getCreatedAt(registryPath),
+                modifiedat: this.entityState.getModifiedAt(registryPath),
                 [`${GROUP_CONFIG.TYPE}url`]: `${baseUrl}/${GROUP_CONFIG.TYPE}`,
                 [`${GROUP_CONFIG.TYPE}count`]: backends.length,
                 containerregistriesurl: `${baseUrl}/${GROUP_CONFIG.TYPE}`,
@@ -81,16 +86,18 @@ export class RegistryService {
 
             const groupsObject: any = {};
             backends.forEach(backend => {
+                const groupPath = `/${GROUP_CONFIG.TYPE}/${backend.id}`;
                 groupsObject[backend.id] = {
                     groupid: backend.id,
+                    [`${GROUP_CONFIG.TYPE_SINGULAR}id`]: backend.id,
                     name: backend.id,
                     description: backend.description,
-                    xid: `/${GROUP_CONFIG.TYPE}/${backend.id}`,
-                    self: `${baseUrl}/${GROUP_CONFIG.TYPE}/${backend.id}`,
-                    epoch: 1,
-                    createdat: new Date().toISOString(),
-                    modifiedat: new Date().toISOString(),
-                    [`${RESOURCE_CONFIG.TYPE}url`]: `${baseUrl}/${GROUP_CONFIG.TYPE}/${backend.id}/${RESOURCE_CONFIG.TYPE}`,
+                    xid: groupPath,
+                    self: `${baseUrl}${groupPath}`,
+                    epoch: this.entityState.getEpoch(groupPath),
+                    createdat: this.entityState.getCreatedAt(groupPath),
+                    modifiedat: this.entityState.getModifiedAt(groupPath),
+                    [`${RESOURCE_CONFIG.TYPE}url`]: `${baseUrl}${groupPath}/${RESOURCE_CONFIG.TYPE}`,
                 };
             });
 
@@ -113,16 +120,18 @@ export class RegistryService {
             }
 
             const baseUrl = `${req.protocol}://${req.get('host')}`;
+            const groupPath = `/${GROUP_CONFIG.TYPE}/${backend.id}`;
             const group = {
                 groupid: backend.id,
+                [`${GROUP_CONFIG.TYPE_SINGULAR}id`]: backend.id,
                 name: backend.name,
                 description: backend.description,
-                xid: `/${GROUP_CONFIG.TYPE}/${backend.id}`,
-                self: `${baseUrl}/${GROUP_CONFIG.TYPE}/${backend.id}`,
-                epoch: 1,
-                createdat: new Date().toISOString(),
-                modifiedat: new Date().toISOString(),
-                [`${RESOURCE_CONFIG.TYPE}url`]: `${baseUrl}/${GROUP_CONFIG.TYPE}/${backend.id}/${RESOURCE_CONFIG.TYPE}`,
+                xid: groupPath,
+                self: `${baseUrl}${groupPath}`,
+                epoch: this.entityState.getEpoch(groupPath),
+                createdat: this.entityState.getCreatedAt(groupPath),
+                modifiedat: this.entityState.getModifiedAt(groupPath),
+                [`${RESOURCE_CONFIG.TYPE}url`]: `${baseUrl}${groupPath}/${RESOURCE_CONFIG.TYPE}`,
             };
 
             res.set('Content-Type', 'application/json');
@@ -261,19 +270,24 @@ export class RegistryService {
     }
 
     /**
+     * Get capabilities in flat xRegistry 1.0-rc2 format
+     */
+    private getCapabilitiesObject(): any {
+        return {
+            apis: ['/capabilities', '/model', '/export'],
+            filter: true,
+            sort: true,
+            doc: true,
+            mutable: false,
+            pagination: true,
+        };
+    }
+
+    /**
      * Get capabilities
      */
     async getCapabilities(_req: Request, res: Response): Promise<void> {
-        res.json({
-            capabilities: {
-                apis: ['registry', 'groups', 'images', 'versions'],
-                flags: ['inline', 'filter', 'sort', 'xregistry'],
-                mutable: [],
-                pagination: true,
-                schemas: [REGISTRY_CONFIG.SCHEMA_VERSION],
-                specversions: [REGISTRY_CONFIG.SPEC_VERSION]
-            }
-        });
+        res.json(this.getCapabilitiesObject());
     }
 
     /**

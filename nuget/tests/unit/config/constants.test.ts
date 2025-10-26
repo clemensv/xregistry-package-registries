@@ -18,8 +18,8 @@ describe('Application Constants', () => {
     describe('REGISTRY_CONFIG', () => {
         test('should have correct registry configuration', () => {
             expect(REGISTRY_CONFIG.ID).toBe('nuget-wrapper');
-            expect(REGISTRY_CONFIG.SPEC_VERSION).toBe('1.0-rc1');
-            expect(REGISTRY_CONFIG.SCHEMA_VERSION).toBe('xRegistry-json/1.0-rc1');
+            expect(REGISTRY_CONFIG.SPEC_VERSION).toBe('1.0-rc2');
+            expect(REGISTRY_CONFIG.SCHEMA_VERSION).toBe('xRegistry-json/1.0-rc2');
         });
 
         test('should be compile-time readonly with TypeScript', () => {

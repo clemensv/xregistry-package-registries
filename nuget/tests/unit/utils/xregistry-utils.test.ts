@@ -174,7 +174,7 @@ describe('xRegistry Utilities', () => {
             const entity = { name: 'test' };
 
             const result = handleSchemaFlag(req, entity, 'resource');
-            expect(result.$schema).toBe('xRegistry-json/1.0-rc1/resource');
+            expect(result.$schema).toBe('xRegistry-json/1.0-rc2/resource');
         });
     });
 

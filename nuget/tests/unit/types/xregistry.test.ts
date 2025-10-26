@@ -76,7 +76,7 @@ describe('xRegistry Types', () => {
                 epoch: 1,
                 createdat: '2023-01-01T00:00:00Z',
                 modifiedat: '2023-01-01T00:00:00Z',
-                specversion: '1.0-rc1',
+                specversion: '1.0-rc2',
                 registryid: 'test-registry',
                 capabilities: 'cap1,cap2',
                 capabilitiesurl: 'http://example.com/capabilities',
@@ -89,7 +89,7 @@ describe('xRegistry Types', () => {
             };
 
             expect(registry).toBeValidXRegistryEntity();
-            expect(registry.specversion).toBe('1.0-rc1');
+            expect(registry.specversion).toBe('1.0-rc2');
             expect(registry.registryid).toBe('test-registry');
         });
     });

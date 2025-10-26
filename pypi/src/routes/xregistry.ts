@@ -31,6 +31,17 @@ export function createXRegistryRoutes(registryService: RegistryService): Router 
         res.json(modelResponse);
     });
 
+    // Capabilities endpoint
+    router.get('/capabilities', (_req: Request, res: Response) => {
+        const capabilitiesResponse = registryService.getCapabilities();
+        res.json(capabilitiesResponse);
+    });
+
+    // Export endpoint
+    router.get('/export', (_req: Request, res: Response) => {
+        res.redirect(302, '/?doc&inline=*,capabilities,modelsource');
+    });
+
     // Group collection
     router.get(`/${GROUP_TYPE}`, (req: Request, res: Response) => {
         const baseUrl = getBaseUrl(req);

@@ -4,6 +4,7 @@
  */
 
 import { NextFunction, Request, Response, Router } from 'express';
+import { EntityStateManager } from '../../../shared/entity-state-manager';
 import { REGISTRY_METADATA, SERVER_CONFIG } from '../config/constants';
 import { PackageService } from '../services/package-service';
 import { SearchService } from '../services/search-service';
@@ -11,7 +12,8 @@ import { entityNotFound } from '../utils/xregistry-errors';
 
 export function createPackageRoutes(
     packageService: PackageService,
-    searchService: SearchService
+    searchService: SearchService,
+    entityState: EntityStateManager
 ): Router {
     const router = Router();
     const { GROUP_TYPE, GROUP_ID, RESOURCE_TYPE } = REGISTRY_METADATA;
@@ -100,17 +102,17 @@ export function createPackageRoutes(
 
             // Build response
             const packages: Record<string, any> = {};
-            const now = new Date().toISOString();
             const resourceBasePath = `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}`;
 
             for (const pkg of paginatedPackages) {
+                const resourcePath = `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${pkg.name}`;
                 packages[pkg.name] = {
                     packageid: pkg.name,
-                    xid: `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${pkg.name}`,
+                    xid: resourcePath,
                     name: pkg.name,
-                    epoch: 1,
-                    createdat: now,
-                    modifiedat: now,
+                    epoch: entityState.getEpoch(resourcePath),
+                    createdat: entityState.getCreatedAt(resourcePath),
+                    modifiedat: entityState.getModifiedAt(resourcePath),
                     self: `${resourceBasePath}/${pkg.name}`,
                 };
             }

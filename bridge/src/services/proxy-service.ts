@@ -14,9 +14,14 @@ export class ProxyService {
     /**
      * Recursively rewrite URLs in response data
      * Replaces downstream server URLs with bridge base URL
+     * Note: Skips "xid" fields as they are canonical identifiers
      */
-    private rewriteUrls(data: any, downstreamUrl: string, bridgeBaseUrl: string): any {
+    private rewriteUrls(data: any, downstreamUrl: string, bridgeBaseUrl: string, currentKey?: string): any {
         if (typeof data === 'string') {
+            // Skip rewriting "xid" fields - they are canonical identifiers
+            if (currentKey === 'xid') {
+                return data;
+            }
             // Replace URLs in strings (handles "self", "shortself", and any URL fields)
             if (data.startsWith(downstreamUrl)) {
                 return data.replace(downstreamUrl, bridgeBaseUrl);
@@ -33,7 +38,7 @@ export class ProxyService {
             // Recursively process objects
             const rewritten: any = {};
             for (const [key, value] of Object.entries(data)) {
-                rewritten[key] = this.rewriteUrls(value, downstreamUrl, bridgeBaseUrl);
+                rewritten[key] = this.rewriteUrls(value, downstreamUrl, bridgeBaseUrl, key);
             }
             return rewritten;
         }

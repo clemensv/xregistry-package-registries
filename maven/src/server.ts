@@ -17,6 +17,7 @@ import { MavenService } from './services/maven-service';
 import { PackageService } from './services/package-service';
 import { RegistryService } from './services/registry-service';
 import { SearchService } from './services/search-service';
+import { EntityStateManager } from '../../shared/entity-state-manager';
 
 export interface ServerOptions {
     port?: number;
@@ -32,6 +33,9 @@ export class MavenXRegistryServer {
     private readonly options: Required<ServerOptions>;
     private readonly logger: Logger;
     private server: any = null;
+
+    // Entity state management
+    private readonly entityState: EntityStateManager;
 
     // Services
     private readonly mavenService: MavenService;
@@ -50,6 +54,9 @@ export class MavenXRegistryServer {
         // Initialize Express app
         this.app = express();
 
+        // Initialize entity state manager
+        this.entityState = new EntityStateManager();
+
         // Initialize services
         this.mavenService = new MavenService({
             apiBaseUrl: MAVEN_REGISTRY.API_BASE_URL,
@@ -59,10 +66,11 @@ export class MavenXRegistryServer {
             cacheDir: CACHE_CONFIG.CACHE_DIR
         });
 
-        this.registryService = new RegistryService();
+        this.registryService = new RegistryService({ entityState: this.entityState });
 
         this.packageService = new PackageService({
-            mavenService: this.mavenService
+            mavenService: this.mavenService,
+            entityState: this.entityState
         });
 
         // Check for database in multiple locations (for tests and production)
@@ -166,6 +174,21 @@ export class MavenXRegistryServer {
      * Setup error handling
      */
     private setupErrorHandling(): void {
+        // 405 Method Not Allowed - catch unsupported methods before 404
+        this.app.all('*', (req: Request, res: Response, next: NextFunction) => {
+            if (['PUT', 'PATCH', 'POST', 'DELETE'].includes(req.method)) {
+                res.status(405).json({
+                    type: 'about:blank',
+                    title: 'Method Not Allowed',
+                    status: 405,
+                    detail: `${req.method} method not supported on ${req.path}`,
+                    instance: req.path
+                });
+            } else {
+                next();
+            }
+        });
+
         // xRegistry error handler
         this.app.use(xregistryErrorHandler);
 

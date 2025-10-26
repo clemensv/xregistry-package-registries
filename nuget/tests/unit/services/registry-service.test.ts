@@ -177,7 +177,7 @@ describe('RegistryService', () => {
 
             expect(res.json).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    $schema: 'xRegistry-json/1.0-rc1/registry'
+                    $schema: 'xRegistry-json/1.0-rc2/registry'
                 })
             );
         });

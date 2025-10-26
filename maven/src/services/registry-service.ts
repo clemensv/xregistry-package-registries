@@ -10,14 +10,18 @@ import {
     XREGISTRY_CONFIG
 } from '../config/constants';
 import { throwEntityNotFound } from '../middleware/xregistry-error-handler';
+import { EntityStateManager } from '../../../shared/entity-state-manager';
 
 export interface RegistryServiceOptions {
     baseUrl?: string;
+    entityState?: EntityStateManager;
 }
 
 export class RegistryService {
-    constructor(_options: RegistryServiceOptions = {}) {
-        // Reserved for future use
+    private readonly entityState: EntityStateManager;
+
+    constructor(options: RegistryServiceOptions = {}) {
+        this.entityState = options.entityState || new EntityStateManager();
     }
 
     /**
@@ -25,6 +29,7 @@ export class RegistryService {
      */
     async getRegistry(req: Request, res: Response): Promise<void> {
         const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const registryPath = '/';
 
         const registry = {
             specversion: XREGISTRY_CONFIG.SPEC_VERSION,
@@ -34,12 +39,12 @@ export class RegistryService {
             xregistryurl: `${baseUrl}/`,
             modelurl: `${baseUrl}/model`,
             capabilitiesurl: `${baseUrl}/capabilities`,
-            epoch: 1,
+            epoch: this.entityState.getEpoch(registryPath),
             name: 'Maven Central xRegistry',
             description: 'xRegistry API wrapper for Maven Central repository',
             docs: 'https://maven.apache.org/',
-            createdat: new Date().toISOString(),
-            modifiedat: new Date().toISOString(),
+            createdat: this.entityState.getCreatedAt(registryPath),
+            modifiedat: this.entityState.getModifiedAt(registryPath),
             [`${GROUP_CONFIG.TYPE}url`]: `${baseUrl}/${GROUP_CONFIG.TYPE}`,
             [`${GROUP_CONFIG.TYPE}count`]: 1,
             javaregistriesurl: `${baseUrl}/${GROUP_CONFIG.TYPE}`,
@@ -81,18 +86,21 @@ export class RegistryService {
         const pagesize = parseInt(req.query['pagesize'] as string) || 100;
         const page = parseInt(req.query['page'] as string) || 1;
 
+        const groupPath = `/${GROUP_CONFIG.TYPE}/${GROUP_CONFIG.ID}`;
+
         const groups = {
             [GROUP_CONFIG.TYPE]: {
                 [GROUP_CONFIG.ID]: {
-                    xid: `/${GROUP_CONFIG.TYPE}/${GROUP_CONFIG.ID}`,
-                    self: `${baseUrl}/${GROUP_CONFIG.TYPE}/${GROUP_CONFIG.ID}`,
+                    xid: groupPath,
+                    self: `${baseUrl}${groupPath}`,
+                    javaregistryid: GROUP_CONFIG.ID,
                     name: 'Maven Central',
                     description: 'Maven Central Repository',
                     docs: 'https://maven.apache.org/',
-                    epoch: 1,
-                    createdat: new Date().toISOString(),
-                    modifiedat: new Date().toISOString(),
-                    [`${RESOURCE_CONFIG.TYPE}url`]: `${baseUrl}/${GROUP_CONFIG.TYPE}/${GROUP_CONFIG.ID}/${RESOURCE_CONFIG.TYPE}`,
+                    epoch: this.entityState.getEpoch(groupPath),
+                    createdat: this.entityState.getCreatedAt(groupPath),
+                    modifiedat: this.entityState.getModifiedAt(groupPath),
+                    [`${RESOURCE_CONFIG.TYPE}url`]: `${baseUrl}${groupPath}/${RESOURCE_CONFIG.TYPE}`,
                     [`${RESOURCE_CONFIG.TYPE}count`]: 0
                 }
             }
@@ -151,16 +159,19 @@ export class RegistryService {
             );
         }
 
+        const groupPath = `/${GROUP_CONFIG.TYPE}/${groupId}`;
+
         const group = {
-            xid: `/${GROUP_CONFIG.TYPE}/${groupId}`,
-            self: `${baseUrl}/${GROUP_CONFIG.TYPE}/${groupId}`,
+            xid: groupPath,
+            self: `${baseUrl}${groupPath}`,
+            javaregistryid: groupId,
             name: 'Maven Central',
             description: 'Maven Central Repository',
             docs: 'https://maven.apache.org/',
-            epoch: 1,
-            createdat: new Date().toISOString(),
-            modifiedat: new Date().toISOString(),
-            [`${RESOURCE_CONFIG.TYPE}url`]: `${baseUrl}/${GROUP_CONFIG.TYPE}/${groupId}/${RESOURCE_CONFIG.TYPE}`,
+            epoch: this.entityState.getEpoch(groupPath),
+            createdat: this.entityState.getCreatedAt(groupPath),
+            modifiedat: this.entityState.getModifiedAt(groupPath),
+            [`${RESOURCE_CONFIG.TYPE}url`]: `${baseUrl}${groupPath}/${RESOURCE_CONFIG.TYPE}`,
             [`${RESOURCE_CONFIG.TYPE}count`]: 0
         };
 
@@ -172,14 +183,12 @@ export class RegistryService {
      */
     async getCapabilities(_req: Request, res: Response): Promise<void> {
         res.json({
-            capabilities: {
-                apis: ['registry', 'groups', 'packages', 'versions'],
-                flags: ['inline', 'filter', 'sort', 'xregistry'],
-                mutable: [],
-                pagination: true,
-                schemas: [XREGISTRY_CONFIG.SCHEMA_VERSION],
-                specversions: [XREGISTRY_CONFIG.SPEC_VERSION]
-            }
+            apis: ['/capabilities', '/model', '/export'],
+            filter: true,
+            sort: true,
+            doc: true,
+            mutable: false,
+            pagination: true
         });
     }
 
@@ -214,18 +223,20 @@ export class RegistryService {
      */
     private async getGroupsInline(req: Request): Promise<any> {
         const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const groupPath = `/${GROUP_CONFIG.TYPE}/${GROUP_CONFIG.ID}`;
 
         return {
             [GROUP_CONFIG.ID]: {
-                xid: `/${GROUP_CONFIG.TYPE}/${GROUP_CONFIG.ID}`,
-                self: `${baseUrl}/${GROUP_CONFIG.TYPE}/${GROUP_CONFIG.ID}`,
+                xid: groupPath,
+                self: `${baseUrl}${groupPath}`,
+                javaregistryid: GROUP_CONFIG.ID,
                 name: 'Maven Central',
                 description: 'Maven Central Repository',
                 docs: 'https://maven.apache.org/',
-                epoch: 1,
-                createdat: new Date().toISOString(),
-                modifiedat: new Date().toISOString(),
-                [`${RESOURCE_CONFIG.TYPE}url`]: `${baseUrl}/${GROUP_CONFIG.TYPE}/${GROUP_CONFIG.ID}/${RESOURCE_CONFIG.TYPE}`,
+                epoch: this.entityState.getEpoch(groupPath),
+                createdat: this.entityState.getCreatedAt(groupPath),
+                modifiedat: this.entityState.getModifiedAt(groupPath),
+                [`${RESOURCE_CONFIG.TYPE}url`]: `${baseUrl}${groupPath}/${RESOURCE_CONFIG.TYPE}`,
                 [`${RESOURCE_CONFIG.TYPE}count`]: 0
             }
         };

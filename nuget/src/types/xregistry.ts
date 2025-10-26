@@ -1,6 +1,6 @@
 /**
  * TypeScript definitions for xRegistry protocol
- * Based on xRegistry specification 1.0-rc1
+ * Based on xRegistry specification 1.0-rc2
  * 
  * Ensures compliance with xRegistry core specification:
  * - All entities MUST have xid, self, epoch, createdat, modifiedat

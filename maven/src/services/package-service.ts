@@ -7,9 +7,11 @@ import { GROUP_CONFIG, RESOURCE_CONFIG } from '../config/constants';
 import { throwEntityNotFound, throwInternalError } from '../middleware/xregistry-error-handler';
 import type { MavenArtifactDoc, MavenVersionMetadata } from '../types/maven';
 import { MavenService } from './maven-service';
+import { EntityStateManager } from '../../../shared/entity-state-manager';
 
 export interface PackageServiceOptions {
     mavenService: MavenService;
+    entityState?: EntityStateManager;
 }
 
 export interface PackageQueryOptions {
@@ -48,9 +50,11 @@ export interface VersionMetadata {
 
 export class PackageService {
     private readonly mavenService: MavenService;
+    private readonly entityState: EntityStateManager;
 
     constructor(options: PackageServiceOptions) {
         this.mavenService = options.mavenService;
+        this.entityState = options.entityState || new EntityStateManager();
     }
 
     /**
@@ -139,6 +143,7 @@ export class PackageService {
 
         // Get all versions
         const versionList = await this.mavenService.fetchArtifactVersions(mavenGroupId, artifactId);
+        const latestVersion: string = versionList[versionList.length - 1] ?? '';
 
         const versions: Record<string, VersionMetadata> = {};
 
@@ -154,7 +159,9 @@ export class PackageService {
                 version,
                 groupId,
                 packageId,
-                baseUrl
+                baseUrl,
+                versionList,
+                latestVersion
             );
         }
 
@@ -199,17 +206,23 @@ export class PackageService {
     ): PackageMetadata {
         const packageId = `${doc.g}:${doc.a}`;
         const basePath = `${baseUrl}/${GROUP_CONFIG.TYPE}/${groupId}/${RESOURCE_CONFIG.TYPE}/${packageId}`;
+        const resourcePath = `/${GROUP_CONFIG.TYPE}/${groupId}/${RESOURCE_CONFIG.TYPE}/${packageId}`;
 
         return {
-            xid: `/${GROUP_CONFIG.TYPE}/${groupId}/${RESOURCE_CONFIG.TYPE}/${packageId}`,
+            xid: resourcePath,
             self: basePath,
             name: doc.a,
             description: doc.a, // Maven search doesn't provide description
-            epoch: 1,
-            createdat: new Date(doc.timestamp || Date.now()).toISOString(),
-            modifiedat: new Date(doc.timestamp || Date.now()).toISOString(),
+            epoch: this.entityState.getEpoch(resourcePath),
+            createdat: this.entityState.getCreatedAt(resourcePath),
+            modifiedat: this.entityState.getModifiedAt(resourcePath),
+            // xRegistry required attributes
+            versionid: doc.latestVersion,
+            isdefault: true,
+            metaurl: `${basePath}/meta`,
             versionsurl: `${basePath}/versions`,
             versionscount: 1, // Would need additional API call to get exact count
+            // Maven-specific attributes
             groupId: doc.g,
             artifactId: doc.a,
             latestVersion: doc.latestVersion,
@@ -226,18 +239,31 @@ export class PackageService {
         version: string,
         groupId: string,
         packageId: string,
-        baseUrl: string
+        baseUrl: string,
+        allVersions: string[],
+        latestVersion: string
     ): VersionMetadata {
         const basePath = `${baseUrl}/${GROUP_CONFIG.TYPE}/${groupId}/${RESOURCE_CONFIG.TYPE}/${packageId}/versions/${version}`;
+        const versionPath = `/${GROUP_CONFIG.TYPE}/${groupId}/${RESOURCE_CONFIG.TYPE}/${packageId}/versions/${version}`;
+
+        // Determine ancestor (previous version in lineage)
+        const versionIndex = allVersions.indexOf(version);
+        const ancestor = versionIndex > 0 ? allVersions[versionIndex - 1] : version;
 
         return {
-            xid: `/${GROUP_CONFIG.TYPE}/${groupId}/${RESOURCE_CONFIG.TYPE}/${packageId}/versions/${version}`,
+            xid: versionPath,
             self: basePath,
             versionid: version,
             name: `${artifactId} ${version}`,
-            epoch: 1,
-            createdat: new Date().toISOString(),
-            modifiedat: new Date().toISOString(),
+            epoch: this.entityState.getEpoch(versionPath),
+            createdat: this.entityState.getCreatedAt(versionPath),
+            modifiedat: this.entityState.getModifiedAt(versionPath),
+            // xRegistry required attributes
+            packageid: packageId,
+            isdefault: version === latestVersion,
+            ancestor: ancestor,
+            contenttype: 'application/java-archive',
+            // Maven-specific attributes
             groupId: mavenGroupId,
             artifactId,
             jarUrl: this.mavenService.buildJarUrl(mavenGroupId, artifactId, version)
@@ -254,15 +280,16 @@ export class PackageService {
         baseUrl: string
     ): VersionMetadata {
         const basePath = `${baseUrl}/${GROUP_CONFIG.TYPE}/${groupId}/${RESOURCE_CONFIG.TYPE}/${packageId}/versions/${pom.version}`;
+        const versionPath = `/${GROUP_CONFIG.TYPE}/${groupId}/${RESOURCE_CONFIG.TYPE}/${packageId}/versions/${pom.version}`;
 
         const metadata: VersionMetadata = {
-            xid: `/${GROUP_CONFIG.TYPE}/${groupId}/${RESOURCE_CONFIG.TYPE}/${packageId}/versions/${pom.version}`,
+            xid: versionPath,
             self: basePath,
             versionid: pom.version,
             name: pom.name || `${pom.artifactId} ${pom.version}`,
-            epoch: 1,
-            createdat: new Date().toISOString(),
-            modifiedat: new Date().toISOString()
+            epoch: this.entityState.getEpoch(versionPath),
+            createdat: this.entityState.getCreatedAt(versionPath),
+            modifiedat: this.entityState.getModifiedAt(versionPath)
         };
 
         // Add optional fields

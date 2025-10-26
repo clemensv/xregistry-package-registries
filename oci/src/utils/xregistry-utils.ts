@@ -195,7 +195,7 @@ export function handleSchemaFlag(req: any, entity: any, type: string): any {
     if (!schema || schema !== 'true') return entity;
 
     const result = { ...entity };
-    result.$schema = `xRegistry-json/1.0-rc1/${type}`;
+    result.$schema = `xRegistry-json/1.0-rc2/${type}`;
     return result;
 }
 
@@ -306,7 +306,7 @@ export function setXRegistryHeaders(res: any, entity: any): void {
     res.set('Content-Type', 'application/json');
 
     // Set xRegistry tag header
-    res.set('xRegistry-tag', '1.0-rc1');
+    res.set('xRegistry-tag', '1.0-rc2');
 
     // Set ETag if entity has modification time
     if (entity && entity.modifiedat) {

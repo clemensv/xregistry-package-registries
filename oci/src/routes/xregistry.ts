@@ -64,6 +64,14 @@ export function createXRegistryRoutes(options: XRegistryRouterOptions): Router {
     });
 
     /**
+     * GET /export
+     * Export full registry as xRegistry document
+     */
+    router.get('/export', (_req: Request, res: Response) => {
+        res.redirect(302, '/?doc&inline=*,capabilities,modelsource');
+    });
+
+    /**
      * GET /containerregistries
      * Groups collection endpoint
      */

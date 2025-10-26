@@ -5,6 +5,7 @@
 
 import { OCIBackend } from '../types/oci';
 import { ImageMetadata, VersionMetadata } from '../types/xregistry';
+import { EntityStateManager } from '../../../shared/entity-state-manager';
 import { OCIService } from './oci-service';
 
 export interface ImageServiceOptions {
@@ -18,10 +19,12 @@ export interface ImageServiceOptions {
 export class ImageService {
     private readonly ociService: OCIService;
     private readonly baseUrl: string;
+    private readonly entityState: EntityStateManager;
 
-    constructor(options: ImageServiceOptions) {
+    constructor(options: ImageServiceOptions, entityState: EntityStateManager) {
         this.ociService = options.ociService;
         this.baseUrl = options.baseUrl || 'http://localhost:3400';
+        this.entityState = entityState;
     }
 
     /**
@@ -206,6 +209,7 @@ export class ImageService {
      * Create basic image metadata when full metadata unavailable
      */
     private createBasicImageMetadata(backend: OCIBackend, repository: string): ImageMetadata {
+        const resourcePath = `/containerregistries/${backend.id}/images/${encodeURIComponent(repository)}`;
         return {
             imageid: encodeURIComponent(repository),
             versionid: 'latest', // Default to 'latest'
@@ -215,11 +219,11 @@ export class ImageService {
             versions: {},
             distTags: {},
             repository: `${backend.url}/v2/${repository}`,
-            xid: `/containerregistries/${backend.id}/images/${encodeURIComponent(repository)}`,
-            self: `${this.baseUrl}/containerregistries/${backend.id}/images/${encodeURIComponent(repository)}`,
-            epoch: 1,
-            createdat: new Date().toISOString(),
-            modifiedat: new Date().toISOString(),
+            xid: resourcePath,
+            self: `${this.baseUrl}${resourcePath}`,
+            epoch: this.entityState.getEpoch(resourcePath),
+            createdat: this.entityState.getCreatedAt(resourcePath),
+            modifiedat: this.entityState.getModifiedAt(resourcePath),
         };
     }
 
@@ -227,17 +231,18 @@ export class ImageService {
      * Create basic version metadata when full metadata unavailable
      */
     private createBasicVersionMetadata(backend: OCIBackend, repository: string, tag: string): VersionMetadata {
+        const versionPath = `/containerregistries/${backend.id}/images/${encodeURIComponent(repository)}/versions/${tag}`;
         return {
             versionid: tag,
             isdefault: tag === 'latest', // REQUIRED: true if this is the default version
             version: tag,
             name: tag,
             description: `Tag ${tag} of ${repository}`,
-            xid: `/containerregistries/${backend.id}/images/${encodeURIComponent(repository)}/versions/${tag}`,
-            self: `${this.baseUrl}/containerregistries/${backend.id}/images/${encodeURIComponent(repository)}/versions/${tag}`,
-            epoch: 1,
-            createdat: new Date().toISOString(),
-            modifiedat: new Date().toISOString(),
+            xid: versionPath,
+            self: `${this.baseUrl}${versionPath}`,
+            epoch: this.entityState.getEpoch(versionPath),
+            createdat: this.entityState.getCreatedAt(versionPath),
+            modifiedat: this.entityState.getModifiedAt(versionPath),
         };
     }
 

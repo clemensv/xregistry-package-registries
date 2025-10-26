@@ -1,6 +1,6 @@
 /**
  * xRegistry NPM Wrapper Server
- * @fileoverview Main Express server implementing xRegistry 1.0-rc1 specification for NPM packages
+ * @fileoverview Main Express server implementing xRegistry 1.0-rc2 specification for NPM packages
  */
 
 import express from 'express';
@@ -14,6 +14,7 @@ import { xregistryErrorHandler } from './middleware/xregistry-error-handler';
 import { parseXRegistryFlags } from './middleware/xregistry-flags';
 import { NpmService } from './services/npm-service';
 import { normalizePackageId } from './utils/package-utils';
+import { EntityStateManager } from '../../shared/entity-state-manager';
 
 // Import shared filter utilities for two-step filtering
 // @ts-ignore - JavaScript module without TypeScript declarations
@@ -66,6 +67,7 @@ export class XRegistryServer {
     private cacheService!: CacheService;
     private cacheManager!: CacheManager;
     private logger!: SimpleLogger;
+    private entityState: EntityStateManager;
     private options: Required<ServerOptions>;
     private filterOptimizer: any; // FilterOptimizer instance
     private packageNamesCache: Array<{ name: string;[key: string]: any }> = [];
@@ -82,6 +84,7 @@ export class XRegistryServer {
         };
 
         this.logger = new SimpleLogger();
+        this.entityState = new EntityStateManager();
         this.app = express();
         this.initializeServices();
         this.setupMiddleware();
@@ -157,7 +160,7 @@ export class XRegistryServer {
             res.writeHead = function (this: typeof res, statusCode: number, ...rest: any[]) {
                 const contentType = this.getHeader('Content-Type');
                 if (contentType && contentType.toString().startsWith('application/json')) {
-                    this.setHeader('Content-Type', 'application/json; schema=https://xregistry.io/schemas/xregistry-v1.0-rc1.json');
+                    this.setHeader('Content-Type', 'application/json; schema=https://xregistry.io/schemas/xregistry-v1.0-rc2.json');
                 }
                 return originalWriteHead.call(this, statusCode, ...rest);
             };
@@ -191,16 +194,16 @@ export class XRegistryServer {
                 const inline = flags?.inline || [];
 
                 const registryInfo: any = {
-                    specversion: '1.0-rc1',
+                    specversion: '1.0-rc2',
                     registryid: 'npm-wrapper',
                     xid: '/',
                     name: 'NPM Registry Service',
                     self: baseUrl,
                     description: 'xRegistry-compliant NPM package registry',
                     documentation: 'https://docs.npmjs.com/',
-                    epoch: 1,
-                    createdat: new Date().toISOString(),
-                    modifiedat: new Date().toISOString(),
+                    epoch: this.entityState.getEpoch('/'),
+                    createdat: this.entityState.getCreatedAt('/'),
+                    modifiedat: this.entityState.getModifiedAt('/'),
                     modelurl: `${baseUrl}/model`,
                     capabilitiesurl: `${baseUrl}/capabilities`,
                     noderegistriesurl: `${baseUrl}/noderegistries`,
@@ -253,7 +256,7 @@ export class XRegistryServer {
                 }
 
                 res.set('Content-Type', 'application/json');
-                res.set('xRegistry-Version', '1.0-rc1');
+                res.set('xRegistry-Version', '1.0-rc2');
                 res.json(registryInfo);
             } catch (error) {
                 res.status(500).json({ error: 'Failed to retrieve registry information' });
@@ -263,16 +266,19 @@ export class XRegistryServer {
         // Capabilities endpoint
         this.app.get('/capabilities', (_req, res) => {
             const capabilities = {
-                capabilities: {
-                    apis: ['xregistry/1.0-rc1'],
-                    flags: ['inline', 'epoch', 'noreadonly', 'schema'],
-                    mutable: false,
-                    pagination: true,
-                    schemas: ['xregistry/1.0-rc1'],
-                    specversions: ['1.0-rc1']
-                }
+                apis: ['/capabilities', '/model', '/export'],
+                flags: ['inline', 'filter', 'sort', 'epoch', 'noreadonly', 'schema', 'doc'],
+                mutable: false,
+                pagination: true,
+                specversions: ['1.0-rc2']
             };
             res.json(capabilities);
+        });
+
+        // Export endpoint - shortcut for /?doc&inline=*,capabilities,modelsource
+        this.app.get('/export', async (_req, res) => {
+            // Redirect with export flags
+            res.redirect('/?doc&inline=*,capabilities,modelsource');
         });
 
         // Model endpoint
@@ -320,12 +326,17 @@ export class XRegistryServer {
         // Node registries collection
         this.app.get('/noderegistries', (req, res) => {
             const baseUrl = `${req.protocol}://${req.get('host')}`;
+            const groupPath = '/noderegistries/npmjs.org';
             const noderegistries = {
                 'npmjs.org': {
+                    noderegistryid: 'npmjs.org',
                     name: 'npmjs.org',
-                    xid: '/noderegistries/npmjs.org',
-                    self: `${baseUrl}/noderegistries/npmjs.org`,
-                    packagesurl: `${baseUrl}/noderegistries/npmjs.org/packages`,
+                    xid: groupPath,
+                    self: `${baseUrl}${groupPath}`,
+                    epoch: this.entityState.getEpoch(groupPath),
+                    createdat: this.entityState.getCreatedAt(groupPath),
+                    modifiedat: this.entityState.getModifiedAt(groupPath),
+                    packagesurl: `${baseUrl}${groupPath}/packages`,
                     packagescount: 2000000 // Approximate count
                 }
             };
@@ -341,11 +352,16 @@ export class XRegistryServer {
             }
 
             const baseUrl = `${req.protocol}://${req.get('host')}`;
+            const groupPath = `/noderegistries/${registryId}`;
             const registry = {
-                name: 'npmjs.org',
-                xid: '/noderegistries/npmjs.org',
-                self: `${baseUrl}/noderegistries/npmjs.org`,
-                packagesurl: `${baseUrl}/noderegistries/npmjs.org/packages`,
+                noderegistryid: registryId,
+                name: registryId,
+                xid: groupPath,
+                self: `${baseUrl}${groupPath}`,
+                epoch: this.entityState.getEpoch(groupPath),
+                createdat: this.entityState.getCreatedAt(groupPath),
+                modifiedat: this.entityState.getModifiedAt(groupPath),
+                packagesurl: `${baseUrl}${groupPath}/packages`,
                 packagescount: 2000000 // Approximate count
             };
             res.json(registry);
@@ -529,14 +545,29 @@ export class XRegistryServer {
 
                 const baseUrl = `${req.protocol}://${req.get('host')}`;
                 const normalizedPackageName = normalizePackageId(packageName);
+                const packagePath = `/noderegistries/${registryId}/packages/${packageName}`;
+                const defaultVersion = metadata['dist-tags']?.latest || Object.keys(metadata.versions || {})[0] || '0.0.0';
+                
+                // Count total versions
+                const versionsCount = Object.keys(metadata.versions || {}).length;
+
                 const packageInfo = {
                     name: packageName,
-                    xid: `/noderegistries/npmjs.org/packages/${packageName}`,
-                    self: `${baseUrl}/noderegistries/npmjs.org/packages/${encodeURIComponent(packageName)}`,
+                    xid: packagePath,
+                    self: `${baseUrl}${packagePath}`,
                     packageid: normalizedPackageName,
-                    epoch: 1,
-                    createdat: metadata.time?.['created'] || new Date().toISOString(),
-                    modifiedat: metadata.time?.['modified'] || new Date().toISOString(),
+                    epoch: this.entityState.getEpoch(packagePath),
+                    createdat: metadata.time?.['created'] || this.entityState.getCreatedAt(packagePath),
+                    modifiedat: metadata.time?.['modified'] || this.entityState.getModifiedAt(packagePath),
+                    
+                    // Required Resource attributes
+                    versionid: defaultVersion,
+                    isdefault: true,
+                    metaurl: `${baseUrl}${packagePath}/meta`,
+                    versionsurl: `${baseUrl}${packagePath}/versions`,
+                    versionscount: versionsCount,
+                    
+                    // NPM-specific metadata
                     description: metadata['description'] || '',
                     homepage: metadata.homepage || '',
                     repository: metadata.repository || {},
@@ -544,8 +575,7 @@ export class XRegistryServer {
                     license: metadata.license || '',
                     author: metadata.author || {},
                     maintainers: metadata.maintainers || [],
-                    'dist-tags': metadata['dist-tags'] || {},
-                    versions: metadata.versions || {}
+                    'dist-tags': metadata['dist-tags'] || {}
                 };
 
                 res.json(packageInfo);
@@ -555,7 +585,170 @@ export class XRegistryServer {
             }
         });
 
-        // Package versions endpoint
+        // Package /meta endpoint - returns minimal metadata only
+        this.app.get('/noderegistries/:registryId/packages/:packageName/meta', async (req, res) => {
+            try {
+                const registryId = req.params['registryId'];
+                const packageName = req.params['packageName'];
+
+                if (registryId !== 'npmjs.org') {
+                    res.status(404).json(createProblemDetails(404, 'Registry not found', `Registry '${registryId}' does not exist`, req.originalUrl));
+                    return;
+                }
+
+                const metadata = await this.npmService.getPackageMetadata(packageName);
+                if (!metadata) {
+                    res.status(404).json(createProblemDetails(404, 'Package not found', `Package '${packageName}' does not exist in registry`, req.originalUrl));
+                    return;
+                }
+
+                const baseUrl = `${req.protocol}://${req.get('host')}`;
+                const packagePath = `/noderegistries/${registryId}/packages/${packageName}`;
+                const defaultVersion = metadata['dist-tags']?.latest || Object.keys(metadata.versions || {})[0] || '0.0.0';
+                const versionsCount = Object.keys(metadata.versions || {}).length;
+
+                // Return only Meta entity attributes (no version-specific data)
+                const metaInfo = {
+                    xid: packagePath,
+                    self: `${baseUrl}${packagePath}`,
+                    name: packageName,
+                    packageid: normalizePackageId(packageName),
+                    epoch: this.entityState.getEpoch(packagePath),
+                    createdat: metadata.time?.['created'] || this.entityState.getCreatedAt(packagePath),
+                    modifiedat: metadata.time?.['modified'] || this.entityState.getModifiedAt(packagePath),
+                    
+                    // Meta-specific attributes (from xRegistry spec)
+                    versionid: defaultVersion,
+                    isdefault: true,
+                    metaurl: `${baseUrl}${packagePath}/meta`,
+                    versionsurl: `${baseUrl}${packagePath}/versions`,
+                    versionscount: versionsCount
+                };
+
+                res.json(metaInfo);
+            } catch (error) {
+                this.logger.error('Failed to retrieve package meta', { error });
+                res.status(500).json({ error: 'Failed to retrieve package metadata' });
+            }
+        });
+
+        // Version metadata endpoint (most specific route - must come first)
+        this.app.get('/noderegistries/:registryId/packages/:packageName/versions/:version/meta', async (req, res) => {
+            try {
+                const registryId = req.params['registryId'];
+                const packageName = req.params['packageName'];
+                const version = req.params['version'];
+
+                if (registryId !== 'npmjs.org') {
+                    res.status(404).json(createProblemDetails(404, 'Registry not found', `Registry ${registryId} does not exist`, req.originalUrl));
+                    return;
+                }
+
+                const versionData = await this.npmService.getVersionMetadata(packageName, version);
+                if (!versionData) {
+                    res.status(404).json(createProblemDetails(404, 'Version not found', `Version ${version} of package ${packageName} does not exist`, req.originalUrl));
+                    return;
+                }
+
+                const baseUrl = `${req.protocol}://${req.get('host')}`;
+                const versionPath = `/noderegistries/${registryId}/packages/${packageName}/versions/${version}`;
+                
+                // Get full package metadata to find default version and ancestor
+                const packageMetadata = await this.npmService.getPackageMetadata(packageName);
+                const defaultVersion = packageMetadata?.['dist-tags']?.latest;
+                const isDefaultVersion = version === defaultVersion;
+                
+                // Find ancestor version (previous version in time)
+                const allVersions = Object.keys(packageMetadata?.versions || {});
+                const versionIndex = allVersions.indexOf(version);
+                const ancestor = versionIndex > 0 ? allVersions[versionIndex - 1] : version;
+
+                // Return minimal metadata only
+                const response = {
+                    xid: versionPath,
+                    self: `${baseUrl}${versionPath}`,
+                    versionid: versionData.versionid,
+                    packageid: normalizePackageId(packageName),
+                    epoch: this.entityState.getEpoch(versionPath),
+                    createdat: versionData.createdat || this.entityState.getCreatedAt(versionPath),
+                    modifiedat: versionData.modifiedat || this.entityState.getModifiedAt(versionPath),
+                    isdefault: isDefaultVersion,
+                    ancestor: ancestor
+                };
+
+                res.json(response);
+            } catch (error) {
+                this.logger.error('Failed to retrieve version metadata', { error });
+                res.status(500).json({ error: 'Failed to retrieve version metadata' });
+            }
+        });
+
+        // Individual package version endpoint
+        this.app.get('/noderegistries/:registryId/packages/:packageName/versions/:version', async (req, res) => {
+            try {
+                const registryId = req.params['registryId'];
+                const packageName = req.params['packageName'];
+                const version = req.params['version'];
+
+                if (registryId !== 'npmjs.org') {
+                    res.status(404).json(createProblemDetails(404, 'Registry not found', `Registry ${registryId} does not exist`, req.originalUrl));
+                    return;
+                }
+
+                const versionData = await this.npmService.getVersionMetadata(packageName, version);
+                if (!versionData) {
+                    res.status(404).json(createProblemDetails(404, 'Version not found', `Version ${version} of package ${packageName} does not exist`, req.originalUrl));
+                    return;
+                }
+
+                const baseUrl = `${req.protocol}://${req.get('host')}`;
+                const versionPath = `/noderegistries/${registryId}/packages/${packageName}/versions/${version}`;
+                
+                // Get full package metadata to find default version
+                const packageMetadata = await this.npmService.getPackageMetadata(packageName);
+                const defaultVersion = packageMetadata?.['dist-tags']?.latest;
+                const isDefaultVersion = version === defaultVersion;
+                
+                // Find ancestor version (previous version in time)
+                const allVersions = Object.keys(packageMetadata?.versions || {});
+                const versionIndex = allVersions.indexOf(version);
+                const ancestor = versionIndex > 0 ? allVersions[versionIndex - 1] : version;
+
+                // Build xRegistry-compliant version response
+                const response = {
+                    versionid: versionData.versionid,
+                    xid: versionPath,
+                    self: `${baseUrl}${versionPath}`,
+                    name: versionData.name,
+                    packageid: normalizePackageId(packageName),
+                    epoch: this.entityState.getEpoch(versionPath),
+                    createdat: versionData.createdat || this.entityState.getCreatedAt(versionPath),
+                    modifiedat: versionData.modifiedat || this.entityState.getModifiedAt(versionPath),
+                    isdefault: isDefaultVersion,
+                    ancestor: ancestor,
+                    description: versionData.description || '',
+                    deprecated: versionData['deprecated'] || false,
+                    contenttype: 'application/vnd.npm.install-v1+json',
+                    // Additional npm-specific fields
+                    ...(versionData.license && { license: versionData.license }),
+                    ...(versionData.homepage && { homepage: versionData.homepage }),
+                    ...(versionData.repository && { repository: versionData.repository }),
+                    ...(versionData.bugs && { bugs: versionData.bugs }),
+                    ...(versionData.keywords && { keywords: versionData.keywords }),
+                    ...(versionData.dependencies && { dependencies: versionData.dependencies }),
+                    ...(versionData.devDependencies && { devDependencies: versionData.devDependencies }),
+                    ...(versionData.peerDependencies && { peerDependencies: versionData.peerDependencies }),
+                    ...(versionData.dist && { dist: versionData.dist })
+                };
+
+                res.json(response);
+            } catch (error) {
+                this.logger.error('Failed to retrieve package version', { error });
+                res.status(500).json({ error: 'Failed to retrieve package version' });
+            }
+        });
+
+        // Package versions collection endpoint (least specific - must come last)
         this.app.get('/noderegistries/:registryId/packages/:packageName/versions', async (req, res) => {
             try {
                 const registryId = req.params['registryId'];
@@ -611,6 +804,25 @@ export class XRegistryServer {
                 this.logger.error('Failed to retrieve package versions', { error });
                 res.status(500).json({ error: 'Failed to retrieve package versions' });
             }
+        });
+
+        // Catch-all for unsupported write operations (PUT, PATCH, POST, DELETE)
+        this.app.all('*', (req, res, next) => {
+            const method = req.method.toUpperCase();
+            
+            // Only intercept write methods
+            if (['PUT', 'PATCH', 'POST', 'DELETE'].includes(method)) {
+                res.status(405).json(createProblemDetails(
+                    405,
+                    'Method Not Allowed',
+                    `This registry is read-only. ${method} operations are not supported.`,
+                    req.originalUrl
+                ));
+                return;
+            }
+            
+            // Pass through GET, HEAD, OPTIONS
+            next();
         });
 
         // 404 handler

@@ -2,6 +2,7 @@
  * Package Service - Handles package and version metadata operations
  */
 
+import { EntityStateManager } from '../../../shared/entity-state-manager';
 import { REGISTRY_METADATA } from '../config/constants';
 import { PyPIPackageFile } from '../types/pypi';
 import { entityNotFound } from '../utils/xregistry-errors';
@@ -9,9 +10,11 @@ import { PyPIService } from './pypi-service';
 
 export class PackageService {
     private pypiService: PyPIService;
+    private readonly entityState: EntityStateManager;
 
-    constructor(pypiService: PyPIService) {
+    constructor(pypiService: PyPIService, entityState: EntityStateManager) {
         this.pypiService = pypiService;
+        this.entityState = entityState;
     }
 
     /**
@@ -26,20 +29,26 @@ export class PackageService {
         const versions = Object.keys(packageData.releases);
 
         const resourceBasePath = `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}`;
-        const now = new Date().toISOString();
+        const resourcePath = `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}`;
 
         const docsUrl = this.extractDocsUrl(info.project_urls);
 
         return {
             [`${RESOURCE_TYPE_SINGULAR}id`]: packageName,
-            xid: `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}`,
+            xid: resourcePath,
             name: info.name,
             description: info.summary || '',
-            epoch: 1,
-            createdat: now,
-            modifiedat: now,
+            epoch: this.entityState.getEpoch(resourcePath),
+            createdat: this.entityState.getCreatedAt(resourcePath),
+            modifiedat: this.entityState.getModifiedAt(resourcePath),
             self: resourceBasePath,
+            // xRegistry required attributes
             versionid: info.version,
+            isdefault: true,
+            metaurl: `${resourceBasePath}/meta`,
+            versionsurl: `${resourceBasePath}/versions`,
+            versionscount: versions.length,
+            // PyPI-specific attributes
             license: info.license || '',
             author: info.author || '',
             author_email: info.author_email || '',
@@ -53,9 +62,6 @@ export class PackageService {
             classifiers: info.classifiers || [],
             yanked: info.yanked || false,
             yanked_reason: info.yanked_reason || null,
-            metaurl: `${resourceBasePath}/meta`,
-            versionsurl: `${resourceBasePath}/versions`,
-            versionscount: versions.length,
         };
     }
 
@@ -67,19 +73,29 @@ export class PackageService {
 
         const versions = await this.pypiService.getPackageVersions(packageName);
         const versionBasePath = `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}/versions`;
+        const packageId = packageName;
+        const latestVersion = versions[versions.length - 1] ?? '';
 
         const versionEntries: Record<string, any> = {};
-        const now = new Date().toISOString();
 
-        for (const versionId of versions) {
+        for (let i = 0; i < versions.length; i++) {
+            const versionId = versions[i];
+            const versionPath = `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}/versions/${versionId}`;
+            const ancestor = i > 0 ? versions[i - 1] : versionId;
+
             versionEntries[versionId] = {
                 versionid: versionId,
-                xid: `${versionBasePath}/${versionId}`,
+                xid: versionPath,
                 name: versionId,
-                epoch: 1,
-                createdat: now,
-                modifiedat: now,
+                epoch: this.entityState.getEpoch(versionPath),
+                createdat: this.entityState.getCreatedAt(versionPath),
+                modifiedat: this.entityState.getModifiedAt(versionPath),
                 self: `${versionBasePath}/${versionId}`,
+                // xRegistry required attributes
+                packageid: packageId,
+                isdefault: versionId === latestVersion,
+                ancestor: ancestor,
+                contenttype: 'application/x-python-package',
             };
         }
 
@@ -107,23 +123,34 @@ export class PackageService {
         }
 
         const versionBasePath = `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}/versions/${versionId}`;
-        const now = new Date().toISOString();
+        const versionPath = `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}/versions/${versionId}`;
+
+        // Get all versions to determine lineage and default
+        const allVersions = await this.pypiService.getPackageVersions(packageName);
+        const latestVersion = allVersions[allVersions.length - 1] ?? '';
+        const versionIndex = allVersions.indexOf(versionId);
+        const ancestor = versionIndex > 0 ? allVersions[versionIndex - 1] : versionId;
 
         // Extract metadata from files
         const firstFile = versionFiles[0];
         const yanked = firstFile?.yanked || false;
         const yankedReason = firstFile?.yanked_reason || null;
         const requiresPython = firstFile?.requires_python || null;
-        const uploadTime = firstFile?.upload_time_iso_8601 || now;
 
         return {
             versionid: versionId,
-            xid: `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}/versions/${versionId}`,
+            xid: versionPath,
             name: versionId,
-            epoch: 1,
-            createdat: uploadTime,
-            modifiedat: uploadTime,
+            epoch: this.entityState.getEpoch(versionPath),
+            createdat: this.entityState.getCreatedAt(versionPath),
+            modifiedat: this.entityState.getModifiedAt(versionPath),
             self: versionBasePath,
+            // xRegistry required attributes
+            packageid: packageName,
+            isdefault: versionId === latestVersion,
+            ancestor: ancestor,
+            contenttype: 'application/x-python-package',
+            // PyPI-specific attributes
             yanked,
             yanked_reason: yankedReason,
             requires_python: requiresPython,
@@ -142,15 +169,15 @@ export class PackageService {
         const { info } = packageData;
 
         const resourceBasePath = `${baseUrl}/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}`;
-        const now = new Date().toISOString();
+        const metaPath = `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}/meta`;
 
         return {
             [`${RESOURCE_TYPE_SINGULAR}id`]: packageName,
-            xid: `/${GROUP_TYPE}/${GROUP_ID}/${RESOURCE_TYPE}/${packageName}/meta`,
+            xid: metaPath,
             self: `${resourceBasePath}/meta`,
-            epoch: 1,
-            createdat: now,
-            modifiedat: now,
+            epoch: this.entityState.getEpoch(metaPath),
+            createdat: this.entityState.getCreatedAt(metaPath),
+            modifiedat: this.entityState.getModifiedAt(metaPath),
             readonly: true,
             compatibility: 'none',
             defaultversionid: info.version,

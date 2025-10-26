@@ -1,6 +1,6 @@
 /**
  * xRegistry Routes
- * @fileoverview Express routes implementing xRegistry 1.0-rc1 specification
+ * @fileoverview Express routes implementing xRegistry 1.0-rc2 specification
  */
 
 import { Request, Response, Router } from 'express';

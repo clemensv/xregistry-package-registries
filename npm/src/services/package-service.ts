@@ -68,12 +68,12 @@ export class PackageService {
             throwEntityNotFound(this.buildInstanceUrl(packageName), 'package', packageName);
         }
 
-        const versions = packageData.versions || [];
+        const versionKeys = Object.keys(packageData.versions || {});
         const startIndex = offset;
-        const endIndex = Math.min(startIndex + limit, versions.length);
+        const endIndex = Math.min(startIndex + limit, versionKeys.length);
 
         return {
-            versions: versions.slice(startIndex, endIndex).map(version => ({
+            versions: versionKeys.slice(startIndex, endIndex).map(version => ({
                 versionid: version,
                 name: `${packageName}@${version}`,
                 self: `${this.baseUrl}/groups/npmjs.org/packages/${packageName}/versions/${version}`,
@@ -81,7 +81,7 @@ export class PackageService {
                 createdat: new Date().toISOString(),
                 modifiedat: new Date().toISOString()
             })),
-            totalCount: versions.length
+            totalCount: versionKeys.length
         };
     }
 

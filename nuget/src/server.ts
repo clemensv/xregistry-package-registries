@@ -4,6 +4,7 @@
  */
 
 import express from 'express';
+import { EntityStateManager } from '../../shared/entity-state-manager';
 import { CacheManager } from './cache/cache-manager';
 import { CacheService } from './cache/cache-service';
 import { CACHE_CONFIG, NUGET_REGISTRY } from './config/constants';
@@ -48,6 +49,7 @@ export class XRegistryServer {
     private cacheManager!: CacheManager;
     private logger!: SimpleLogger;
     private options: Required<ServerOptions>;
+    private entityState!: EntityStateManager;
 
     constructor(options: ServerOptions = {}) {
         this.options = {
@@ -71,6 +73,9 @@ export class XRegistryServer {
      * Initialize services
      */
     private initializeServices(): void {
+        // Initialize entity state manager
+        this.entityState = new EntityStateManager();
+
         // Initialize cache service
         this.cacheService = new CacheService({
             maxSize: CACHE_CONFIG.MAX_CACHE_SIZE,
@@ -93,7 +98,8 @@ export class XRegistryServer {
                 catalogIndexUrl: NUGET_REGISTRY.CATALOG_INDEX_URL,
                 cacheManager: this.cacheManager,
                 cacheTtl: this.options.cacheTtl,
-                cacheDir: CACHE_CONFIG.CACHE_DIR
+                cacheDir: CACHE_CONFIG.CACHE_DIR,
+                entityState: this.entityState
             });
         } else {
             this.NuGetService = new NuGetService({
@@ -101,7 +107,8 @@ export class XRegistryServer {
                 registrationBaseUrl: NUGET_REGISTRY.REGISTRATION_BASE_URL,
                 catalogIndexUrl: NUGET_REGISTRY.CATALOG_INDEX_URL,
                 cacheTtl: this.options.cacheTtl,
-                cacheDir: CACHE_CONFIG.CACHE_DIR
+                cacheDir: CACHE_CONFIG.CACHE_DIR,
+                entityState: this.entityState
             });
         }
     }
@@ -141,7 +148,7 @@ export class XRegistryServer {
             try {
                 const baseUrl = `${req.protocol}://${req.get('host')}`;
                 const registryInfo = {
-                    specversion: '1.0-rc1',
+                    specversion: '1.0-rc2',
                     registryid: 'nuget-wrapper',
                     xid: '/',
                     name: 'NuGet Registry Service',
@@ -166,7 +173,7 @@ export class XRegistryServer {
                 };
 
                 res.set('Content-Type', 'application/json');
-                res.set('xRegistry-Version', '1.0-rc1');
+                res.set('xRegistry-Version', '1.0-rc2');
                 res.json(registryInfo);
             } catch (error) {
                 res.status(500).json({ error: 'Failed to retrieve registry information' });
@@ -176,16 +183,20 @@ export class XRegistryServer {
         // Capabilities endpoint
         this.app.get('/capabilities', (_req, res) => {
             const capabilities = {
-                capabilities: {
-                    apis: ['xregistry/1.0-rc1'],
-                    flags: ['inline', 'epoch', 'noreadonly', 'schema'],
-                    mutable: false,
-                    pagination: true,
-                    schemas: ['xregistry/1.0-rc1'],
-                    specversions: ['1.0-rc1']
-                }
+                apis: ['/capabilities', '/model', '/export'],
+                filter: true,
+                sort: true,
+                doc: true,
+                mutable: false,
+                pagination: true
             };
             res.json(capabilities);
+        });
+        
+        // Export endpoint - redirect to root with inline flags
+        this.app.get('/export', (req, res) => {
+            const baseUrl = `${req.protocol}://${req.get('host')}`;
+            res.redirect(`${baseUrl}/?doc&inline=*,capabilities,modelsource`);
         });
 
         // Model endpoint
@@ -214,11 +225,16 @@ export class XRegistryServer {
         // Node registries collection
         this.app.get('/dotnetregistries', (req, res) => {
             const baseUrl = `${req.protocol}://${req.get('host')}`;
+            const groupPath = '/dotnetregistries/nuget.org';
             const dotnetregistries = {
                 'nuget.org': {
                     name: 'nuget.org',
-                    xid: '/dotnetregistries/nuget.org',
+                    xid: groupPath,
                     self: `${baseUrl}/dotnetregistries/nuget.org`,
+                    dotnetregistryid: 'nuget.org',
+                    epoch: this.entityState.getEpoch(groupPath),
+                    createdat: this.entityState.getCreatedAt(groupPath),
+                    modifiedat: this.entityState.getModifiedAt(groupPath),
                     packagesurl: `${baseUrl}/dotnetregistries/nuget.org/packages`,
                     packagescount: 2000000 // Approximate count
                 }
@@ -235,10 +251,15 @@ export class XRegistryServer {
             }
 
             const baseUrl = `${req.protocol}://${req.get('host')}`;
+            const groupPath = '/dotnetregistries/nuget.org';
             const registry = {
                 name: 'nuget.org',
-                xid: '/dotnetregistries/nuget.org',
+                xid: groupPath,
                 self: `${baseUrl}/dotnetregistries/nuget.org`,
+                dotnetregistryid: 'nuget.org',
+                epoch: this.entityState.getEpoch(groupPath),
+                createdat: this.entityState.getCreatedAt(groupPath),
+                modifiedat: this.entityState.getModifiedAt(groupPath),
                 packagesurl: `${baseUrl}/dotnetregistries/nuget.org/packages`,
                 packagescount: 2000000 // Approximate count
             };
@@ -268,16 +289,23 @@ export class XRegistryServer {
                         searchResults.forEach((pkg: any) => {
                             const packageName = pkg.name || pkg.package?.name;
                             if (packageName) {
+                                const resourcePath = `/dotnetregistries/nuget.org/packages/${packageName}`;
+                                const version = pkg.version || pkg.package?.version || '1.0.0';
                                 packages[packageName] = {
                                     name: packageName,
-                                    xid: `/dotnetregistries/nuget.org/packages/${packageName}`,
+                                    xid: resourcePath,
                                     self: `${baseUrl}/dotnetregistries/nuget.org/packages/${encodeURIComponent(packageName)}`,
                                     packageid: packageName,
-                                    epoch: 1,
-                                    createdat: pkg.date || new Date().toISOString(),
-                                    modifiedat: pkg.date || new Date().toISOString(),
+                                    versionid: version,
+                                    isdefault: true,
+                                    versionscount: 1,
+                                    versionsurl: `${baseUrl}/dotnetregistries/nuget.org/packages/${encodeURIComponent(packageName)}/versions`,
+                                    metaurl: `https://api.nuget.org/v3/registration5-semver1/${packageName.toLowerCase()}/index.json`,
+                                    epoch: this.entityState.getEpoch(resourcePath),
+                                    createdat: pkg.date || this.entityState.getCreatedAt(resourcePath),
+                                    modifiedat: pkg.date || this.entityState.getModifiedAt(resourcePath),
                                     description: pkg.description || pkg.package?.description || '',
-                                    version: pkg.version || pkg.package?.version || '1.0.0'
+                                    version
                                 };
                             }
                         });
@@ -289,16 +317,23 @@ export class XRegistryServer {
                         searchResults.forEach((result: any) => {
                             const packageName = result.id;
                             if (packageName) {
+                                const resourcePath = `/dotnetregistries/nuget.org/packages/${packageName}`;
+                                const version = result.version || '1.0.0';
                                 packages[packageName] = {
                                     name: packageName,
-                                    xid: `/dotnetregistries/nuget.org/packages/${packageName}`,
+                                    xid: resourcePath,
                                     self: `${baseUrl}/dotnetregistries/nuget.org/packages/${encodeURIComponent(packageName)}`,
                                     packageid: packageName,
-                                    epoch: 1,
-                                    createdat: new Date().toISOString(),
-                                    modifiedat: new Date().toISOString(),
+                                    versionid: version,
+                                    isdefault: true,
+                                    versionscount: 1,
+                                    versionsurl: `${baseUrl}/dotnetregistries/nuget.org/packages/${encodeURIComponent(packageName)}/versions`,
+                                    metaurl: `https://api.nuget.org/v3/registration5-semver1/${packageName.toLowerCase()}/index.json`,
+                                    epoch: this.entityState.getEpoch(resourcePath),
+                                    createdat: this.entityState.getCreatedAt(resourcePath),
+                                    modifiedat: this.entityState.getModifiedAt(resourcePath),
                                     description: result.description || result.summary || '',
-                                    version: result.version || '1.0.0'
+                                    version
                                 };
                             }
                         });
@@ -342,14 +377,26 @@ export class XRegistryServer {
                 }
 
                 const baseUrl = `${req.protocol}://${req.get('host')}`;
+                const resourcePath = `/dotnetregistries/nuget.org/packages/${packageName}`;
+                
+                // Get versions information
+                const versions = metadata.versions || {};
+                const versionsList = Object.keys(versions);
+                const latestVersion = metadata['version'] || versionsList[versionsList.length - 1] || '1.0.0';
+                
                 const packageInfo = {
                     name: packageName,
-                    xid: `/dotnetregistries/nuget.org/packages/${packageName}`,
+                    xid: resourcePath,
                     self: `${baseUrl}/dotnetregistries/nuget.org/packages/${encodeURIComponent(packageName)}`,
                     packageid: packageName,
-                    epoch: 1,
-                    createdat: metadata.time?.['created'] || new Date().toISOString(),
-                    modifiedat: metadata.time?.['modified'] || new Date().toISOString(),
+                    versionid: latestVersion,
+                    isdefault: true,
+                    versionscount: versionsList.length,
+                    versionsurl: `${baseUrl}/dotnetregistries/nuget.org/packages/${encodeURIComponent(packageName)}/versions`,
+                    metaurl: `https://api.nuget.org/v3/registration5-semver1/${packageName.toLowerCase()}/index.json`,
+                    epoch: this.entityState.getEpoch(resourcePath),
+                    createdat: metadata.time?.['created'] || this.entityState.getCreatedAt(resourcePath),
+                    modifiedat: metadata.time?.['modified'] || this.entityState.getModifiedAt(resourcePath),
                     description: metadata['description'] || '',
                     homepage: metadata.homepage || '',
                     repository: metadata.repository || {},
@@ -506,6 +553,21 @@ export class XRegistryServer {
      * Setup error handling
      */
     private setupErrorHandling(): void {
+        // 405 Method Not Allowed handler for unsupported methods
+        this.app.all('*', (req, res, next) => {
+            if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') {
+                return next();
+            }
+            
+            res.status(405).json({
+                type: 'about:blank',
+                title: 'Method Not Allowed',
+                status: 405,
+                detail: `The ${req.method} method is not allowed for this resource. This registry is read-only.`,
+                instance: req.originalUrl
+            });
+        });
+        
         this.app.use(xregistryErrorHandler);
         this.app.use(errorHandler);
     }

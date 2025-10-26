@@ -7,6 +7,7 @@ import express, { Application } from 'express';
 import * as path from 'path';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
+import { EntityStateManager } from '../../shared/entity-state-manager';
 import { CACHE_CONFIG, SERVER_CONFIG } from './config/constants';
 import { createCorsMiddleware } from './middleware/cors';
 import { createLoggingMiddleware, createSimpleLogger } from './middleware/logging';
@@ -56,12 +57,13 @@ const PORT = argv.port;
 const API_KEY = argv.apiKey;
 
 // Initialize services
+const entityState = new EntityStateManager();
 const cacheDir = path.join(__dirname, '..', CACHE_CONFIG.CACHE_DIR_NAME);
 const cacheService = new CacheService(cacheDir);
 const pypiService = new PyPIService(cacheService);
 const searchService = new SearchService(pypiService);
-const packageService = new PackageService(pypiService);
-const registryService = new RegistryService(searchService);
+const packageService = new PackageService(pypiService, entityState);
+const registryService = new RegistryService(searchService, entityState);
 
 // Create Express application
 const app: Application = express();
@@ -147,7 +149,7 @@ app.use((req, _res, next) => {
 
 // Mount routes
 app.use('/', createXRegistryRoutes(registryService));
-app.use('/', createPackageRoutes(packageService, searchService));
+app.use('/', createPackageRoutes(packageService, searchService, entityState));
 
 // Performance stats endpoint
 app.get('/performance/stats', (_req, res) => {
@@ -166,6 +168,21 @@ app.get('/performance/stats', (_req, res) => {
             size: packageCount
         }
     });
+});
+
+// 405 Method Not Allowed - catch unsupported methods before 404
+app.all('*', (req, res, next) => {
+    if (['PUT', 'PATCH', 'POST', 'DELETE'].includes(req.method)) {
+        res.status(405).json({
+            type: 'about:blank',
+            title: 'Method Not Allowed',
+            status: 405,
+            detail: `${req.method} method not supported on ${req.path}`,
+            instance: req.path
+        });
+    } else {
+        next();
+    }
 });
 
 // 404 handler - catch all unmatched routes

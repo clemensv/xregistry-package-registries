@@ -6,6 +6,7 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
 import * as fs from 'fs';
 import * as path from 'path';
+import { EntityStateManager } from '../../../shared/entity-state-manager';
 import { CacheManager } from '../cache/cache-manager';
 import { CACHE_CONFIG, NUGET_REGISTRY } from '../config/constants';
 import {
@@ -34,6 +35,7 @@ export interface NuGetServiceConfig {
     cacheManager?: CacheManager;
     cacheTtl?: number;
     cacheDir?: string;
+    entityState?: EntityStateManager;
 }
 
 /**
@@ -48,12 +50,14 @@ export class NuGetService {
     private catalogIndexUrl: string;
     private packageNamesCache: string[] = [];
     private catalogCursor: string | null = null;
+    private entityState: EntityStateManager;
 
     constructor(config: NuGetServiceConfig = {}) {
         this.searchUrl = config.searchUrl || NUGET_REGISTRY.SEARCH_URL;
         this.registrationBaseUrl = config.registrationBaseUrl || NUGET_REGISTRY.REGISTRATION_BASE_URL;
         this.catalogIndexUrl = config.catalogIndexUrl || NUGET_REGISTRY.CATALOG_INDEX_URL;
         this.cacheDir = config.cacheDir || CACHE_CONFIG.CACHE_DIR;
+        this.entityState = config.entityState || new EntityStateManager();
 
         this.httpClient = axios.create({
             timeout: config.timeout || NUGET_REGISTRY.TIMEOUT_MS,
@@ -425,16 +429,21 @@ export class NuGetService {
      */
     convertToVersionMetadata(entry: NuGetCatalogEntry): VersionMetadata {
         const dependencies = this.extractDependencies(entry.dependencyGroups || []);
+        const versionPath = `/dotnetregistries/nuget.org/packages/${entry.id}/versions/${entry.version}`;
 
         const metadata: VersionMetadata = {
             versionid: entry.version,
-            xid: `/dotnetregistries/nuget.org/packages/${entry.id}/versions/${entry.version}`,
+            packageid: entry.id,
+            isdefault: false,  // Will be set by caller if this is the latest version
+            ancestor: '',      // Will be set by caller if version history is known
+            contenttype: 'application/zip',  // NuGet packages are .nupkg files (ZIP format)
+            xid: versionPath,
             self: `https://api.nuget.org/v3/registration5-semver1/${entry.id.toLowerCase()}/${entry.version.toLowerCase()}.json`,
             name: entry.title || entry.id,
             description: entry.description || entry.summary || '',
-            epoch: 1,
-            createdat: entry.published || new Date().toISOString(),
-            modifiedat: entry.published || new Date().toISOString(),
+            epoch: this.entityState.getEpoch(versionPath),
+            createdat: entry.published || this.entityState.getCreatedAt(versionPath),
+            modifiedat: entry.published || this.entityState.getModifiedAt(versionPath),
             version: entry.version,
             dependencies,
             dist: {

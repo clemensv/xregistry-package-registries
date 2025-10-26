@@ -6,6 +6,7 @@
 import express, { Application, Request, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
+import { EntityStateManager } from '../../shared/entity-state-manager';
 import { GROUP_CONFIG, RESOURCE_CONFIG, SERVER_CONFIG } from './config/constants';
 import { parseXRegistryFlags } from './middleware/xregistry-flags';
 import { createimageRoutes } from './routes/images';
@@ -66,9 +67,11 @@ export class OCIXRegistryServer {
 
         // Initialize services
         const baseUrl = `http://localhost:${this.port}`;
+        const entityState = new EntityStateManager();
         const ociServiceConfig: OCIServiceConfig = {
             backends,
             baseUrl,
+            entityState,
         };
         if (options.cacheDir !== undefined) {
             ociServiceConfig.cacheDir = options.cacheDir;
@@ -78,12 +81,12 @@ export class OCIXRegistryServer {
         this.imageService = new ImageService({
             ociService: this.ociService,
             baseUrl,
-        });
+        }, entityState);
 
         this.registryService = new RegistryService({
             imageService: this.imageService,
             logger: this.logger,
-        });
+        }, entityState);
 
         this.setupMiddleware();
         this.setupRoutes();
@@ -285,6 +288,21 @@ export class OCIXRegistryServer {
      * Setup error handling per xRegistry RFC 9457 (Problem Details)
      */
     private setupErrorHandling(): void {
+        // 405 Method Not Allowed - catch unsupported methods before 404
+        this.app.all('*', (req: Request, res: Response, next: any) => {
+            if (['PUT', 'PATCH', 'POST', 'DELETE'].includes(req.method)) {
+                res.status(405).json({
+                    type: 'about:blank',
+                    title: 'Method Not Allowed',
+                    status: 405,
+                    detail: `${req.method} method not supported on ${req.path}`,
+                    instance: req.path
+                });
+            } else {
+                next();
+            }
+        });
+
         // 404 handler - xRegistry api_not_found
         this.app.use((req: Request, res: Response) => {
             const error: XRegistryError = apiNotFound(

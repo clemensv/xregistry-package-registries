@@ -49,6 +49,13 @@ export function createXRegistryRoutes(options: XRegistryRoutesOptions): Router {
     );
 
     /**
+     * GET /export - Export all registry content
+     */
+    router.get('/export', (_req: Request, res: Response) => {
+        res.redirect(302, '/?doc&inline=*,capabilities,modelsource');
+    });
+
+    /**
      * GET /javaregistries - List all groups
      */
     router.get(

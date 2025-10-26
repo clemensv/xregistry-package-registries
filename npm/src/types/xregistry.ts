@@ -123,7 +123,7 @@ export interface InlineParams {
  */
 export interface PackageMetadata extends Omit<Resource, 'author' | 'repository'> {
     distTags: Record<string, string>;
-    versions: string[];
+    versions: Record<string, any>;
     time: Record<string, string>;
     maintainers?: Array<{ name: string; email: string }>;
     author?: { name: string; email?: string };

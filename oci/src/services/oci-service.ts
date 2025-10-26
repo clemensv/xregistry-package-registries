@@ -5,6 +5,7 @@
 
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
 import * as fs from 'fs';
+import { EntityStateManager } from '../../../shared/entity-state-manager';
 import { CACHE_CONFIG, OCI_REGISTRY } from '../config/constants';
 import {
     DockerAuthTokenResponse,
@@ -15,7 +16,7 @@ import {
     OCITagsResponse,
 } from '../types/oci';
 import { ImageMetadata, VersionMetadata } from '../types/xregistry';
-import { normalizeTimestamp, toRFC3339 } from '../utils/xregistry-utils';
+import { toRFC3339 } from '../utils/xregistry-utils';
 
 export interface OCIServiceConfig {
     backends?: OCIBackend[];
@@ -23,6 +24,7 @@ export interface OCIServiceConfig {
     userAgent?: string;
     cacheDir?: string;
     baseUrl?: string;
+    entityState?: EntityStateManager;
 }
 
 export class OCIService {
@@ -31,9 +33,11 @@ export class OCIService {
     private backends: OCIBackend[];
     private authTokens: Map<string, { token: string; expires: number }> = new Map();
     private baseUrl: string;
+    private entityState: EntityStateManager;
 
     constructor(config: OCIServiceConfig = {}) {
         this.baseUrl = config.baseUrl || 'http://localhost:3400';
+        this.entityState = config.entityState || new EntityStateManager();
         this.backends = config.backends || [{
             id: 'mcr.microsoft.com',
             name: 'Microsoft Container Registry',
@@ -278,16 +282,15 @@ export class OCIService {
                 ...(historyItem.comment && { comment: historyItem.comment }),
             }));
 
-            // Normalize timestamps to RFC3339 UTC format
-            const createdTimestamp = normalizeTimestamp(config?.created) || toRFC3339();
+            const resourcePath = `/containerregistries/${backend.id}/images/${encodeURIComponent(repository)}`;
 
             return {
                 // xRegistry REQUIRED attributes (common to all entities)
-                xid: `/containerregistries/${backend.id}/images/${encodeURIComponent(repository)}`,
-                self: `${this.baseUrl}/containerregistries/${backend.id}/images/${encodeURIComponent(repository)}`,
-                epoch: 1,
-                createdat: createdTimestamp,
-                modifiedat: createdTimestamp,
+                xid: resourcePath,
+                self: `${this.baseUrl}${resourcePath}`,
+                epoch: this.entityState.getEpoch(resourcePath),
+                createdat: this.entityState.getCreatedAt(resourcePath),
+                modifiedat: this.entityState.getModifiedAt(resourcePath),
 
                 // xRegistry REQUIRED Resource attributes
                 imageid: encodeURIComponent(repository),
@@ -377,23 +380,25 @@ export class OCIService {
             config = await this.getImageConfig(backend, repository, actualManifest.config.digest);
         }
 
-        // Normalize timestamps to RFC3339 UTC format
-        const createdTimestamp = normalizeTimestamp(config?.created) || toRFC3339();
-
         // Determine if this is the default version (typically 'latest' tag)
         const isDefault = tag === 'latest';
 
+        const versionPath = `/containerregistries/${backend.id}/images/${encodeURIComponent(repository)}/versions/${tag}`;
+
         return {
             // xRegistry REQUIRED attributes (common to all entities)
-            xid: `/containerregistries/${backend.id}/images/${encodeURIComponent(repository)}/versions/${tag}`,
-            self: `${this.baseUrl}/containerregistries/${backend.id}/images/${encodeURIComponent(repository)}/versions/${tag}`,
-            epoch: 1,
-            createdat: createdTimestamp,
-            modifiedat: createdTimestamp,
+            xid: versionPath,
+            self: `${this.baseUrl}${versionPath}`,
+            epoch: this.entityState.getEpoch(versionPath),
+            createdat: this.entityState.getCreatedAt(versionPath),
+            modifiedat: this.entityState.getModifiedAt(versionPath),
 
             // xRegistry REQUIRED Version attributes
             versionid: tag,
+            packageid: encodeURIComponent(repository),  // REQUIRED: Reference to parent Resource
             isdefault: isDefault,  // REQUIRED: Whether this is the default Version
+            ancestor: tag,  // REQUIRED: For now, self-referencing (lineage not tracked in OCI)
+            contenttype: 'application/vnd.oci.image.manifest.v1+json',  // REQUIRED: OCI manifest content type
 
             // xRegistry OPTIONAL Version attributes
             version: tag,  // Alias for versionid

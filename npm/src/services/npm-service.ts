@@ -220,7 +220,7 @@ export class NpmService {
             // Package-specific fields
             packageid: npmManifest.name,
             distTags: npmManifest['dist-tags'] || {},
-            versions: Object.keys(npmManifest.versions || {}),
+            versions: npmManifest.versions || {},
             time: npmManifest.time || {},
 
             // Metadata
