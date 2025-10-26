@@ -21,8 +21,8 @@ WORKDIR /app/oci
 # Install dependencies
 RUN npm ci && npm cache clean --force
 
-# Copy shared logging dependencies
-COPY shared/logging/ /app/shared/logging/
+# Copy all shared dependencies (logging, entity-state-manager, utilities)
+COPY shared/ /app/shared/
 
 # Install shared logging dependencies
 WORKDIR /app/shared/logging
