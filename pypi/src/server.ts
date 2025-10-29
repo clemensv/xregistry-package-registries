@@ -202,15 +202,20 @@ app.use(xregistryErrorHandler);
 // Initialize search service and start server
 async function startServer(): Promise<void> {
     try {
-        console.log('[INFO] Initializing PyPI search service...');
-        await searchService.initialize();
-        console.log('[INFO] Search service initialized');
-
         const server = app.listen(PORT, '0.0.0.0', () => {
             console.log('[INFO] PyPI xRegistry server started', {
                 host: '0.0.0.0',
                 port: PORT,
                 url: `http://0.0.0.0:${PORT}`,
+            });
+            
+            // Initialize search service asynchronously in background
+            console.log('[INFO] Initializing PyPI search service in background...');
+            searchService.initialize().then(() => {
+                console.log('[INFO] Search service initialized - enhanced filtering now available');
+            }).catch((error: any) => {
+                console.error('[ERROR] Failed to initialize search service:', error.message);
+                console.log('[WARN] Server will continue with basic functionality');
             });
         });
 
