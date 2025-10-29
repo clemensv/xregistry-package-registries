@@ -4,18 +4,18 @@ const { spawn } = require("child_process");
 const path = require("path");
 
 describe("NuGet Basic Server Functionality", function () {
-  this.timeout(60000);
+  this.timeout(120000); // 2 minutes overall timeout for catalog operations
 
   let serverProcess;
   let serverPort = 3004;
   let baseUrl = `http://localhost:${serverPort}`;
 
   before(async function () {
-    this.timeout(30000);
+    this.timeout(360000); // 6 minutes for catalog loading
 
     console.log("Starting xRegistry NuGet server for basic tests...");
     serverProcess = await startServer(serverPort);
-    await waitForServer(baseUrl, 25000);
+    await waitForServer(baseUrl, 300000); // 5 minutes wait time for catalog loading
     console.log("NuGet server is ready for basic tests");
   });
   after(function (done) {

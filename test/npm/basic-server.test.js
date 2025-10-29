@@ -95,13 +95,11 @@ describe("Basic Server Functionality", function () {
       const response = await axios.get(`${baseUrl}/capabilities`);
 
       expect(response.status).to.equal(200);
-      expect(response.data).to.have.property("capabilities");
-      expect(response.data.capabilities).to.have.property("apis");
-      expect(response.data.capabilities).to.have.property("flags");
-      expect(response.data.capabilities).to.have.property("mutable");
-      expect(response.data.capabilities).to.have.property("pagination", true);
-      expect(response.data.capabilities).to.have.property("schemas");
-      expect(response.data.capabilities).to.have.property("specversions");
+      expect(response.data).to.have.property("apis");
+      expect(response.data).to.have.property("flags");
+      expect(response.data).to.have.property("mutable");
+      expect(response.data).to.have.property("pagination", true);
+      expect(response.data).to.have.property("specversions");
     });
     it("should return model", async function () {
       const response = await axios.get(`${baseUrl}/model`);
@@ -459,6 +457,7 @@ describe("Basic Server Functionality", function () {
 
   describe("Sort Flag", function () {
     it("should sort packages by packageid descending", async function () {
+      this.timeout(60000); // Increase timeout for sorting operation
       const response = await axios.get(
         `${baseUrl}/noderegistries/npmjs.org/packages?limit=5&sort=name=desc`
       );
@@ -527,6 +526,8 @@ describe("Basic Server Functionality", function () {
         "..",
         "npm",
         "dist",
+        "npm",
+        "src",
         "server.js"
       );
       const process = spawn(

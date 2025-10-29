@@ -4,17 +4,17 @@ const { spawn } = require("child_process");
 const path = require("path");
 
 describe("PyPI Basic Server Functionality", function () {
-  this.timeout(30000);
+  this.timeout(120000); // 2 minutes overall timeout
 
   let serverProcess;
   let serverPort = 3003;
   let baseUrl = `http://localhost:${serverPort}`;
   before(async function () {
-    this.timeout(20000);
+    this.timeout(360000); // 6 minutes for package loading
 
     console.log("Starting xRegistry PyPI server for basic tests...");
     serverProcess = await startServer(serverPort);
-    await waitForServer(baseUrl, 15000);
+    await waitForServer(baseUrl, 300000); // 5 minutes wait time for 692K packages
     console.log("PyPI server is ready for basic tests");
   });
   after(function (done) {
@@ -327,6 +327,8 @@ async function startServer(port) {
       "..",
       "pypi",
       "dist",
+      "pypi",
+      "src",
       "server.js"
     );
 

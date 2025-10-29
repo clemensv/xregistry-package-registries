@@ -6,14 +6,14 @@ const path = require("path");
 const fs = require("fs");
 
 describe("OCI Basic Server Functionality", function () {
-  this.timeout(60000);
+  this.timeout(120000); // 2 minutes overall timeout for backend operations
 
   let serverProcess;
   let serverPort = 3007; // Use a unique port to avoid conflicts
   let baseUrl = `http://localhost:${serverPort}`;
 
   before(async function () {
-    this.timeout(30000);
+    this.timeout(360000); // 6 minutes for startup
 
     // Write test-specific OCI backend config
     const configPath = path.join(__dirname, "../../oci/config.json");
@@ -30,7 +30,7 @@ describe("OCI Basic Server Functionality", function () {
     console.log("Starting xRegistry OCI server for basic tests...");
     // Pass --config-file to ensure correct config is loaded
     serverProcess = await startServer(serverPort, configPath);
-    await waitForServer(baseUrl, 25000);
+    await waitForServer(baseUrl, 300000); // 5 minutes wait time for backend initialization
     console.log("OCI server is ready for basic tests");
   });
   after(function (done) {
@@ -303,7 +303,7 @@ describe("OCI Basic Server Functionality", function () {
 
   // Helper functions
   async function startServer(port, configPath) {
-    const serverPath = path.resolve(__dirname, "../../oci/dist/server.js");
+    const serverPath = path.resolve(__dirname, "../../oci/dist/oci/src/server.js");
     return new Promise((resolve, reject) => {
       const childProcess = spawn(
         "node",

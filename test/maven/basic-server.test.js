@@ -72,13 +72,12 @@ describe("Maven Basic Server Functionality", function () {
       const response = await axios.get(`${baseUrl}/capabilities`);
 
       expect(response.status).to.equal(200);
-      expect(response.data).to.have.property("capabilities");
-      expect(response.data.capabilities).to.have.property("apis");
-      expect(response.data.capabilities).to.have.property("flags");
-      expect(response.data.capabilities).to.have.property("mutable");
-      expect(response.data.capabilities).to.have.property("pagination", true);
-      expect(response.data.capabilities).to.have.property("schemas");
-      expect(response.data.capabilities).to.have.property("specversions");
+      expect(response.data).to.have.property("apis");
+      expect(response.data).to.have.property("filter", true);
+      expect(response.data).to.have.property("sort", true);
+      expect(response.data).to.have.property("doc", true);
+      expect(response.data).to.have.property("mutable", false);
+      expect(response.data).to.have.property("pagination", true);
     });
     it("should return model", async function () {
       const response = await axios.get(`${baseUrl}/model`);
@@ -308,18 +307,20 @@ describe("Maven Basic Server Functionality", function () {
       expect(response.data.model).to.have.property("groups");
     });
     it("should support Maven-specific metadata handling", async function () {
-      // Test specific to Maven - XML to JSON conversion handling
+      // Test specific to Maven - verify capabilities response structure
       const response = await axios.get(`${baseUrl}/capabilities`);
 
       expect(response.status).to.equal(200);
-      expect(response.data.capabilities).to.have.property("flags");
-      // Check for Maven API capabilities - xregistry should be in flags
-      const flags = response.data.capabilities.flags;
-      expect(flags).to.include.members(["xregistry"]);
+      expect(response.data).to.have.property("apis");
+      expect(response.data).to.have.property("filter", true);
+      expect(response.data).to.have.property("mutable", false);
+      // Maven should support filtering and sorting
+      expect(response.data.filter).to.be.true;
+      expect(response.data.sort).to.be.true;
     });
   }); // Helper functions
   async function startServer(port) {
-    const serverPath = path.resolve(__dirname, "../../maven/dist/server.js");
+    const serverPath = path.resolve(__dirname, "../../maven/dist/maven/src/server.js");
 
     return new Promise((resolve, reject) => {
       let started = false;

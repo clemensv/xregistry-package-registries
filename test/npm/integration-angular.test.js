@@ -86,7 +86,9 @@ describe("Angular Packages Integration Test", function () {
     it("should respond to capabilities endpoint", async function () {
       const response = await axios.get(`${baseUrl}/capabilities`);
       expect(response.status).to.equal(200);
-      expect(response.data).to.have.property("capabilities");
+      expect(response.data).to.have.property("apis");
+      expect(response.data).to.have.property("flags");
+      expect(response.data).to.have.property("specversions");
     });
 
     it("should respond to model endpoint", async function () {
@@ -361,6 +363,8 @@ describe("Angular Packages Integration Test", function () {
         "..",
         "npm",
         "dist",
+        "npm",
+        "src",
         "server.js"
       );
       const process = spawn("node", [serverPath, "--port", serverPort], {

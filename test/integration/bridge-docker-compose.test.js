@@ -447,6 +447,7 @@ describe("Bridge Docker Compose Integration Tests", function () {
         );
         expect.fail("Should have thrown an error");
       } catch (error) {
+        expect(error.response, "Error response should exist").to.exist;
         expect(error.response.status).to.equal(404);
       }
     });
