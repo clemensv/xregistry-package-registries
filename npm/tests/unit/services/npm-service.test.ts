@@ -286,7 +286,7 @@ describe('NPM Service', () => {
             expect(result?.['name']).toBe('express');
             expect(result?.['description']).toBe('Fast, unopinionated, minimalist web framework');
             expect(result?.distTags).toEqual({ latest: '4.18.2' });
-            expect(result?.versions).toContain('4.18.2');
+            expect(result?.versions['4.18.2']).toBeDefined();
             expect(mockAxiosInstance.get).toHaveBeenCalledWith('/express');
         });
 
@@ -302,7 +302,7 @@ describe('NPM Service', () => {
 
             expect(result).toBeDefined();
             expect(result?.['name']).toBe('@types/node');
-            expect(mockAxiosInstance.get).toHaveBeenCalledWith('/@types~node');
+            expect(mockAxiosInstance.get).toHaveBeenCalledWith('/@types%2Fnode');
         });
 
         test('should return cached data when available', async () => {

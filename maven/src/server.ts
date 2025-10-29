@@ -79,18 +79,29 @@ export class MavenXRegistryServer {
         };
 
         // Try these paths in order:
-        // 1. Root of maven directory (for tests)
-        // 2. Current working directory (for tests run from different locations)
+        // 1. Maven root directory (for production)
+        // 2. From dist directory upward (for production builds)
+        // 3. Current working directory (for tests run from different locations)
         const possiblePaths = [
-            path.join(__dirname, '..', 'maven-packages.db'),  // ../maven-packages.db from dist
-            path.join(process.cwd(), 'maven-packages.db')       // ./maven-packages.db from cwd
+            path.join(__dirname, '../../../maven-packages.db'),  // From dist/maven/src to maven root
+            path.join(__dirname, '..', 'maven-packages.db'),     // ../maven-packages.db from dist
+            path.join(process.cwd(), 'maven', 'maven-packages.db'), // For tests from root
+            path.join(process.cwd(), 'maven-packages.db')        // ./maven-packages.db from cwd
         ];
 
+        let dbFound = false;
         for (const dbPath of possiblePaths) {
             if (fs.existsSync(dbPath)) {
+                console.log(`[INFO] Found database at: ${dbPath}`);
                 searchServiceOptions.dbPath = dbPath;
+                dbFound = true;
                 break;
             }
+        }
+
+        if (!dbFound) {
+            console.log(`[WARN] No database found in any of these paths:`);
+            possiblePaths.forEach(p => console.log(`  - ${p}`));
         }
 
         this.searchService = new SearchService(searchServiceOptions);

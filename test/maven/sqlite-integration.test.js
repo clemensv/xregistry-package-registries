@@ -270,7 +270,7 @@ describe("Maven SQLite Integration", function () {
   // Helper functions (similar to existing tests)
   async function startServer(port) {
     return new Promise((resolve, reject) => {
-      const serverPath = path.join(__dirname, "../../maven/dist/server.js");
+      const serverPath = path.join(__dirname, "../../maven/dist/maven/src/server.js");
       const serverProcess = spawn(
         "node",
         [serverPath, "--port", port, "--quiet"],

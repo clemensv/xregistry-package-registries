@@ -129,13 +129,17 @@ class TestRunner {
         [`${serverKey.toUpperCase()}_SERVER_URL`]: `http://localhost:${SERVERS[serverKey].port}`,
       };
 
-      const mochaPath = path.join(__dirname, "node_modules", ".bin", "mocha");
+      // Use platform-specific mocha path
+      const isWindows = process.platform === "win32";
+      const mochaPath = path.join(__dirname, "node_modules", ".bin", isWindows ? "mocha.cmd" : "mocha");
+      
       const testProcess = spawn(
-        "node",
-        [mochaPath, testFile, "--timeout", TEST_TIMEOUT.toString()],
+        isWindows ? mochaPath : "node",
+        isWindows ? [testFile, "--timeout", TEST_TIMEOUT.toString()] : [mochaPath, testFile, "--timeout", TEST_TIMEOUT.toString()],
         {
           env,
           stdio: "pipe",
+          shell: isWindows, // Use shell on Windows
         }
       );
 

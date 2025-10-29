@@ -93,7 +93,7 @@ while true; do
     log_with_timestamp "Starting Maven server (attempt \$((++RESTART_COUNT)))"
     
     # Start the server and capture its exit code
-    node dist/server.js 2>&1 | tee -a "\$LOG_FILE"
+    node dist/maven/src/server.js 2>&1 | tee -a "\$LOG_FILE"
     EXIT_CODE=\$?
     
     # Record this restart time

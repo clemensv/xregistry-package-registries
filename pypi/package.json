@@ -6,7 +6,8 @@
   "scripts": {
     "clean": "rimraf dist",
     "prebuild": "npm run clean",
-    "build": "tsc",
+    "build": "tsc && npm run copy:shared",
+    "copy:shared": "node -e \"require('fs').cpSync('../shared/filter', 'dist/shared/filter', { recursive: true })\"",
     "prestart": "npm run build",
     "start": "node dist/server.js",
     "dev": "nodemon --watch src --ext ts --exec \"npm run build && npm start\"",

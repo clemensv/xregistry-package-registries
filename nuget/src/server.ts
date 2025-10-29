@@ -15,6 +15,10 @@ import { xregistryErrorHandler } from './middleware/xregistry-error-handler';
 import { parseXRegistryFlags } from './middleware/xregistry-flags';
 import { NuGetService } from './services/nuget-service';
 
+// Import shared filter utilities for two-step filtering
+// @ts-ignore - JavaScript module without TypeScript declarations
+import { FilterOptimizer } from '../../shared/filter/index.js';
+
 // Simple console logger
 class SimpleLogger {
     info(message: string, data?: any) {
@@ -50,6 +54,8 @@ export class XRegistryServer {
     private logger!: SimpleLogger;
     private options: Required<ServerOptions>;
     private entityState!: EntityStateManager;
+    private filterOptimizer: any; // FilterOptimizer instance
+    private packageNamesCache: any[] = [];
 
     constructor(options: ServerOptions = {}) {
         this.options = {
@@ -111,6 +117,17 @@ export class XRegistryServer {
                 entityState: this.entityState
             });
         }
+
+        // Initialize FilterOptimizer for two-step filtering
+        this.filterOptimizer = new FilterOptimizer({
+            cacheSize: 2000,
+            maxCacheAge: 600000, // 10 minutes
+            enableTwoStepFiltering: true,
+            maxMetadataFetches: 100
+        });
+
+        // Set metadata fetcher function
+        this.filterOptimizer.setMetadataFetcher(this.fetchPackageMetadata.bind(this));
     }
 
     /**
@@ -197,6 +214,25 @@ export class XRegistryServer {
         this.app.get('/export', (req, res) => {
             const baseUrl = `${req.protocol}://${req.get('host')}`;
             res.redirect(`${baseUrl}/?doc&inline=*,capabilities,modelsource`);
+        });
+
+        // Performance stats endpoint
+        this.app.get('/performance/stats', (_req, res) => {
+            const stats = {
+                filterOptimizer: {
+                    twoStepFilteringEnabled: this.filterOptimizer.config?.enableTwoStepFiltering !== false,
+                    hasMetadataFetcher: !!this.filterOptimizer.metadataFetcher,
+                    indexedEntities: this.packageNamesCache.length,
+                    nameIndexSize: this.packageNamesCache.length,
+                    maxMetadataFetches: this.filterOptimizer.config?.maxMetadataFetches || 100,
+                    cacheSize: this.filterOptimizer.config?.cacheSize || 2000,
+                    maxCacheAge: this.filterOptimizer.config?.maxCacheAge || 600000
+                },
+                packageCache: {
+                    size: this.packageNamesCache.length
+                }
+            };
+            res.json(stats);
         });
 
         // Model endpoint
@@ -458,11 +494,24 @@ export class XRegistryServer {
     }
 
     /**
-     * Handle package filtering
+     * Handle package filtering using FilterOptimizer with two-step filtering support
      */
-    private async handlePackageFilter(filter: string, limit: number, _offset: number): Promise<any[]> {
+    private async handlePackageFilter(filter: string, limit: number, offset: number): Promise<any[]> {
         try {
-            // Parse filter expressions
+            // If we have cached packages, use FilterOptimizer for advanced filtering
+            if (this.packageNamesCache.length > 0) {
+                // Use optimized filter which handles both name-only and metadata queries
+                const filteredResults = await this.filterOptimizer.optimizedFilter(
+                    filter,
+                    (entity: any) => entity.name,
+                    this.logger
+                );
+
+                // Return paginated results
+                return filteredResults.slice(offset, offset + limit);
+            }
+
+            // Fallback: Use NuGet search API for simple name filtering
             const filters = this.parseFilterExpressions(filter);
 
             for (const filterExpr of filters) {
@@ -550,6 +599,52 @@ export class XRegistryServer {
     }
 
     /**
+     * Fetch package metadata for two-step filtering
+     */
+    private async fetchPackageMetadata(packageName: string): Promise<any> {
+        try {
+            const packageData: any = await this.NuGetService.getPackageMetadata(packageName);
+
+            if (!packageData) {
+                throw new Error('Package data is null');
+            }
+
+            const result: any = {
+                name: packageName
+            };
+
+            // Extract metadata from NuGet package data
+            const description = packageData.description;
+            result.description = description || packageName;
+
+            const author = packageData.author?.name || packageData.author;
+            if (author) result.author = author;
+
+            const license = packageData.license;
+            if (license) result.license = license;
+
+            const homepage = packageData.homepage;
+            if (homepage) result.homepage = homepage;
+
+            const keywords = packageData.keywords;
+            if (keywords && keywords.length > 0) result.keywords = keywords;
+
+            const version = packageData.version;
+            if (version) result.version = version;
+
+            const repository = packageData.repository?.url || packageData.repository;
+            if (repository) result.repository = repository;
+
+            return result;
+        } catch (error: any) {
+            // Return minimal metadata if fetch fails (just name)
+            return {
+                name: packageName
+            };
+        }
+    }
+
+    /**
      * Setup error handling
      */
     private setupErrorHandling(): void {
@@ -583,6 +678,19 @@ export class XRegistryServer {
                 await this.NuGetService.refreshPackageNamesFromCatalog();
                 const newCount = this.NuGetService.getTotalPackageCount();
                 this.logger.info('Package cache initialized', { packageCount: newCount });
+
+                // Build indices for FilterOptimizer
+                this.packageNamesCache = this.NuGetService.getPackageNamesCache().map((name: string) => ({ name }));
+                if (this.packageNamesCache.length > 0) {
+                    this.filterOptimizer.buildIndices(
+                        this.packageNamesCache,
+                        (entity: any) => entity.name
+                    );
+
+                    this.logger.info('FilterOptimizer indices built', {
+                        packageCount: this.packageNamesCache.length
+                    });
+                }
             } catch (error) {
                 this.logger.error('Failed to initialize package cache from catalog', {
                     error: error instanceof Error ? error.message : String(error)
@@ -591,6 +699,19 @@ export class XRegistryServer {
             }
         } else {
             this.logger.info('Package cache already initialized', { packageCount: cacheCount });
+
+            // Build indices for FilterOptimizer with existing cache
+            this.packageNamesCache = this.NuGetService.getPackageNamesCache().map((name: string) => ({ name }));
+            if (this.packageNamesCache.length > 0) {
+                this.filterOptimizer.buildIndices(
+                    this.packageNamesCache,
+                    (entity: any) => entity.name
+                );
+
+                this.logger.info('FilterOptimizer indices built', {
+                    packageCount: this.packageNamesCache.length
+                });
+            }
         }
     }
 
@@ -609,6 +730,8 @@ export class XRegistryServer {
                         nugetRegistry: this.options.nugetRegistryUrl,
                         cacheEnabled: this.options.cacheEnabled
                     });
+
+                    console.log(`Server listening on port ${this.options.port}`);
 
                     // Initialize package names cache in the background
                     this.initializePackageCache().catch((error: Error) => {
