@@ -303,7 +303,7 @@ describe("NPM Two-Step Filtering", function () {
 
   describe("Two-Step Filtering (Metadata Enrichment)", function () {
     it("should solve the original user request: Angular packages with CSS in description", async function () {
-      this.timeout(120000); // 2 minutes for external API calls
+      this.timeout(300000); // 5 minutes for external API calls
       // Updated query: Use TypeScript instead (known to have "typescript" in description)
       // This tests the same functionality (metadata enrichment) with realistic data
       const filter = "name=*typescript*,description=*typescript*";
@@ -333,6 +333,7 @@ describe("NPM Two-Step Filtering", function () {
     });
 
     it("should find React packages by specific authors", async function () {
+      this.timeout(300000); // 5 minutes for external API calls
       const filter = "name=*react*,author=*facebook*";
       const response = await axios.get(
         `${baseUrl}${ENDPOINT}?filter=${encodeURIComponent(filter)}&limit=3`,
@@ -356,6 +357,7 @@ describe("NPM Two-Step Filtering", function () {
     });
 
     it("should filter by license type with metadata enrichment", async function () {
+      this.timeout(300000); // 5 minutes for external API calls
       const filter = "name=*util*,license=*MIT*";
       const response = await axios.get(
         `${baseUrl}${ENDPOINT}?filter=${encodeURIComponent(filter)}&limit=5`,
@@ -404,7 +406,7 @@ describe("NPM Two-Step Filtering", function () {
 
   describe("Performance Characteristics", function () {
     it("should demonstrate performance difference between name-only and two-step filtering", async function () {
-      this.timeout(120000); // 2 minutes for external API calls
+      this.timeout(300000); // 5 minutes for external API calls
       // Test 1: Name-only filtering (should be fast)
       const nameOnlyStart = Date.now();
       const nameOnlyResponse = await axios.get(

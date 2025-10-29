@@ -14,7 +14,9 @@ describe("PyPI Basic Server Functionality", function () {
 
     console.log("Starting xRegistry PyPI server for basic tests...");
     serverProcess = await startServer(serverPort);
-    await waitForServer(baseUrl, 300000); // 5 minutes wait time for 692K packages
+    await waitForServer(baseUrl, 15000); // Wait for HTTP server (should be fast now)
+    console.log("PyPI server started, waiting for package cache to load...");
+    await waitForPackageCache(baseUrl, 300000); // Wait for background initialization
     console.log("PyPI server is ready for basic tests");
   });
   after(function (done) {
@@ -395,4 +397,25 @@ async function waitForServer(baseUrl, timeout = 10000) {
   }
 
   throw new Error(`Server did not become ready within ${timeout}ms`);
+}
+
+async function waitForPackageCache(baseUrl, timeout = 300000) {
+  const start = Date.now();
+  console.log("Waiting for package cache to load (this may take 3-5 minutes for 692K packages)...");
+
+  while (Date.now() - start < timeout) {
+    try {
+      const response = await axios.get(`${baseUrl}/pythonregistries/pypi.org`, { timeout: 5000 });
+      if (response.data.packagescount && response.data.packagescount > 600000) {
+        const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+        console.log(`Package cache loaded: ${response.data.packagescount} packages in ${elapsed}s`);
+        return;
+      }
+    } catch (error) {
+      // Cache not ready yet, keep waiting
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000)); // Check every 2 seconds
+  }
+
+  throw new Error(`Package cache did not load within ${timeout}ms`);
 }
