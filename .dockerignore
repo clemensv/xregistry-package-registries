@@ -57,15 +57,16 @@ start-servers*.ps1
 setup-deployment-secrets.*
 run-test-servers.js
 
-# Cache directories (will be created in container)
-cache/
-*/cache/
-maven/cache/
-npm/cache/
-nuget/cache/
-oci/cache/
-pypi/cache/
-shared/cache/
+# Runtime cache directories (will be created in container)
+# Note: Use specific paths to avoid excluding src/cache/ directories
+/cache
+/maven/cache
+/npm/cache
+/nuget/cache
+/oci/cache
+/pypi/cache
+/bridge/cache
+/shared/cache
 
 # Maven-specific excludes
 maven/maven-index-cache/
