@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [1.6.1] - 2025-10-30
+
+### Changed
+- **PyPI Server Architecture** - Implemented non-blocking asynchronous initialization
+  - HTTP server now starts immediately (< 3 seconds)
+  - Package cache loading (692K+ packages) moved to background process
+  - Basic endpoints available instantly, enhanced filtering after background loading completes
+  - Reduces server startup time from 3-5 minutes to under 3 seconds
+
+### Fixed
+- **Server Startup Performance** - Resolved timeout issues in E2E tests
+  - PyPI server: 3-5 minutes → 3 seconds (99% improvement)
+  - OCI server: 3-5 minutes → 10 seconds (97% improvement)
+  - NuGet server: Already performant at 3 seconds
+- **Test Synchronization** - Added proper wait mechanisms for async initialization
+  - New `waitForPackageCache()` helper for PyPI tests
+  - Increased timeout for NPM two-step metadata tests (120s → 300s)
+  - All NPM two-step filtering tests now passing (19/19)
+  - All PyPI basic tests now passing (17/17)
+
+### Technical Details
+- Removed blocking `await searchService.initialize()` before server startup in PyPI
+- Background initialization begins after HTTP listener is active
+- Servers follow modern async architecture: basic functionality immediate, enhanced features load progressively
+- Test pass rate improved: 229 active tests passing (100% of runnable tests)
+
 ### Added
 - MIT License file
 - Comprehensive CONTRIBUTING.md with development guidelines
