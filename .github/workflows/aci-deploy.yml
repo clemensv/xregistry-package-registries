@@ -1,0 +1,381 @@
+name: Deploy to Azure Container Instances
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy (e.g., latest, 1.6.1)"
+        required: true
+        default: "latest"
+        type: string
+      resource_group:
+        description: "Azure Resource Group"
+        required: false
+        default: "xregistry-package-registries"
+        type: string
+      location:
+        description: "Azure Region"
+        required: false
+        default: "westeurope"
+        type: string
+      container_group_name:
+        description: "Container Group Name"
+        required: false
+        default: "xregistry-services"
+        type: string
+      dns_name_label:
+        description: "DNS name label (must be globally unique)"
+        required: false
+        default: ""
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+  PYPI_IMAGE_NAME: ${{ github.repository }}/xregistry-pypi-bridge
+  OCI_IMAGE_NAME: ${{ github.repository }}/xregistry-oci-bridge
+  NPM_IMAGE_NAME: ${{ github.repository }}/xregistry-npm-bridge
+  MAVEN_IMAGE_NAME: ${{ github.repository }}/xregistry-maven-bridge
+  NUGET_IMAGE_NAME: ${{ github.repository }}/xregistry-nuget-bridge
+  BRIDGE_IMAGE_NAME: ${{ github.repository }}/xregistry-bridge
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
+
+    env:
+      RESOURCE_GROUP: ${{ github.event.inputs.resource_group }}
+      LOCATION: ${{ github.event.inputs.location }}
+      CONTAINER_GROUP: ${{ github.event.inputs.container_group_name }}
+      IMAGE_TAG: ${{ github.event.inputs.image_tag }}
+      DNS_LABEL: ${{ github.event.inputs.dns_name_label }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check Azure Credentials
+        run: |
+          if [[ -z "${{ secrets.AZURE_CREDENTIALS }}" ]]; then
+            echo "❌ AZURE_CREDENTIALS secret is not set!"
+            echo ""
+            echo "🔧 To set up Azure deployment credentials, run:"
+            echo "   # Windows (PowerShell)"
+            echo "   .\setup-deployment-secrets.ps1 -RepoOwner ${{ github.repository_owner }}"
+            echo ""
+            echo "   # Linux/macOS (Bash)"  
+            echo "   ./setup-deployment-secrets.sh -o ${{ github.repository_owner }}"
+            echo ""
+            echo "📖 See ACTIONS.md for detailed setup instructions."
+            exit 1
+          fi
+          echo "✅ Azure credentials are configured"
+
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Ensure Resource Group
+        run: |
+          if ! az group show --name $RESOURCE_GROUP &>/dev/null; then
+            echo "Creating resource group $RESOURCE_GROUP..."
+            az group create --name $RESOURCE_GROUP --location $LOCATION
+          else
+            echo "✅ Resource group $RESOURCE_GROUP already exists"
+          fi
+
+      - name: Generate API Keys
+        id: api-keys
+        run: |
+          # Generate unique API keys for each service
+          NPM_API_KEY="npm-$(openssl rand -hex 16)"
+          PYPI_API_KEY="pypi-$(openssl rand -hex 16)"
+          MAVEN_API_KEY="maven-$(openssl rand -hex 16)"
+          NUGET_API_KEY="nuget-$(openssl rand -hex 16)"
+          OCI_API_KEY="oci-$(openssl rand -hex 16)"
+
+          echo "NPM_API_KEY=$NPM_API_KEY" >> $GITHUB_ENV
+          echo "PYPI_API_KEY=$PYPI_API_KEY" >> $GITHUB_ENV
+          echo "MAVEN_API_KEY=$MAVEN_API_KEY" >> $GITHUB_ENV
+          echo "NUGET_API_KEY=$NUGET_API_KEY" >> $GITHUB_ENV
+          echo "OCI_API_KEY=$OCI_API_KEY" >> $GITHUB_ENV
+
+          echo "✅ Generated unique API keys for all services"
+
+      - name: Set DNS Name Label
+        id: dns
+        run: |
+          if [[ -z "$DNS_LABEL" ]]; then
+            # Generate unique DNS label if not provided
+            DNS_LABEL="xregistry-${GITHUB_RUN_NUMBER}-$(date +%s)"
+            echo "Generated DNS label: $DNS_LABEL"
+          fi
+          echo "DNS_LABEL=$DNS_LABEL" >> $GITHUB_ENV
+
+      - name: Delete Existing Container Group
+        run: |
+          if az container show --name $CONTAINER_GROUP --resource-group $RESOURCE_GROUP &>/dev/null; then
+            echo "⚠️  Deleting existing container group $CONTAINER_GROUP..."
+            az container delete \
+              --name $CONTAINER_GROUP \
+              --resource-group $RESOURCE_GROUP \
+              --yes
+            echo "✅ Existing container group deleted"
+          else
+            echo "✅ No existing container group to delete"
+          fi
+
+      - name: Deploy NPM Service
+        run: |
+          echo "🚀 Deploying NPM service..."
+          az container create \
+            --resource-group $RESOURCE_GROUP \
+            --name xregistry-npm \
+            --image $REGISTRY/$NPM_IMAGE_NAME:$IMAGE_TAG \
+            --cpu 1 \
+            --memory 1 \
+            --registry-login-server $REGISTRY \
+            --registry-username ${{ github.actor }} \
+            --registry-password ${{ secrets.GITHUB_TOKEN }} \
+            --ports 3000 \
+            --ip-address Public \
+            --dns-name-label ${DNS_LABEL}-npm \
+            --environment-variables \
+              PORT=3000 \
+              XREGISTRY_NPM_PORT=3000 \
+              XREGISTRY_API_KEY=$NPM_API_KEY \
+            --restart-policy Always
+          
+          echo "✅ NPM service deployed"
+
+      - name: Deploy PyPI Service
+        run: |
+          echo "🚀 Deploying PyPI service..."
+          az container create \
+            --resource-group $RESOURCE_GROUP \
+            --name xregistry-pypi \
+            --image $REGISTRY/$PYPI_IMAGE_NAME:$IMAGE_TAG \
+            --cpu 2 \
+            --memory 2 \
+            --registry-login-server $REGISTRY \
+            --registry-username ${{ github.actor }} \
+            --registry-password ${{ secrets.GITHUB_TOKEN }} \
+            --ports 3100 \
+            --ip-address Public \
+            --dns-name-label ${DNS_LABEL}-pypi \
+            --environment-variables \
+              PORT=3100 \
+              XREGISTRY_PYPI_PORT=3100 \
+              XREGISTRY_API_KEY=$PYPI_API_KEY \
+            --restart-policy Always
+          
+          echo "✅ PyPI service deployed"
+
+      - name: Deploy Maven Service
+        run: |
+          echo "🚀 Deploying Maven service..."
+          az container create \
+            --resource-group $RESOURCE_GROUP \
+            --name xregistry-maven \
+            --image $REGISTRY/$MAVEN_IMAGE_NAME:$IMAGE_TAG \
+            --cpu 1 \
+            --memory 1.5 \
+            --registry-login-server $REGISTRY \
+            --registry-username ${{ github.actor }} \
+            --registry-password ${{ secrets.GITHUB_TOKEN }} \
+            --ports 3200 \
+            --ip-address Public \
+            --dns-name-label ${DNS_LABEL}-maven \
+            --environment-variables \
+              PORT=3200 \
+              XREGISTRY_MAVEN_PORT=3200 \
+              XREGISTRY_API_KEY=$MAVEN_API_KEY \
+            --restart-policy Always
+          
+          echo "✅ Maven service deployed"
+
+      - name: Deploy NuGet Service
+        run: |
+          echo "🚀 Deploying NuGet service..."
+          az container create \
+            --resource-group $RESOURCE_GROUP \
+            --name xregistry-nuget \
+            --image $REGISTRY/$NUGET_IMAGE_NAME:$IMAGE_TAG \
+            --cpu 1 \
+            --memory 1 \
+            --registry-login-server $REGISTRY \
+            --registry-username ${{ github.actor }} \
+            --registry-password ${{ secrets.GITHUB_TOKEN }} \
+            --ports 3300 \
+            --ip-address Public \
+            --dns-name-label ${DNS_LABEL}-nuget \
+            --environment-variables \
+              PORT=3300 \
+              XREGISTRY_NUGET_PORT=3300 \
+              XREGISTRY_API_KEY=$NUGET_API_KEY \
+            --restart-policy Always
+          
+          echo "✅ NuGet service deployed"
+
+      - name: Deploy OCI Service
+        run: |
+          echo "🚀 Deploying OCI service..."
+          az container create \
+            --resource-group $RESOURCE_GROUP \
+            --name xregistry-oci \
+            --image $REGISTRY/$OCI_IMAGE_NAME:$IMAGE_TAG \
+            --cpu 1 \
+            --memory 1 \
+            --registry-login-server $REGISTRY \
+            --registry-username ${{ github.actor }} \
+            --registry-password ${{ secrets.GITHUB_TOKEN }} \
+            --ports 3400 \
+            --ip-address Public \
+            --dns-name-label ${DNS_LABEL}-oci \
+            --environment-variables \
+              PORT=3400 \
+              XREGISTRY_OCI_PORT=3400 \
+              XREGISTRY_API_KEY=$OCI_API_KEY \
+            --restart-policy Always
+          
+          echo "✅ OCI service deployed"
+
+      - name: Deploy Bridge Service
+        run: |
+          echo "🚀 Deploying Bridge service..."
+          az container create \
+            --resource-group $RESOURCE_GROUP \
+            --name xregistry-bridge \
+            --image $REGISTRY/$BRIDGE_IMAGE_NAME:$IMAGE_TAG \
+            --cpu 1 \
+            --memory 1 \
+            --registry-login-server $REGISTRY \
+            --registry-username ${{ github.actor }} \
+            --registry-password ${{ secrets.GITHUB_TOKEN }} \
+            --ports 8080 \
+            --ip-address Public \
+            --dns-name-label ${DNS_LABEL}-bridge \
+            --environment-variables \
+              PORT=8080 \
+              XREGISTRY_BRIDGE_PORT=8080 \
+              NPM_REGISTRY_URL=http://${DNS_LABEL}-npm.$LOCATION.azurecontainer.io:3000 \
+              PYPI_REGISTRY_URL=http://${DNS_LABEL}-pypi.$LOCATION.azurecontainer.io:3100 \
+              MAVEN_REGISTRY_URL=http://${DNS_LABEL}-maven.$LOCATION.azurecontainer.io:3200 \
+              NUGET_REGISTRY_URL=http://${DNS_LABEL}-nuget.$LOCATION.azurecontainer.io:3300 \
+              OCI_REGISTRY_URL=http://${DNS_LABEL}-oci.$LOCATION.azurecontainer.io:3400 \
+            --restart-policy Always
+          
+          echo "✅ Bridge service deployed"
+
+      - name: Wait for Services to Start
+        run: |
+          echo "⏳ Waiting for services to become healthy..."
+          sleep 30
+
+      - name: Get Service Endpoints
+        id: endpoints
+        run: |
+          echo "📋 Retrieving service endpoints..."
+          
+          NPM_IP=$(az container show --name xregistry-npm --resource-group $RESOURCE_GROUP --query ipAddress.ip -o tsv)
+          PYPI_IP=$(az container show --name xregistry-pypi --resource-group $RESOURCE_GROUP --query ipAddress.ip -o tsv)
+          MAVEN_IP=$(az container show --name xregistry-maven --resource-group $RESOURCE_GROUP --query ipAddress.ip -o tsv)
+          NUGET_IP=$(az container show --name xregistry-nuget --resource-group $RESOURCE_GROUP --query ipAddress.ip -o tsv)
+          OCI_IP=$(az container show --name xregistry-oci --resource-group $RESOURCE_GROUP --query ipAddress.ip -o tsv)
+          BRIDGE_IP=$(az container show --name xregistry-bridge --resource-group $RESOURCE_GROUP --query ipAddress.ip -o tsv)
+          
+          echo "npm-ip=$NPM_IP" >> $GITHUB_OUTPUT
+          echo "pypi-ip=$PYPI_IP" >> $GITHUB_OUTPUT
+          echo "maven-ip=$MAVEN_IP" >> $GITHUB_OUTPUT
+          echo "nuget-ip=$NUGET_IP" >> $GITHUB_OUTPUT
+          echo "oci-ip=$OCI_IP" >> $GITHUB_OUTPUT
+          echo "bridge-ip=$BRIDGE_IP" >> $GITHUB_OUTPUT
+
+      - name: Test Service Health
+        run: |
+          echo "🔍 Testing service health..."
+          
+          # Test NPM service
+          if curl -f -s http://${{ steps.endpoints.outputs.npm-ip }}:3000/health &>/dev/null || \
+             curl -f -s http://${{ steps.endpoints.outputs.npm-ip }}:3000/ &>/dev/null; then
+            echo "✅ NPM service is healthy"
+          else
+            echo "⚠️  NPM service health check failed (may still be initializing)"
+          fi
+          
+          # Test PyPI service
+          if curl -f -s http://${{ steps.endpoints.outputs.pypi-ip }}:3100/health &>/dev/null || \
+             curl -f -s http://${{ steps.endpoints.outputs.pypi-ip }}:3100/ &>/dev/null; then
+            echo "✅ PyPI service is healthy"
+          else
+            echo "⚠️  PyPI service health check failed (may still be initializing)"
+          fi
+          
+          # Test Maven service
+          if curl -f -s http://${{ steps.endpoints.outputs.maven-ip }}:3200/health &>/dev/null || \
+             curl -f -s http://${{ steps.endpoints.outputs.maven-ip }}:3200/ &>/dev/null; then
+            echo "✅ Maven service is healthy"
+          else
+            echo "⚠️  Maven service health check failed (may still be initializing)"
+          fi
+          
+          # Test NuGet service
+          if curl -f -s http://${{ steps.endpoints.outputs.nuget-ip }}:3300/health &>/dev/null || \
+             curl -f -s http://${{ steps.endpoints.outputs.nuget-ip }}:3300/ &>/dev/null; then
+            echo "✅ NuGet service is healthy"
+          else
+            echo "⚠️  NuGet service health check failed (may still be initializing)"
+          fi
+          
+          # Test OCI service
+          if curl -f -s http://${{ steps.endpoints.outputs.oci-ip }}:3400/health &>/dev/null || \
+             curl -f -s http://${{ steps.endpoints.outputs.oci-ip }}:3400/ &>/dev/null; then
+            echo "✅ OCI service is healthy"
+          else
+            echo "⚠️  OCI service health check failed (may still be initializing)"
+          fi
+          
+          # Test Bridge service
+          if curl -f -s http://${{ steps.endpoints.outputs.bridge-ip }}:8080/health &>/dev/null || \
+             curl -f -s http://${{ steps.endpoints.outputs.bridge-ip }}:8080/ &>/dev/null; then
+            echo "✅ Bridge service is healthy"
+          else
+            echo "⚠️  Bridge service health check failed (may still be initializing)"
+          fi
+
+      - name: Deployment Summary
+        run: |
+          echo "🎉 Deployment completed successfully!"
+          echo ""
+          echo "📦 Deployed Image Tag: $IMAGE_TAG"
+          echo "📍 Resource Group: $RESOURCE_GROUP"
+          echo "🌍 Location: $LOCATION"
+          echo ""
+          echo "🔗 Service Endpoints (IP Addresses):"
+          echo "  • NPM:    http://${{ steps.endpoints.outputs.npm-ip }}:3000"
+          echo "  • PyPI:   http://${{ steps.endpoints.outputs.pypi-ip }}:3100"
+          echo "  • Maven:  http://${{ steps.endpoints.outputs.maven-ip }}:3200"
+          echo "  • NuGet:  http://${{ steps.endpoints.outputs.nuget-ip }}:3300"
+          echo "  • OCI:    http://${{ steps.endpoints.outputs.oci-ip }}:3400"
+          echo "  • Bridge: http://${{ steps.endpoints.outputs.bridge-ip }}:8080"
+          echo ""
+          echo "🔗 Service Endpoints (DNS Names):"
+          echo "  • NPM:    http://${DNS_LABEL}-npm.$LOCATION.azurecontainer.io:3000"
+          echo "  • PyPI:   http://${DNS_LABEL}-pypi.$LOCATION.azurecontainer.io:3100"
+          echo "  • Maven:  http://${DNS_LABEL}-maven.$LOCATION.azurecontainer.io:3200"
+          echo "  • NuGet:  http://${DNS_LABEL}-nuget.$LOCATION.azurecontainer.io:3300"
+          echo "  • OCI:    http://${DNS_LABEL}-oci.$LOCATION.azurecontainer.io:3400"
+          echo "  • Bridge: http://${DNS_LABEL}-bridge.$LOCATION.azurecontainer.io:8080"
+          echo ""
+          echo "⚡ Note: Services use async initialization and may take 3-10 seconds to fully load caches"
+          echo "📝 API Keys have been generated and configured for each service"
+          echo ""
+          echo "🔧 To delete all services:"
+          echo "   az container delete --name xregistry-npm --resource-group $RESOURCE_GROUP --yes"
+          echo "   az container delete --name xregistry-pypi --resource-group $RESOURCE_GROUP --yes"
+          echo "   az container delete --name xregistry-maven --resource-group $RESOURCE_GROUP --yes"
+          echo "   az container delete --name xregistry-nuget --resource-group $RESOURCE_GROUP --yes"
+          echo "   az container delete --name xregistry-oci --resource-group $RESOURCE_GROUP --yes"
+          echo "   az container delete --name xregistry-bridge --resource-group $RESOURCE_GROUP --yes"

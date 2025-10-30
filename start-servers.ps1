@@ -4,6 +4,12 @@
 .DESCRIPTION
     Launches all individual registry services (NPM, PyPI, Maven, NuGet, OCI) on their respective ports
     using Start-Job for parallel execution with automatic port detection.
+    
+    All services are TypeScript-based and use async initialization:
+    - HTTP server starts immediately (3-10 seconds)
+    - Package cache/index loading happens in background
+    - Basic functionality available instantly
+    - Enhanced filtering available after background loading completes
 .NOTES
     Default ports:
     - NPM: 3000
@@ -12,6 +18,13 @@
     - NuGet: 3300
     - OCI: 3400
     - Bridge: 8080
+    
+    Startup times (async architecture):
+    - NPM: ~3 seconds (immediate availability)
+    - PyPI: ~3 seconds (692k packages load in background)
+    - Maven: ~3 seconds (immediate availability)
+    - NuGet: ~3 seconds (immediate availability)
+    - OCI: ~10 seconds (external registry detection)
 #>
 
 [CmdletBinding()]
@@ -75,39 +88,25 @@ catch {
     exit 1
 }
 
-# Ensure dependencies are installed
-if (-not (Test-Path "node_modules")) {
-    Write-Info "Installing dependencies..."
-    npm install
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "Failed to install dependencies"
-        exit 1
-    }
-}
-
-# Build all services
-Write-Info "Building services..."
-npm run build 2>&1 | Out-Null
-if ($LASTEXITCODE -ne 0) {
-    Write-Warning "Build completed with warnings, continuing..."
-}
+# Note: Each service will be built automatically via npm start (prestart hook)
+# No need to build all services upfront - builds happen in parallel per service
 
 Write-Host ""
 Write-Info "Detecting available ports..."
 Write-Host ""
 
 # Define services with their default ports and directories
-# Note: NPM uses "npm start" (TypeScript project), so Script is unused for validation
+# All services are now TypeScript-based and use npm start or dist/server.js
 $services = @(
-    @{Name="NPM"; Port=3000; Dir="npm"; Script=""; EnvVar="XREGISTRY_NPM_PORT"}
-    @{Name="PyPI"; Port=3100; Dir="pypi"; Script="server.js"; EnvVar="XREGISTRY_PYPI_PORT"}
-    @{Name="Maven"; Port=3200; Dir="maven"; Script="server.js"; EnvVar="XREGISTRY_MAVEN_PORT"}
-    @{Name="NuGet"; Port=3300; Dir="nuget"; Script="server.js"; EnvVar="XREGISTRY_NUGET_PORT"}
-    @{Name="OCI"; Port=3400; Dir="oci"; Script="server.js"; EnvVar="XREGISTRY_OCI_PORT"}
+    @{Name="NPM"; Port=3000; Dir="npm"; UseNpmStart=$true; EnvVar="XREGISTRY_NPM_PORT"}
+    @{Name="PyPI"; Port=3100; Dir="pypi"; UseNpmStart=$true; EnvVar="XREGISTRY_PYPI_PORT"}
+    @{Name="Maven"; Port=3200; Dir="maven"; UseNpmStart=$true; EnvVar="XREGISTRY_MAVEN_PORT"}
+    @{Name="NuGet"; Port=3300; Dir="nuget"; UseNpmStart=$true; EnvVar="XREGISTRY_NUGET_PORT"}
+    @{Name="OCI"; Port=3400; Dir="oci"; UseNpmStart=$true; EnvVar="XREGISTRY_OCI_PORT"}
 )
 
 if ($IncludeBridge) {
-    $services += @{Name="Bridge"; Port=8080; Dir="bridge"; Script="dist/server.js"; EnvVar="XREGISTRY_BRIDGE_PORT"}
+    $services += @{Name="Bridge"; Port=8080; Dir="bridge"; UseNpmStart=$true; EnvVar="XREGISTRY_BRIDGE_PORT"}
 }
 
 # Detect available ports
@@ -133,26 +132,19 @@ $jobs = @()
 foreach ($service in $services) {
     $serviceName = $service.Name
     $serviceDir = Join-Path $PSScriptRoot $service.Dir
-    $serviceScript = Join-Path $serviceDir $service.Script
     $assignedPort = $portAssignments[$serviceName]
     $envVar = $service.EnvVar
+    $useNpmStart = $service.UseNpmStart
     
-    # For NPM (TypeScript project), check package.json instead of script file
-    if ($serviceName -eq "NPM") {
-        $packageJson = Join-Path $serviceDir "package.json"
-        if (-not (Test-Path $packageJson)) {
-            Write-Warning "Skipping $serviceName - package.json not found"
-            continue
-        }
-    } else {
-        if (-not (Test-Path $serviceScript)) {
-            Write-Warning "Skipping $serviceName - script not found: $serviceScript"
-            continue
-        }
+    # Check if package.json exists (all services are now TypeScript-based)
+    $packageJson = Join-Path $serviceDir "package.json"
+    if (-not (Test-Path $packageJson)) {
+        Write-Warning "Skipping $serviceName - package.json not found"
+        continue
     }
     
     $job = Start-Job -ScriptBlock {
-        param($Dir, $Script, $Port, $EnvVar, $ServiceName)
+        param($Dir, $Port, $EnvVar, $ServiceName, $UseNpmStart)
         
         # Set environment variable for port
         $env:PORT = $Port
@@ -161,13 +153,14 @@ foreach ($service in $services) {
         # Change to service directory
         Set-Location $Dir
         
-        # Start the service - use npm start for TypeScript projects (NPM)
-        if ($ServiceName -eq "NPM") {
+        # All services now use npm start (builds and runs TypeScript)
+        if ($UseNpmStart) {
             npm start 2>&1
         } else {
-            node $Script --port $Port 2>&1
+            # Fallback to direct node execution (not used anymore)
+            node dist/server.js 2>&1
         }
-    } -ArgumentList $serviceDir, $serviceScript, $assignedPort, $envVar, $serviceName
+    } -ArgumentList $serviceDir, $assignedPort, $envVar, $serviceName, $useNpmStart
     
     $jobs += @{Job=$job; Name=$serviceName; Port=$assignedPort}
     Write-Success "Started $serviceName on port $assignedPort (Job ID: $($job.Id))"
