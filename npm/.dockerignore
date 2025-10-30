@@ -1,9 +1,0 @@
-node_modules
-npm-debug.log
-.git
-.gitignore
-.env
-*.md
-!README.md
-!VERSION-DETAIL-SPEC.md
-/cache 
