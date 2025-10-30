@@ -69,13 +69,13 @@ run-test-servers.js
 /shared/cache
 
 # Maven-specific excludes
-maven/maven-index-cache/
-maven/*.gz
-maven/nexus-maven-repository-index.*
-maven/test-index.txt
+/maven/maven-index-cache
+/maven/*.gz
+/maven/nexus-maven-repository-index.*
+/maven/test-index.txt
 
 # NPM-specific excludes  
-npm/all-packages/
+/npm/all-packages
 
 # Distribution and build directories
 dist/
