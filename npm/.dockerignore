@@ -6,5 +6,4 @@ npm-debug.log
 *.md
 !README.md
 !VERSION-DETAIL-SPEC.md
-cache/
-!src/cache/ 
+/cache 

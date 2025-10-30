@@ -5,6 +5,5 @@ npm-debug.log
 .env
 *.md
 !README.md
-cache/
-!src/cache/
-tests/
+/cache
+/tests

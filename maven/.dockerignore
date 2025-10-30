@@ -5,11 +5,10 @@ npm-debug.log
 .env
 *.md
 !README.md
-cache/
-!src/cache/
-maven-index-cache/
-index/
-tests/
+/cache
+/maven-index-cache
+/index
+/tests
 test-*.db
 test-*.txt
 *.db-journal
