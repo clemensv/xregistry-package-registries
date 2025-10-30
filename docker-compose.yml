@@ -11,10 +11,17 @@ services:
     environment:
       - NODE_ENV=production
       - BRIDGE_PORT=8080
+      - DOWNSTREAMS_JSON={"servers":[{"url":"http://npm:3000","apikey":"npm-api-key"},{"url":"http://pypi:3100","apikey":"pypi-api-key"},{"url":"http://maven:3200","apikey":"maven-api-key"},{"url":"http://nuget:3300","apikey":"nuget-api-key"},{"url":"http://oci:3400","apikey":"oci-api-key"}]}
     volumes:
       - ./logs/bridge:/app/logs
       - ./cache:/app/cache
     restart: unless-stopped
+    depends_on:
+      - npm
+      - pypi
+      - maven
+      - nuget
+      - oci
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -31,13 +38,13 @@ services:
       - "3200:3200"
     environment:
       - NODE_ENV=production
-      - MAVEN_PORT=3200
+      - PORT=3200
     volumes:
       - ./logs/maven:/app/logs
       - ./maven/cache:/app/cache
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3200/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3200/"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -52,14 +59,15 @@ services:
       - "3000:3000"
     environment:
       - NODE_ENV=production
-      - NPM_PORT=3000
+      - PORT=3000
+      - HOST=0.0.0.0
     volumes:
       - ./logs/npm:/app/logs
       - ./npm/cache:/app/cache
       - ./npm/all-packages:/app/all-packages
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -74,13 +82,13 @@ services:
       - "3100:3100"
     environment:
       - NODE_ENV=production
-      - PYPI_PORT=3100
+      - PORT=3100
     volumes:
       - ./logs/pypi:/app/logs
       - ./pypi/cache:/app/cache
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3100/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3100/"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -95,13 +103,13 @@ services:
       - "3300:3300"
     environment:
       - NODE_ENV=production
-      - NUGET_PORT=3300
+      - PORT=3300
     volumes:
       - ./logs/nuget:/app/logs
       - ./nuget/cache:/app/cache
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3300/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3300/"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -116,13 +124,13 @@ services:
       - "3400:3400"
     environment:
       - NODE_ENV=production
-      - OCI_PORT=3400
+      - PORT=3400
     volumes:
       - ./logs/oci:/app/logs
       - ./oci/cache:/app/cache
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3400/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3400/"]
       interval: 30s
       timeout: 10s
       retries: 3
