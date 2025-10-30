@@ -77,11 +77,11 @@ run-test-servers.js
 # NPM-specific excludes  
 /npm/all-packages
 
-# Distribution and build directories
-dist/
-build/
-.next/
-out/
+# Distribution and build directories (at any level)
+**/dist
+**/build
+**/.next
+**/out
 
 # Package manager lockfiles we don't need (keep the ones services need)
 */yarn.lock
