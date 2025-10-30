@@ -77,9 +77,18 @@ jobs:
         if: ${{ github.event_name != 'pull_request' }}
         env:
           COSIGN_YES: "true"
+          COSIGN_EXPERIMENTAL: "1"
         run: |
           REF="${{ env.REGISTRY }}/${{ env.PYPI_IMAGE_NAME }}@${{ steps.build-pypi.outputs.digest }}"
-          cosign sign --force "${REF}"
+          # Check if signature already exists, if not sign it
+          if ! cosign verify \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "https://github.com/${{ github.workflow_ref }}" \
+            "${REF}" 2>/dev/null; then
+            cosign sign "${REF}"
+          else
+            echo "Image already signed, skipping"
+          fi
 
   verify-pypi:
     needs: build-pypi
@@ -156,9 +165,18 @@ jobs:
         if: ${{ github.event_name != 'pull_request' }}
         env:
           COSIGN_YES: "true"
+          COSIGN_EXPERIMENTAL: "1"
         run: |
           REF="${{ env.REGISTRY }}/${{ env.NPM_IMAGE_NAME }}@${{ steps.build-npm.outputs.digest }}"
-          cosign sign --force "${REF}"
+          # Check if signature already exists, if not sign it
+          if ! cosign verify \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "https://github.com/${{ github.workflow_ref }}" \
+            "${REF}" 2>/dev/null; then
+            cosign sign "${REF}"
+          else
+            echo "Image already signed, skipping"
+          fi
 
   verify-npm:
     needs: build-npm
@@ -235,9 +253,18 @@ jobs:
         if: ${{ github.event_name != 'pull_request' }}
         env:
           COSIGN_YES: "true"
+          COSIGN_EXPERIMENTAL: "1"
         run: |
           REF="${{ env.REGISTRY }}/${{ env.OCI_IMAGE_NAME }}@${{ steps.build-oci.outputs.digest }}"
-          cosign sign --force "${REF}"
+          # Check if signature already exists, if not sign it
+          if ! cosign verify \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "https://github.com/${{ github.workflow_ref }}" \
+            "${REF}" 2>/dev/null; then
+            cosign sign "${REF}"
+          else
+            echo "Image already signed, skipping"
+          fi
 
   verify-oci:
     needs: build-oci
@@ -314,9 +341,18 @@ jobs:
         if: ${{ github.event_name != 'pull_request' }}
         env:
           COSIGN_YES: "true"
+          COSIGN_EXPERIMENTAL: "1"
         run: |
           REF="${{ env.REGISTRY }}/${{ env.NUGET_IMAGE_NAME }}@${{ steps.build-nuget.outputs.digest }}"
-          cosign sign --force "${REF}"
+          # Check if signature already exists, if not sign it
+          if ! cosign verify \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "https://github.com/${{ github.workflow_ref }}" \
+            "${REF}" 2>/dev/null; then
+            cosign sign "${REF}"
+          else
+            echo "Image already signed, skipping"
+          fi
 
   verify-nuget:
     needs: build-nuget
@@ -393,9 +429,18 @@ jobs:
         if: ${{ github.event_name != 'pull_request' }}
         env:
           COSIGN_YES: "true"
+          COSIGN_EXPERIMENTAL: "1"
         run: |
           REF="${{ env.REGISTRY }}/${{ env.MAVEN_IMAGE_NAME }}@${{ steps.build-maven.outputs.digest }}"
-          cosign sign --force "${REF}"
+          # Check if signature already exists, if not sign it
+          if ! cosign verify \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "https://github.com/${{ github.workflow_ref }}" \
+            "${REF}" 2>/dev/null; then
+            cosign sign "${REF}"
+          else
+            echo "Image already signed, skipping"
+          fi
 
   verify-maven:
     needs: build-maven
@@ -472,9 +517,18 @@ jobs:
         if: ${{ github.event_name != 'pull_request' }}
         env:
           COSIGN_YES: "true"
+          COSIGN_EXPERIMENTAL: "1"
         run: |
           REF="${{ env.REGISTRY }}/${{ env.BRIDGE_IMAGE_NAME }}@${{ steps.build-bridge.outputs.digest }}"
-          cosign sign --force "${REF}"
+          # Check if signature already exists, if not sign it
+          if ! cosign verify \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "https://github.com/${{ github.workflow_ref }}" \
+            "${REF}" 2>/dev/null; then
+            cosign sign "${REF}"
+          else
+            echo "Image already signed, skipping"
+          fi
 
   verify-bridge:
     needs: build-bridge
