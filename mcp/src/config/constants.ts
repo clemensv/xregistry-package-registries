@@ -2,6 +2,36 @@
  * Application constants for the MCP xRegistry wrapper
  */
 
+import { Request } from 'express';
+
+/**
+ * Get the base URL for constructing absolute URLs in responses.
+ * Priority order:
+ * 1. x-base-url header (set by bridge/proxy for internal routing)
+ * 2. x-forwarded-proto + x-forwarded-host headers (for external direct access)
+ * 3. Construct from request object (development/fallback)
+ * 
+ * @param req Express request object
+ * @returns Base URL string
+ */
+export function getBaseUrl(req: Request): string {
+    // Priority 1: Check for x-base-url header (from bridge)
+    const baseUrlHeader = req.get('x-base-url');
+    if (baseUrlHeader) {
+        return baseUrlHeader;
+    }
+
+    // Priority 2: Check for x-forwarded-* headers (external access)
+    const forwardedProto = req.get('x-forwarded-proto');
+    const forwardedHost = req.get('x-forwarded-host');
+    if (forwardedProto && forwardedHost) {
+        return `${forwardedProto}://${forwardedHost}`;
+    }
+
+    // Priority 3: Fallback to request properties
+    return `${req.protocol}://${req.get('host')}`;
+}
+
 export const REGISTRY_CONFIG = {
     ID: 'mcp-wrapper',
     SPEC_VERSION: '1.0-rc2',

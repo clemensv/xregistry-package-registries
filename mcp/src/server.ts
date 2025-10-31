@@ -6,7 +6,7 @@
 import express from 'express';
 import { corsMiddleware } from './middleware/cors';
 import { MCPService } from './services/mcp-service';
-import { REGISTRY_CONFIG, SERVER_CONFIG, GROUP_CONFIG, RESOURCE_CONFIG, HTTP_STATUS, PAGINATION } from './config/constants';
+import { REGISTRY_CONFIG, SERVER_CONFIG, GROUP_CONFIG, RESOURCE_CONFIG, HTTP_STATUS, PAGINATION, getBaseUrl } from './config/constants';
 import * as fs from 'fs';
 import * as path from 'path';
 import { RegistryMetadata, ProviderMetadata, ServerMetadata, PaginatedResponse } from './types/xregistry';
@@ -110,7 +110,7 @@ export class XRegistryServer {
         this.app.get('/', async (req, res) => {
             try {
                 const inline = req.query.inline as string;
-                const registry = await this.getRegistryEntity(inline);
+                const registry = await this.getRegistryEntity(req, inline);
                 res.json(registry);
             } catch (error) {
                 this.handleError(res, error);
@@ -133,7 +133,7 @@ export class XRegistryServer {
                 const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
                 const offset = req.query.offset ? parseInt(req.query.offset as string) : 0;
                 
-                const result = await this.getMCPProviders(inline, limit, offset);
+                const result = await this.getMCPProviders(req, inline, limit, offset);
                 
                 // Add pagination Link headers if applicable
                 if (result.links) {
@@ -153,7 +153,7 @@ export class XRegistryServer {
             try {
                 const { providerId } = req.params;
                 const inline = req.query.inline as string;
-                const provider = await this.getMCPProvider(providerId, inline);
+                const provider = await this.getMCPProvider(req, providerId, inline);
                 
                 if (!provider) {
                     res.status(HTTP_STATUS.NOT_FOUND).json({
@@ -175,7 +175,7 @@ export class XRegistryServer {
                 const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
                 const offset = req.query.offset ? parseInt(req.query.offset as string) : 0;
                 
-                const result = await this.getServersForProvider(providerId, limit, offset);
+                const result = await this.getServersForProvider(req, providerId, limit, offset);
                 
                 // Add pagination Link headers if applicable
                 if (result.links) {
@@ -199,7 +199,7 @@ export class XRegistryServer {
                 // Check if versions should be inlined
                 const shouldInlineVersions = inline ? (inline === '*' || inline.includes('versions')) : false;
                 
-                const server = await this.getServerWithVersions(providerId, serverId, shouldInlineVersions);
+                const server = await this.getServerWithVersions(req, providerId, serverId, shouldInlineVersions);
                 
                 if (!server) {
                     res.status(HTTP_STATUS.NOT_FOUND).json({
@@ -218,7 +218,7 @@ export class XRegistryServer {
         this.app.get('/mcpproviders/:providerId/servers/:serverId/versions/:versionId', async (req, res) => {
             try {
                 const { providerId, serverId, versionId } = req.params;
-                const server = await this.getServerVersion(providerId, serverId, versionId);
+                const server = await this.getServerVersion(req, providerId, serverId, versionId);
                 
                 if (!server) {
                     res.status(HTTP_STATUS.NOT_FOUND).json({
@@ -238,7 +238,7 @@ export class XRegistryServer {
             try {
                 const { providerId, serverId } = req.params;
                 const inline = req.query.inline as string;
-                const versions = await this.getServerVersionsList(providerId, serverId, inline);
+                const versions = await this.getServerVersionsList(req, providerId, serverId, inline);
                 
                 if (!versions) {
                     res.status(HTTP_STATUS.NOT_FOUND).json({
@@ -278,14 +278,15 @@ export class XRegistryServer {
     /**
      * Get registry root entity
      */
-    private async getRegistryEntity(inline?: string): Promise<RegistryMetadata> {
+    private async getRegistryEntity(req: express.Request, inline?: string): Promise<RegistryMetadata> {
         const now = new Date().toISOString();
         const shouldInline = inline && (inline === '*' || inline.includes('mcpproviders'));
+        const baseUrl = getBaseUrl(req);
 
         const registry: RegistryMetadata = {
             specversion: REGISTRY_CONFIG.SPEC_VERSION,
             registryid: REGISTRY_CONFIG.ID,
-            self: this.options.baseUrl,
+            self: baseUrl,
             xid: '/',
             epoch: 1,
             name: 'MCP Server Registry',
@@ -293,12 +294,12 @@ export class XRegistryServer {
             documentation: 'https://modelcontextprotocol.io',
             createdat: now,
             modifiedat: now,
-            mcpprovidersurl: `${this.options.baseUrl}/mcpproviders`,
+            mcpprovidersurl: `${baseUrl}/mcpproviders`,
             mcpproviderscount: 0
         };
 
         if (shouldInline) {
-            const providers = await this.getMCPProviders(inline);
+            const providers = await this.getMCPProviders(req, inline);
             registry.mcpproviders = providers as any;
             registry.mcpproviderscount = Object.keys(providers).length;
         } else {
@@ -313,10 +314,11 @@ export class XRegistryServer {
     /**
      * Get all MCP providers with pagination support
      */
-    private async getMCPProviders(inline?: string, limit?: number, offset: number = 0): Promise<PaginatedResponse<Record<string, ProviderMetadata>>> {
+    private async getMCPProviders(req: express.Request, inline?: string, limit?: number, offset: number = 0): Promise<PaginatedResponse<Record<string, ProviderMetadata>>> {
         // Use cached grouped servers
         const grouped = await this.getCachedGroupedServers();
         const shouldInlineServers = inline && (inline === '*' || inline.includes('servers'));
+        const baseUrl = getBaseUrl(req);
 
         const allProviderIds = Array.from(grouped.keys()).sort();
         const totalCount = allProviderIds.length;
@@ -334,21 +336,21 @@ export class XRegistryServer {
             const servers = grouped.get(providerId)!;
             const provider: ProviderMetadata = {
                 mcpproviderid: providerId,
-                self: `${this.options.baseUrl}/mcpproviders/${providerId}`,
+                self: `${baseUrl}/mcpproviders/${providerId}`,
                 xid: `/mcpproviders/${providerId}`,
                 epoch: 1,
                 name: providerId,
                 description: `MCP servers from ${providerId}`,
                 createdat: now,
                 modifiedat: now,
-                serversurl: `${this.options.baseUrl}/mcpproviders/${providerId}/servers`,
+                serversurl: `${baseUrl}/mcpproviders/${providerId}/servers`,
                 serverscount: servers.length
             };
 
             if (shouldInlineServers) {
                 provider.servers = {};
                 for (const mcpServer of servers) {
-                    const serverMeta = this.mcpService.convertToXRegistryServer(mcpServer, providerId, this.options.baseUrl);
+                    const serverMeta = this.mcpService.convertToXRegistryServer(mcpServer, providerId, baseUrl);
                     provider.servers[serverMeta.serverid] = serverMeta;
                 }
             }
@@ -364,24 +366,24 @@ export class XRegistryServer {
             // Add prev link if not at the start
             if (startIndex > 0) {
                 const prevOffset = Math.max(0, startIndex - effectiveLimit);
-                const prevLink = `<${this.options.baseUrl}/mcpproviders?limit=${effectiveLimit}&offset=${prevOffset}>; rel="prev"; count=${totalCount}`;
+                const prevLink = `<${baseUrl}/mcpproviders?limit=${effectiveLimit}&offset=${prevOffset}>; rel="prev"; count=${totalCount}`;
                 links.push(prevLink);
             }
             
             // Add next link if there are more results
             if (endIndex < totalCount) {
                 const nextOffset = endIndex;
-                const nextLink = `<${this.options.baseUrl}/mcpproviders?limit=${effectiveLimit}&offset=${nextOffset}>; rel="next"; count=${totalCount}`;
+                const nextLink = `<${baseUrl}/mcpproviders?limit=${effectiveLimit}&offset=${nextOffset}>; rel="next"; count=${totalCount}`;
                 links.push(nextLink);
             }
             
             // Add first link
-            const firstLink = `<${this.options.baseUrl}/mcpproviders?limit=${effectiveLimit}>; rel="first"; count=${totalCount}`;
+            const firstLink = `<${baseUrl}/mcpproviders?limit=${effectiveLimit}>; rel="first"; count=${totalCount}`;
             links.push(firstLink);
             
             // Add last link
             const lastOffset = Math.max(0, totalCount - effectiveLimit);
-            const lastLink = `<${this.options.baseUrl}/mcpproviders?limit=${effectiveLimit}&offset=${lastOffset}>; rel="last"; count=${totalCount}`;
+            const lastLink = `<${baseUrl}/mcpproviders?limit=${effectiveLimit}&offset=${lastOffset}>; rel="last"; count=${totalCount}`;
             links.push(lastLink);
         }
 
@@ -395,9 +397,10 @@ export class XRegistryServer {
     /**
      * Get a specific MCP provider
      */
-    private async getMCPProvider(providerId: string, inline?: string): Promise<ProviderMetadata | null> {
+    private async getMCPProvider(req: express.Request, providerId: string, inline?: string): Promise<ProviderMetadata | null> {
         // Use cached grouped servers
         const grouped = await this.getCachedGroupedServers();
+        const baseUrl = getBaseUrl(req);
         
         if (!grouped.has(providerId)) {
             return null;
@@ -409,21 +412,21 @@ export class XRegistryServer {
 
         const provider: ProviderMetadata = {
             mcpproviderid: providerId,
-            self: `${this.options.baseUrl}/mcpproviders/${providerId}`,
+            self: `${baseUrl}/mcpproviders/${providerId}`,
             xid: `/mcpproviders/${providerId}`,
             epoch: 1,
             name: providerId,
             description: `MCP servers from ${providerId}`,
             createdat: now,
             modifiedat: now,
-            serversurl: `${this.options.baseUrl}/mcpproviders/${providerId}/servers`,
+            serversurl: `${baseUrl}/mcpproviders/${providerId}/servers`,
             serverscount: servers.length
         };
 
         if (shouldInlineServers) {
             provider.servers = {};
             for (const mcpServer of servers) {
-                const serverMeta = this.mcpService.convertToXRegistryServer(mcpServer, providerId, this.options.baseUrl);
+                const serverMeta = this.mcpService.convertToXRegistryServer(mcpServer, providerId, baseUrl);
                 provider.servers[serverMeta.serverid] = serverMeta;
             }
         }
@@ -434,9 +437,10 @@ export class XRegistryServer {
     /**
      * Get servers for a specific provider with pagination support
      */
-    private async getServersForProvider(providerId: string, limit?: number, offset: number = 0): Promise<PaginatedResponse<Record<string, ServerMetadata>>> {
+    private async getServersForProvider(req: express.Request, providerId: string, limit?: number, offset: number = 0): Promise<PaginatedResponse<Record<string, ServerMetadata>>> {
         // Use cached grouped servers
         const grouped = await this.getCachedGroupedServers();
+        const baseUrl = getBaseUrl(req);
         
         if (!grouped.has(providerId)) {
             return { data: {}, count: 0 };
@@ -454,37 +458,37 @@ export class XRegistryServer {
         const result: Record<string, ServerMetadata> = {};
 
         for (const mcpServer of serversPage) {
-            const serverMeta = this.mcpService.convertToXRegistryServer(mcpServer, providerId, this.options.baseUrl);
+            const serverMeta = this.mcpService.convertToXRegistryServer(mcpServer, providerId, baseUrl);
             result[serverMeta.serverid] = serverMeta;
         }
 
         // Build pagination links
         const links: string[] = [];
         const hasLimit = limit !== undefined && limit > 0;
-        const baseUrl = `${this.options.baseUrl}/mcpproviders/${providerId}/servers`;
+        const serversBaseUrl = `${baseUrl}/mcpproviders/${providerId}/servers`;
         
         if (hasLimit) {
             // Add prev link if not at the start
             if (startIndex > 0) {
                 const prevOffset = Math.max(0, startIndex - effectiveLimit);
-                const prevLink = `<${baseUrl}?limit=${effectiveLimit}&offset=${prevOffset}>; rel="prev"; count=${totalCount}`;
+                const prevLink = `<${serversBaseUrl}?limit=${effectiveLimit}&offset=${prevOffset}>; rel="prev"; count=${totalCount}`;
                 links.push(prevLink);
             }
             
             // Add next link if there are more results
             if (endIndex < totalCount) {
                 const nextOffset = endIndex;
-                const nextLink = `<${baseUrl}?limit=${effectiveLimit}&offset=${nextOffset}>; rel="next"; count=${totalCount}`;
+                const nextLink = `<${serversBaseUrl}?limit=${effectiveLimit}&offset=${nextOffset}>; rel="next"; count=${totalCount}`;
                 links.push(nextLink);
             }
             
             // Add first link
-            const firstLink = `<${baseUrl}?limit=${effectiveLimit}>; rel="first"; count=${totalCount}`;
+            const firstLink = `<${serversBaseUrl}?limit=${effectiveLimit}>; rel="first"; count=${totalCount}`;
             links.push(firstLink);
             
             // Add last link
             const lastOffset = Math.max(0, totalCount - effectiveLimit);
-            const lastLink = `<${baseUrl}?limit=${effectiveLimit}&offset=${lastOffset}>; rel="last"; count=${totalCount}`;
+            const lastLink = `<${serversBaseUrl}?limit=${effectiveLimit}&offset=${lastOffset}>; rel="last"; count=${totalCount}`;
             links.push(lastLink);
         }
 
@@ -498,9 +502,10 @@ export class XRegistryServer {
     /**
      * Get a specific server
      */
-    private async getServer(providerId: string, serverId: string): Promise<ServerMetadata | null> {
+    private async getServer(req: express.Request, providerId: string, serverId: string): Promise<ServerMetadata | null> {
         // Use targeted fetching - construct server name from providerId/serverId
         const serverName = `${providerId}/${serverId}`;
+        const baseUrl = getBaseUrl(req);
         
         try {
             const mcpServer = await this.mcpService.getServer(serverName);
@@ -508,7 +513,7 @@ export class XRegistryServer {
                 return null;
             }
             
-            return this.mcpService.convertToXRegistryServer(mcpServer, providerId, this.options.baseUrl);
+            return this.mcpService.convertToXRegistryServer(mcpServer, providerId, baseUrl);
         } catch (error) {
             this.logger.error(`Failed to fetch server ${serverName}`, error);
             return null;
@@ -518,9 +523,10 @@ export class XRegistryServer {
     /**
      * Get server with versions support
      */
-    private async getServerWithVersions(providerId: string, serverId: string, inlineVersions: boolean): Promise<any | null> {
+    private async getServerWithVersions(req: express.Request, providerId: string, serverId: string, inlineVersions: boolean): Promise<any | null> {
         // Find the server in cached grouped servers by matching sanitized ID
         const grouped = await this.getCachedGroupedServers();
+        const baseUrl = getBaseUrl(req);
         
         if (!grouped.has(providerId)) {
             return null;
@@ -551,24 +557,24 @@ export class XRegistryServer {
 
             // Find the latest version
             const latestServer = matchingServers.find(s => s._meta?.['io.modelcontextprotocol.registry/official']?.isLatest) || matchingServers[0];
-            const serverMeta = this.mcpService.convertToXRegistryServer(latestServer, providerId, this.options.baseUrl);
+            const serverMeta = this.mcpService.convertToXRegistryServer(latestServer, providerId, baseUrl);
 
             // Add versions URL and count
             const result: any = {
                 ...serverMeta,
-                versionsurl: `${this.options.baseUrl}/mcpproviders/${providerId}/servers/${serverId}/versions`,
+                versionsurl: `${baseUrl}/mcpproviders/${providerId}/servers/${serverId}/versions`,
                 versionscount: matchingServers.length
             };
 
             if (inlineVersions) {
                 const versions: Record<string, any> = {};
                 for (const mcpServer of matchingServers) {
-                    const versionMeta = this.mcpService.convertToXRegistryServer(mcpServer, providerId, this.options.baseUrl);
+                    const versionMeta = this.mcpService.convertToXRegistryServer(mcpServer, providerId, baseUrl);
                     const versionId = versionMeta.versionid;
                     // Update paths to include /versions/ segment
                     versions[versionId] = {
                         ...versionMeta,
-                        self: `${this.options.baseUrl}/mcpproviders/${providerId}/servers/${serverId}/versions/${versionId}`,
+                        self: `${baseUrl}/mcpproviders/${providerId}/servers/${serverId}/versions/${versionId}`,
                         xid: `/mcpproviders/${providerId}/servers/${serverId}/versions/${versionId}`,
                     };
                 }
@@ -585,9 +591,10 @@ export class XRegistryServer {
     /**
      * Get specific server version
      */
-    private async getServerVersion(providerId: string, serverId: string, versionId: string): Promise<ServerMetadata | null> {
+    private async getServerVersion(req: express.Request, providerId: string, serverId: string, versionId: string): Promise<ServerMetadata | null> {
         // Find the server in cached grouped servers by matching sanitized ID
         const grouped = await this.getCachedGroupedServers();
+        const baseUrl = getBaseUrl(req);
         
         if (!grouped.has(providerId)) {
             return null;
@@ -615,12 +622,12 @@ export class XRegistryServer {
             }
 
             for (const mcpServer of versionsResponse.servers) {
-                const serverMeta = this.mcpService.convertToXRegistryServer(mcpServer, providerId, this.options.baseUrl);
+                const serverMeta = this.mcpService.convertToXRegistryServer(mcpServer, providerId, baseUrl);
                 if (serverMeta.versionid === versionId) {
                     // Update paths to include /versions/ segment
                     return {
                         ...serverMeta,
-                        self: `${this.options.baseUrl}/mcpproviders/${providerId}/servers/${serverId}/versions/${versionId}`,
+                        self: `${baseUrl}/mcpproviders/${providerId}/servers/${serverId}/versions/${versionId}`,
                         xid: `/mcpproviders/${providerId}/servers/${serverId}/versions/${versionId}`,
                     };
                 }
@@ -636,9 +643,10 @@ export class XRegistryServer {
     /**
      * Get server versions list - returns enumerated versions
      */
-    private async getServerVersionsList(providerId: string, serverId: string, inline?: string): Promise<any | null> {
+    private async getServerVersionsList(req: express.Request, providerId: string, serverId: string, inline?: string): Promise<any | null> {
         // Find the server in cached grouped servers by matching sanitized ID
         const grouped = await this.getCachedGroupedServers();
+        const baseUrl = getBaseUrl(req);
         
         if (!grouped.has(providerId)) {
             return null;
@@ -668,13 +676,13 @@ export class XRegistryServer {
             // Build versions object with each version as a top-level property
             const versions: Record<string, any> = {};
             for (const mcpServer of versionsResponse.servers) {
-                const versionMeta = this.mcpService.convertToXRegistryServer(mcpServer, providerId, this.options.baseUrl);
+                const versionMeta = this.mcpService.convertToXRegistryServer(mcpServer, providerId, baseUrl);
                 const versionId = versionMeta.versionid;
                 
                 // Update paths to include /versions/ in the URL
                 versions[versionId] = {
                     ...versionMeta,
-                    self: `${this.options.baseUrl}/mcpproviders/${providerId}/servers/${serverId}/versions/${versionId}`,
+                    self: `${baseUrl}/mcpproviders/${providerId}/servers/${serverId}/versions/${versionId}`,
                     xid: `/mcpproviders/${providerId}/servers/${serverId}/versions/${versionId}`,
                 };
             }
