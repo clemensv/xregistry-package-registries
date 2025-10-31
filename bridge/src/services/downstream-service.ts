@@ -109,11 +109,16 @@ export class DownstreamService {
                 }
             }
 
+            // Extract model data - handle both wrapped format (with registryid, schema, self, model)
+            // and direct format (just groups)
+            const modelData = modelResponse.data.model || modelResponse.data;
+            const groups = modelData.groups || {};
+
             const duration = Date.now() - startTime;
             this.logger.info('Server connectivity test successful', {
                 serverUrl: server.url,
                 duration,
-                modelGroups: Object.keys(modelResponse.data.groups || {}).length,
+                modelGroups: Object.keys(groups).length,
                 rootEndpointInfo: Object.keys(rootResponse.data)
                     .filter(key => key.endsWith('count') || key.endsWith('url'))
                     .reduce((acc: Record<string, any>, key: string) => {
@@ -128,11 +133,11 @@ export class DownstreamService {
             Object.keys(rootResponse.data)
                 .filter(key => key.endsWith('count'))
                 .forEach(countKey => {
-                    modelResponse.data[countKey] = rootResponse.data[countKey];
+                    modelData[countKey] = rootResponse.data[countKey];
                 });
 
             return {
-                model: modelResponse.data,
+                model: modelData,
                 capabilities: capabilitiesData,
                 rootResponse: rootResponse.data
             };

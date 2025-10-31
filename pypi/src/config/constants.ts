@@ -3,6 +3,8 @@
  */
 
 import { Request } from 'express';
+import * as fs from 'fs';
+import * as path from 'path';
 
 /**
  * Get the actual base URL from the request
@@ -157,18 +159,6 @@ export const XREGISTRY_PARAMS = {
 /**
  * Model structure for xRegistry
  */
-export const MODEL_STRUCTURE = {
-    groups: {
-        pythonregistries: {
-            singular: 'pythonregistry',
-            plural: 'pythonregistries',
-            resources: {
-                packages: {
-                    singular: 'package',
-                    plural: 'packages',
-                    versions: true,
-                },
-            },
-        },
-    },
-} as const;
+// Load MODEL_STRUCTURE from model.json
+const modelPath = path.join(__dirname, '../../model.json');
+export const MODEL_STRUCTURE = JSON.parse(fs.readFileSync(modelPath, 'utf8'));

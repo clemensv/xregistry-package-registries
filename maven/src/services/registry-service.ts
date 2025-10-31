@@ -4,6 +4,8 @@
  */
 
 import { Request, Response } from 'express';
+import * as fs from 'fs';
+import * as path from 'path';
 import { EntityStateManager } from '../../../shared/entity-state-manager';
 import {
     getBaseUrl,
@@ -20,9 +22,24 @@ export interface RegistryServiceOptions {
 
 export class RegistryService {
     private readonly entityState: EntityStateManager;
+    private model: any; // Loaded from model.json
 
     constructor(options: RegistryServiceOptions = {}) {
         this.entityState = options.entityState || new EntityStateManager();
+        this.loadModel();
+    }
+
+    /**
+     * Load model.json
+     */
+    private loadModel(): void {
+        const modelPath = path.join(__dirname, '../../model.json');
+        try {
+            this.model = JSON.parse(fs.readFileSync(modelPath, 'utf8'));
+        } catch (error) {
+            console.error('Failed to load model.json', error);
+            throw error;
+        }
     }
 
     /**
@@ -197,26 +214,13 @@ export class RegistryService {
      * Get model
      */
     async getModel(_req: Request, res: Response): Promise<void> {
-        res.json(this.getModelInline());
+        // Return the full model.json content
+        res.json(this.model);
     }
 
     private getModelInline(): any {
-        return {
-            schemas: [XREGISTRY_CONFIG.SCHEMA_VERSION],
-            groups: {
-                [GROUP_CONFIG.TYPE]: {
-                    plural: GROUP_CONFIG.TYPE,
-                    singular: GROUP_CONFIG.TYPE_SINGULAR,
-                    resources: {
-                        [RESOURCE_CONFIG.TYPE]: {
-                            plural: RESOURCE_CONFIG.TYPE,
-                            singular: RESOURCE_CONFIG.TYPE_SINGULAR,
-                            versions: true
-                        }
-                    }
-                }
-            }
-        };
+        // Return model.model for inline expansion
+        return this.model.model || this.model;
     }
 
     /**

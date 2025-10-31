@@ -120,8 +120,8 @@ export class XRegistryServer {
         // Model endpoint
         this.app.get('/model', (req, res) => {
             try {
-                // Return just the model content, not the wrapper
-                res.json(this.model.model);
+                // Return the full model.json content
+                res.json(this.model);
             } catch (error) {
                 this.handleError(res, error);
             }

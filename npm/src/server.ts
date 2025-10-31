@@ -5,6 +5,7 @@
 
 import express from 'express';
 import { EntityStateManager } from '../../shared/entity-state-manager';
+import * as modelData from '../model.json';
 import { CacheManager } from './cache/cache-manager';
 import { CacheService } from './cache/cache-service';
 import { CACHE_CONFIG, getBaseUrl } from './config/constants';
@@ -72,6 +73,7 @@ export class XRegistryServer {
     private filterOptimizer: any; // FilterOptimizer instance
     private packageNamesCache: Array<{ name: string;[key: string]: any }> = [];
     private cacheLoadingPromise: Promise<void> | null = null;
+    private model: any; // Loaded from model.json
 
     constructor(options: ServerOptions = {}) {
         this.options = {
@@ -86,10 +88,19 @@ export class XRegistryServer {
         this.logger = new SimpleLogger();
         this.entityState = new EntityStateManager();
         this.app = express();
+        this.loadModel();
         this.initializeServices();
         this.setupMiddleware();
         this.setupRoutes();
         this.setupErrorHandling();
+    }
+
+    /**
+     * Load model.json
+     */
+    private loadModel(): void {
+        // Import model.json directly as a module
+        this.model = modelData;
     }
 
     /**
@@ -283,25 +294,8 @@ export class XRegistryServer {
 
         // Model endpoint
         this.app.get('/model', (_req, res) => {
-            const model = {
-                groups: {
-                    noderegistries: {
-                        plural: 'noderegistries',
-                        singular: 'noderegistry',
-                        resources: {
-                            packages: {
-                                plural: 'packages',
-                                singular: 'package',
-                                versions: {
-                                    plural: 'versions',
-                                    singular: 'version'
-                                }
-                            }
-                        }
-                    }
-                }
-            };
-            res.json(model);
+            // Return the full model.json content
+            res.json(this.model);
         });
 
         // Performance stats endpoint
