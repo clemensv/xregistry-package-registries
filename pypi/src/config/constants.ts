@@ -2,6 +2,39 @@
  * Configuration constants for PyPI xRegistry server
  */
 
+import { Request } from 'express';
+
+/**
+ * Get the actual base URL from the request
+ * This handles cases where the deployed FQDN differs from req.protocol/req.host
+ * Priority order:
+ * 1. x-base-url header (set by bridge when proxying - contains actual external FQDN)
+ * 2. x-forwarded-* headers (set by reverse proxies like Azure Container Apps)
+ * 3. Construct from request properties (fallback for development)
+ * 
+ * Note: The bridge is responsible for forwarding the correct base URL via headers
+ * when accessing this service through internal container-to-container networking.
+ */
+export function getBaseUrl(req: Request): string {
+    // Check for x-base-url header first (sent by bridge with actual external FQDN)
+    const baseUrlHeader = req.get('x-base-url');
+    if (baseUrlHeader) {
+        return baseUrlHeader;
+    }
+
+    // Get protocol and host from forwarded headers (for direct external access)
+    const protocol = req.get('x-forwarded-proto') || req.protocol || 'https';
+    const host = req.get('x-forwarded-host') || req.get('host');
+    
+    // Construct from headers
+    if (host) {
+        return `${protocol}://${host}`;
+    }
+
+    // Final fallback for development
+    return `${req.protocol}://${req.get('host')}`;
+}
+
 /**
  * Server configuration
  */
