@@ -5,7 +5,7 @@
 
 import { RequestHandler } from 'express';
 import { createProxyMiddleware, Options } from 'http-proxy-middleware';
-import { BASE_URL, BASE_URL_HEADER } from '../config/constants';
+import { BASE_URL_HEADER, getBaseUrl } from '../config/constants';
 import { DownstreamConfig } from '../types/bridge';
 
 export class ProxyService {
@@ -60,7 +60,9 @@ export class ProxyService {
         // Middleware to inject base URL header
         const headerMiddleware: RequestHandler = (req, res, next) => {
             try {
-                req.headers[BASE_URL_HEADER] = BASE_URL;
+                // Get the actual base URL from the incoming request
+                const actualBaseUrl = getBaseUrl(req);
+                req.headers[BASE_URL_HEADER] = actualBaseUrl;
                 next();
             } catch (error) {
                 this.logger.error('Error in route header middleware', {
@@ -79,6 +81,9 @@ export class ProxyService {
 
             // Intercept and rewrite response body
             onProxyRes: (proxyRes, req, res) => {
+                // Get the actual base URL from the request that was set by headerMiddleware
+                const actualBaseUrl = req.headers[BASE_URL_HEADER] as string;
+                
                 // Add CORS headers
                 if (!proxyRes.headers['access-control-allow-origin']) {
                     proxyRes.headers['access-control-allow-origin'] = '*';
@@ -108,9 +113,9 @@ export class ProxyService {
 
                 proxyRes.on('end', () => {
                     try {
-                        // Parse JSON and rewrite URLs
+                        // Parse JSON and rewrite URLs using the actual base URL from the request
                         const data = JSON.parse(body);
-                        const rewrittenData = this.rewriteUrls(data, targetUrl, BASE_URL);
+                        const rewrittenData = this.rewriteUrls(data, targetUrl, actualBaseUrl);
 
                         // Send rewritten response
                         const rewrittenBody = JSON.stringify(rewrittenData);
