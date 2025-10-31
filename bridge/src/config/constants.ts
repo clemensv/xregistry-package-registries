@@ -2,10 +2,35 @@
  * Bridge configuration constants and environment variables
  */
 
+import { Request } from 'express';
+
 // Server configuration
 export const PORT = parseInt(process.env['PORT'] || '8080');
 export const BASE_URL = process.env['BASE_URL'] || `http://localhost:${PORT}`;
 export const BASE_URL_HEADER = process.env['BASE_URL_HEADER'] || 'x-base-url';
+
+/**
+ * Get the actual base URL from the request
+ * This handles cases where the deployed FQDN differs from the configured BASE_URL
+ */
+export function getBaseUrl(req: Request): string {
+    // Check for custom header first
+    const headerValue = req.get(BASE_URL_HEADER);
+    if (headerValue) {
+        return headerValue;
+    }
+
+    // Construct from request
+    const protocol = req.get('x-forwarded-proto') || req.protocol || 'https';
+    const host = req.get('x-forwarded-host') || req.get('host');
+    
+    if (host) {
+        return `${protocol}://${host}`;
+    }
+
+    // Fallback to configured BASE_URL
+    return BASE_URL;
+}
 
 // Authentication configuration
 export const BRIDGE_API_KEY = process.env['BRIDGE_API_KEY'] || '';

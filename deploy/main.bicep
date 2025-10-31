@@ -30,16 +30,22 @@ param repositoryName string = 'clemensv/xregistry-package-registries'
 param alertEmailAddress string = 'clemensv@microsoft.com'
 
 @description('CPU allocation for bridge container')
-param bridgeCpu string = '0.75'
+param bridgeCpu string = '0.5'
 
 @description('Memory allocation for bridge container')
 param bridgeMemory string = '1.0Gi'
 
-@description('CPU allocation for service containers')
-param serviceCpu string = '0.5'
+@description('CPU allocation for PyPI, Maven, NuGet, OCI service containers')
+param serviceCpu string = '0.25'
 
-@description('Memory allocation for service containers')
-param serviceMemory string = '1.5Gi'
+@description('Memory allocation for PyPI, Maven, NuGet, OCI service containers')  
+param serviceMemory string = '0.25Gi'
+
+@description('CPU allocation specifically for NPM service - needs more for package loading')
+param npmCpu string = '0.5'
+
+@description('Memory allocation specifically for NPM service - needs 2Gi for 4 million packages')
+param npmMemory string = '2.0Gi'
 
 @description('Minimum number of replicas')
 param minReplicas int = 1
@@ -402,13 +408,13 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             }
           ]
         }
-        // NPM Container
+        // NPM Container - needs more memory for package name loading
         {
           name: 'npm'
           image: npmImage
           resources: {
-            cpu: json(serviceCpu)
-            memory: serviceMemory
+            cpu: json(npmCpu)
+            memory: npmMemory
           }
           env: [
             {

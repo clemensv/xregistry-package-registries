@@ -889,16 +889,36 @@ export class XRegistryServer {
                 });
             }
 
-            // Build indices for FilterOptimizer
+            // Build indices for FilterOptimizer asynchronously in the background
+            // This allows the server to start immediately without waiting for index building
             if (this.packageNamesCache.length > 0) {
-                this.filterOptimizer.buildIndices(
-                    this.packageNamesCache,
-                    (entity: any) => entity.name
-                );
-
-                this.logger.info('FilterOptimizer indices built', {
+                this.logger.info('Starting background index building for FilterOptimizer', {
                     packageCount: this.packageNamesCache.length
                 });
+                
+                // Schedule index building to happen after a short delay
+                // This gives the server time to start and become healthy
+                setTimeout(() => {
+                    const startTime = Date.now();
+                    this.logger.info('Building FilterOptimizer indices...');
+                    
+                    try {
+                        this.filterOptimizer.buildIndices(
+                            this.packageNamesCache,
+                            (entity: any) => entity.name
+                        );
+                        
+                        const duration = Date.now() - startTime;
+                        this.logger.info('FilterOptimizer indices built successfully', {
+                            packageCount: this.packageNamesCache.length,
+                            durationMs: duration
+                        });
+                    } catch (indexError: any) {
+                        this.logger.error('Failed to build FilterOptimizer indices', {
+                            error: indexError.message
+                        });
+                    }
+                }, 2000); // 2 second delay to allow server to start
             }
         } catch (error: any) {
             this.logger.error('Failed to load package names cache', {

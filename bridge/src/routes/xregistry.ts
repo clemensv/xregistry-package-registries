@@ -5,7 +5,7 @@
 
 import axios from 'axios';
 import { Request, Response, Router } from 'express';
-import { BASE_URL, BRIDGE_EPOCH, BRIDGE_STARTUP_TIME } from '../config/constants';
+import { BASE_URL, BRIDGE_EPOCH, BRIDGE_STARTUP_TIME, getBaseUrl } from '../config/constants';
 import { DownstreamService } from '../services/downstream-service';
 import { HealthService } from '../services/health-service';
 import { ModelService } from '../services/model-service';
@@ -25,8 +25,12 @@ export function createXRegistryRoutes(
             const inline = req.query.inline as string;
             const specversion = (req.query.specversion as string) || '1.0';
 
+            // Get the actual base URL from the request
+            const baseUrl = getBaseUrl(req);
+
             logger.info('Root endpoint called', {
-                baseUrl: BASE_URL,
+                configuredBaseUrl: BASE_URL,
+                actualBaseUrl: baseUrl,
                 requestHost: req.get('host'),
                 requestUrl: req.url,
                 requestProtocol: req.protocol,
@@ -52,7 +56,7 @@ export function createXRegistryRoutes(
             const registryResponse: any = {
                 specversion: specversion,
                 registryid: 'xregistry-bridge',
-                self: BASE_URL,
+                self: baseUrl,
                 xid: '/',
                 epoch: BRIDGE_EPOCH,
                 name: 'xRegistry Bridge',
@@ -64,7 +68,7 @@ export function createXRegistryRoutes(
             // Add group collections (REQUIRED)
             for (const groupType of groups) {
                 const plural = consolidatedModel.groups?.[groupType]?.plural || groupType;
-                registryResponse[`${plural}url`] = `${BASE_URL}/${groupType}`;
+                registryResponse[`${plural}url`] = `${baseUrl}/${groupType}`;
 
                 // Get count from the server state that holds this registry
                 const backendServer = groupTypeToBackend[groupType];
