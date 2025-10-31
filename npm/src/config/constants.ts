@@ -8,35 +8,31 @@ import { Request } from 'express';
  * Get the actual base URL from the request
  * This handles cases where the deployed FQDN differs from req.protocol/req.host
  * Priority order:
- * 1. x-base-url header (set by bridge when proxying)
+ * 1. x-base-url header (set by bridge when proxying - contains actual external FQDN)
  * 2. x-forwarded-* headers (set by reverse proxies like Azure Container Apps)
- * 3. BASE_URL environment variable (for internal container-to-container calls)
- * 4. Construct from request properties (fallback)
+ * 3. Construct from request properties (fallback for development)
+ * 
+ * Note: Does NOT use BASE_URL environment variable because it cannot know
+ * the actual Azure-generated FQDN (with unique subdomain) at deployment time.
+ * The bridge is responsible for forwarding the correct base URL via headers.
  */
 export function getBaseUrl(req: Request): string {
-    // Check for x-base-url header first (sent by bridge)
+    // Check for x-base-url header first (sent by bridge with actual external FQDN)
     const baseUrlHeader = req.get('x-base-url');
     if (baseUrlHeader) {
         return baseUrlHeader;
     }
 
-    // Get protocol and host
-    const host = req.get('host');
+    // Get protocol and host from forwarded headers (for direct external access)
     const protocol = req.get('x-forwarded-proto') || req.protocol || 'https';
-    const forwardedHost = req.get('x-forwarded-host') || host;
+    const host = req.get('x-forwarded-host') || req.get('host');
     
-    // If accessed via localhost (internal call), use BASE_URL environment variable
-    const envBaseUrl = process.env['BASE_URL'];
-    if (envBaseUrl && host && (host.includes('localhost') || host.includes('127.0.0.1'))) {
-        return envBaseUrl;
+    // Construct from headers
+    if (host) {
+        return `${protocol}://${host}`;
     }
 
-    // Use forwarded headers if available
-    if (forwardedHost) {
-        return `${protocol}://${forwardedHost}`;
-    }
-
-    // Final fallback to constructing from request properties
+    // Final fallback for development
     return `${req.protocol}://${req.get('host')}`;
 }
 
