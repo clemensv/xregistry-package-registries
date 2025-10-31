@@ -8,19 +8,29 @@ import { Request } from 'express';
  * Get the actual base URL from the request
  * This handles cases where the deployed FQDN differs from req.protocol/req.host
  * Checks for x-forwarded-* headers set by reverse proxies (e.g., Azure Container Apps)
+ * When accessed via internal networking (localhost), uses BASE_URL environment variable
  */
 export function getBaseUrl(req: Request): string {
+    // Check for BASE_URL environment variable first (for internal container-to-container calls)
+    // When bridge accesses this service via localhost, we need to use the external FQDN
+    const envBaseUrl = process.env['BASE_URL'];
+    const host = req.get('host');
+    
+    if (envBaseUrl && host && (host.includes('localhost') || host.includes('127.0.0.1'))) {
+        return envBaseUrl;
+    }
+
     // Get protocol - check forwarded header first (from reverse proxy)
     const protocol = req.get('x-forwarded-proto') || req.protocol || 'https';
     
     // Get host - check forwarded header first (from reverse proxy)
-    const host = req.get('x-forwarded-host') || req.get('host');
+    const forwardedHost = req.get('x-forwarded-host') || host;
     
-    if (host) {
-        return `${protocol}://${host}`;
+    if (forwardedHost) {
+        return `${protocol}://${forwardedHost}`;
     }
 
-    // Fallback to constructing from request properties
+    // Final fallback to constructing from request properties
     return `${req.protocol}://${req.get('host')}`;
 }
 
