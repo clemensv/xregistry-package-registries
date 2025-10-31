@@ -3,8 +3,7 @@
  */
 
 import { Request } from 'express';
-import * as fs from 'fs';
-import * as path from 'path';
+import * as modelData from '../../model.json';
 
 /**
  * Get the actual base URL from the request
@@ -159,6 +158,4 @@ export const XREGISTRY_PARAMS = {
 /**
  * Model structure for xRegistry
  */
-// Load MODEL_STRUCTURE from model.json
-const modelPath = path.join(__dirname, '../../model.json');
-export const MODEL_STRUCTURE = JSON.parse(fs.readFileSync(modelPath, 'utf8'));
+export const MODEL_STRUCTURE = modelData;

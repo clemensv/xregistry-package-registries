@@ -31,6 +31,7 @@ RUN npm install && npm cache clean --force
 # Copy remaining application files
 WORKDIR /app/oci
 COPY oci/src/ /app/oci/src/
+COPY oci/model.json /app/oci/model.json
 
 # Build TypeScript
 RUN npm run build

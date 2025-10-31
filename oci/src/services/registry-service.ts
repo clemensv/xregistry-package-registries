@@ -4,8 +4,7 @@
  */
 
 import { Request, Response } from 'express';
-import * as fs from 'fs';
-import * as path from 'path';
+import * as modelData from '../../model.json';
 import { EntityStateManager } from '../../../shared/entity-state-manager';
 import { getBaseUrl, GROUP_CONFIG, REGISTRY_CONFIG, RESOURCE_CONFIG } from '../config/constants';
 import { generateETag } from '../utils/xregistry-utils';
@@ -33,13 +32,7 @@ export class RegistryService {
      * Load model.json
      */
     private loadModel(): void {
-        const modelPath = path.join(__dirname, '../../model.json');
-        try {
-            this.model = JSON.parse(fs.readFileSync(modelPath, 'utf8'));
-        } catch (error) {
-            this.logger.error('Failed to load model.json', error);
-            throw error;
-        }
+        this.model = modelData;
     }
 
     async getRegistry(req: Request, res: Response): Promise<void> {
