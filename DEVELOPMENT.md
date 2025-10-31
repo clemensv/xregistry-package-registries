@@ -12,16 +12,16 @@ The xRegistry Package Registries project provides a unified API interface for mu
 
 ### Supported Package Registries
 
-1. **NPM** - Node.js package registry (port 4873)
-2. **PyPI** - Python package registry (port 8081)
-3. **Maven** - Java package registry (port 8082)
-4. **NuGet** - .NET package registry (port 8083)
-5. **OCI** - Container image registry (port 8084)
+1. **NPM** - Node.js package registry (port 3000)
+2. **PyPI** - Python package registry (port 3100)
+3. **Maven** - Java package registry (port 3200)
+4. **NuGet** - .NET package registry (port 3300)
+5. **OCI** - Container image registry (port 3400)
 
 ### Bridge Configuration
 
-- **Port**: 8092 (configurable via `XREGISTRY_PORT`)
-- **API Keys**: Each service uses `{registry}-api-key-test-123` format
+- **Port**: 8080 (configurable via `BRIDGE_PORT`)
+- **API Keys**: Each service uses `{registry}-api-key` format
 - **Routing**: Each group type routes to the appropriate backend service
 
 ## 🚀 Quick Start
@@ -40,16 +40,40 @@ The xRegistry Package Registries project provides a unified API interface for mu
    npm install
    ```
 
-2. **Start all services for development:**
+2. **Build all TypeScript services:**
    ```powershell
-   # Start individual services in Docker (recommended for development)
-   cd test/integration
-   node run-docker-integration-tests.js
-   
-   # Start the bridge manually for development
-   cd ../../bridge
    npm run build
-   $env:PORT=8092; node dist/proxy.js
+   ```
+
+3. **Start all services for development:**
+   ```powershell
+   # Option 1: Use Docker Compose (recommended)
+   docker-compose up
+   
+   # Option 2: Start individual services manually
+   # Terminal 1 - NPM
+   cd npm
+   npm start
+   
+   # Terminal 2 - PyPI
+   cd pypi
+   npm start
+   
+   # Terminal 3 - Maven
+   cd maven
+   npm start
+   
+   # Terminal 4 - NuGet
+   cd nuget
+   npm start
+   
+   # Terminal 5 - OCI
+   cd oci
+   npm start
+   
+   # Terminal 6 - Bridge
+   cd bridge
+   npm start
    ```
 
 ### Alternative: Windows Scripts
@@ -101,33 +125,33 @@ node test-popular-packages.js
 
 ```powershell
 # Test NPM registry
-curl http://localhost:4873/noderegistries
+curl http://localhost:3000/noderegistries
 
 # Test PyPI registry  
-curl http://localhost:8081/pythonregistries
+curl http://localhost:3100/pythonregistries
 
 # Test Maven registry
-curl http://localhost:8082/javaregistries
+curl http://localhost:3200/javaregistries
 
 # Test NuGet registry
-curl http://localhost:8083/dotnetregistries
+curl http://localhost:3300/dotnetregistries
 
 # Test OCI registry
-curl http://localhost:8084/containerregistries
+curl http://localhost:3400/containerregistries
 ```
 
 ### Testing the Unified Bridge
 
 ```powershell
 # Check unified model (should show all 5 registry types)
-curl http://localhost:8092/model | jq '.groups | keys'
+curl http://localhost:8080/model | jq '.groups | keys'
 
 # Check combined capabilities
-curl http://localhost:8092/capabilities | jq '.capabilities.apis | length'
+curl http://localhost:8080/capabilities | jq '.capabilities.apis | length'
 
 # Test proxy routing
-curl http://localhost:8092/noderegistries
-curl http://localhost:8092/pythonregistries
+curl http://localhost:8080/noderegistries
+curl http://localhost:8080/pythonregistries
 ```
 
 ## 🏗️ Project Structure
@@ -138,35 +162,59 @@ xregistry-package-registries/
 │   ├── src/                  # TypeScript source code
 │   ├── dist/                 # Compiled JavaScript
 │   ├── downstreams.json      # Backend service configuration
+│   ├── tsconfig.json         # TypeScript configuration
 │   └── package.json
 ├── npm/                      # NPM registry implementation
-│   ├── server.js             # NPM xRegistry server
-│   ├── Dockerfile
+│   ├── src/                  # TypeScript source code
+│   ├── dist/                 # Compiled JavaScript
+│   ├── tsconfig.json         # TypeScript configuration
+│   ├── tests/                # Registry-specific tests
 │   └── package.json
 ├── pypi/                     # PyPI registry implementation
+│   ├── src/                  # TypeScript source code
+│   ├── dist/                 # Compiled JavaScript
+│   └── package.json
 ├── maven/                    # Maven registry implementation
+│   ├── src/                  # TypeScript source code
+│   ├── dist/                 # Compiled JavaScript
+│   └── package.json
 ├── nuget/                    # NuGet registry implementation
+│   ├── src/                  # TypeScript source code
+│   ├── dist/                 # Compiled JavaScript
+│   └── package.json
 ├── oci/                      # OCI registry implementation
+│   ├── src/                  # TypeScript source code
+│   ├── dist/                 # Compiled JavaScript
+│   └── package.json
+├── shared/                   # Shared utilities and filters
+│   ├── filter/              # Common filtering logic
+│   └── utils/               # Shared utility functions
 ├── test/                     # Test suites
-│   ├── unit/                 # Unit tests
-│   ├── integration/          # Integration tests with Docker
-│   └── regression/           # Regression tests
-├── types/                    # TypeScript type definitions
+│   ├── unit/                # Unit tests
+│   ├── integration/         # Integration tests
+│   └── package.json
 ├── cache/                    # Shared cache directory
-└── logs/                     # Application logs
+├── logs/                     # Application logs
+└── docker-compose.yml        # Multi-service container orchestration
 ```
 
 ## 🔧 Development Workflows
 
 ### Adding a New Registry
 
-1. **Create registry directory** with standard structure:
+1. **Create registry directory** with standard TypeScript structure:
    ```
    {registry}/
-   ├── server.js           # Main server implementation
-   ├── Dockerfile          # Container definition  
+   ├── src/
+   │   ├── server.ts       # Main server implementation
+   │   ├── api.ts          # API route handlers
+   │   └── cache.ts        # Caching logic
+   ├── dist/               # Compiled JavaScript (gitignored)
+   ├── tests/              # Registry-specific tests
+   ├── tsconfig.json       # TypeScript configuration
    ├── package.json        # Dependencies and scripts
-   └── README.md          # Registry-specific documentation
+   ├── Dockerfile          # Container definition
+   └── README.md           # Registry-specific documentation
    ```
 
 2. **Implement required xRegistry endpoints:**
@@ -176,9 +224,34 @@ xregistry-package-registries/
    - `GET /{groupType}` - List groups
    - `GET /{groupType}/{groupId}` - Group details
 
-3. **Add to bridge configuration** in `bridge/downstreams.json`
-4. **Create tests** in `test/unit/{registry}/`
-5. **Update documentation**
+3. **Configure TypeScript:**
+   ```json
+   {
+     "extends": "../tsconfig.base.json",
+     "compilerOptions": {
+       "outDir": "./dist",
+       "rootDir": "./src"
+     }
+   }
+   ```
+
+4. **Add build scripts to package.json:**
+   ```json
+   {
+     "scripts": {
+       "build": "tsc && npm run copy:shared",
+       "copy:shared": "node -e \"require('fs').cpSync('../shared/filter', 'dist/shared/filter', { recursive: true })\"",
+       "start": "node dist/server.js",
+       "dev": "ts-node src/server.ts"
+     }
+   }
+   ```
+
+5. **Add to bridge configuration** in `bridge/downstreams.json`
+6. **Create Dockerfile** following the existing pattern
+7. **Add service to docker-compose.yml**
+8. **Create tests** in registry's `tests/` directory
+9. **Update documentation**
 
 ### Making Changes to the Bridge
 
@@ -190,29 +263,62 @@ xregistry-package-registries/
    ```
 3. **Test locally:**
    ```powershell
-   $env:PORT=8092; node dist/proxy.js
+   # Using default port (8080)
+   npm start
+   
+   # Or with custom port
+   $env:BRIDGE_PORT=8080; node dist/server.js
+   ```
+
+### Making Changes to Registry Services
+
+1. **Edit TypeScript source** in `{registry}/src/`
+2. **Build the registry:**
+   ```powershell
+   cd {registry}
+   npm run build
+   ```
+3. **Test locally:**
+   ```powershell
+   # Using default port
+   npm start
+   
+   # Or with custom port
+   $env:PORT=3000; node dist/server.js
+   ```
+4. **Run registry-specific tests:**
+   ```powershell
+   npm test
    ```
 
 ### Environment Variables
 
-#### Global Configuration
+#### Bridge Service Configuration
 
-- `XREGISTRY_PORT` - Bridge server port (default: 8092)
-- `XREGISTRY_ENABLE` - Comma-separated list of enabled registries
-- `XREGISTRY_BASEURL` - Base URL for self-referencing URLs
-- `XREGISTRY_QUIET` - Suppress logging to stdout
-- `XREGISTRY_API_KEY` - Global API key for authentication
+- `BRIDGE_PORT` - Bridge server port (default: 8080)
 - `NODE_ENV` - Node environment (development/production)
+- `DOWNSTREAMS_JSON` - JSON configuration for backend services
+- `LOG_LEVEL` - Logging level (debug/info/warn/error)
 
-#### Registry-Specific Configuration
+#### Registry Service Configuration
 
-For each registry (NPM, PYPI, MAVEN, NUGET, OCI):
+For each registry service:
 
-- `XREGISTRY_{REGISTRY}_PORT` - Registry-specific port
-- `XREGISTRY_{REGISTRY}_LOG` - Log file path
-- `XREGISTRY_{REGISTRY}_QUIET` - Suppress registry logging
-- `XREGISTRY_{REGISTRY}_BASEURL` - Registry base URL
-- `XREGISTRY_{REGISTRY}_API_KEY` - Registry API key
+- `PORT` - Service port (defaults: NPM=3000, PyPI=3100, Maven=3200, NuGet=3300, OCI=3400)
+- `HOST` - Bind address (default: 0.0.0.0)
+- `NODE_ENV` - Node environment (development/production)
+- `CACHE_DIR` - Cache directory path (default: ./cache)
+- `LOG_LEVEL` - Logging level
+
+#### Example: Custom Configuration
+
+```powershell
+# Start NPM registry on custom port
+$env:PORT=5000; cd npm; npm start
+
+# Start bridge with custom configuration
+$env:BRIDGE_PORT=9000; cd bridge; npm start
+```
 
 ## 🐳 Docker Development
 
@@ -222,8 +328,38 @@ For each registry (NPM, PYPI, MAVEN, NUGET, OCI):
 # Build individual registry
 docker build -f pypi.Dockerfile -t xregistry-pypi .
 
+# Build specific service with docker-compose
+docker-compose build pypi
+
 # Build all images
 docker-compose build
+```
+
+### Multi-Stage Dockerfiles
+
+Each service uses a multi-stage build process:
+
+1. **Build Stage**: Compiles TypeScript to JavaScript
+2. **Production Stage**: Creates minimal runtime image with only compiled code
+
+Example Dockerfile structure:
+```dockerfile
+# Build stage
+FROM node:18-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY tsconfig.json ./
+COPY src ./src
+RUN npm run build
+
+# Production stage
+FROM node:18-alpine
+WORKDIR /app
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
+EXPOSE 3000
+CMD ["node", "dist/server.js"]
 ```
 
 ### Running with Docker Compose
@@ -264,16 +400,31 @@ node server.js --port 3201
 cd bridge
 npm install
 npm run build
-$env:PORT=8092; node dist/proxy.js
+npm start
+```
+
+#### TypeScript Compilation Errors
+```powershell
+# Clean and rebuild
+cd {registry}
+npm run clean
+npm install
+npm run build
+
+# Check TypeScript version
+npx tsc --version
 ```
 
 #### Authentication Errors
-Check `bridge/downstreams.json` has correct API keys:
+Check `bridge/downstreams.json` or environment variable `DOWNSTREAMS_JSON` has correct API keys:
 ```json
 {
   "servers": [
-    { "url": "http://localhost:4873", "apiKey": "npm-api-key-test-123" },
-    { "url": "http://localhost:8081", "apiKey": "pypi-api-key-test-123" }
+    { "url": "http://npm:3000", "apikey": "npm-api-key" },
+    { "url": "http://pypi:3100", "apikey": "pypi-api-key" },
+    { "url": "http://maven:3200", "apikey": "maven-api-key" },
+    { "url": "http://nuget:3300", "apikey": "nuget-api-key" },
+    { "url": "http://oci:3400", "apikey": "oci-api-key" }
   ]
 }
 ```
@@ -281,18 +432,41 @@ Check `bridge/downstreams.json` has correct API keys:
 ### Debug Mode
 
 ```powershell
-# Enable debug logging
-$env:DEBUG="xregistry:*"; node server.js
+# Enable debug logging for registry
+$env:LOG_LEVEL="debug"; cd npm; npm start
 
 # Bridge debug mode
-$env:DEBUG="bridge:*"; node dist/proxy.js
+$env:LOG_LEVEL="debug"; cd bridge; npm start
+
+# Run with TypeScript directly (dev mode)
+cd npm
+npm run dev  # Uses ts-node for direct TypeScript execution
 ```
 
 ### Log Files
 
-- Application logs: `logs/`
-- Registry-specific logs: `{registry}/logs/`
+- Bridge logs: `logs/bridge/`
+- Registry-specific logs: `logs/{registry}/`
 - Docker logs: `docker-compose logs {service}`
+- Follow logs: `docker-compose logs -f {service}`
+
+### TypeScript Development Tips
+
+1. **Use watch mode during development:**
+   ```powershell
+   cd npm
+   npm run build:watch  # Auto-recompiles on file changes
+   ```
+
+2. **Type checking without compilation:**
+   ```powershell
+   npm run type-check
+   ```
+
+3. **Shared code location:**
+   - Common utilities: `shared/utils/`
+   - Filtering logic: `shared/filter/`
+   - Built shared code is copied to each service's `dist/shared/` during build
 
 ## 📡 API Development
 
@@ -300,20 +474,36 @@ $env:DEBUG="bridge:*"; node dist/proxy.js
 
 All registries must implement the core xRegistry endpoints:
 
-```javascript
+```typescript
+import express, { Request, Response } from 'express';
+
+const app = express();
+
 // Root document with registry information
-app.get('/', (req, res) => {
-  // Return registry metadata
+app.get('/', (req: Request, res: Response) => {
+  res.json({
+    specversion: '0.5',
+    registryurl: `${baseUrl}/`,
+    // ... registry metadata
+  });
 });
 
 // Registry capabilities
-app.get('/capabilities', (req, res) => {
-  // Return supported operations
+app.get('/capabilities', (req: Request, res: Response) => {
+  res.json({
+    capabilities: {
+      // ... supported operations
+    }
+  });
 });
 
 // Data model definition
-app.get('/model', (req, res) => {
-  // Return registry data model
+app.get('/model', (req: Request, res: Response) => {
+  res.json({
+    groups: {
+      // ... registry data model
+    }
+  });
 });
 ```
 
@@ -321,29 +511,52 @@ app.get('/model', (req, res) => {
 
 Use consistent error responses:
 
-```javascript
+```typescript
 // Standard error format
-{
-  "error": {
-    "code": "NOT_FOUND",
-    "message": "Package not found",
-    "details": "Package 'example' does not exist in the registry"
-  }
+interface ErrorResponse {
+  error: {
+    code: string;
+    message: string;
+    details?: string;
+  };
 }
+
+// Error handler middleware
+app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+  console.error(err);
+  res.status(err.statusCode || 500).json({
+    error: {
+      code: err.code || 'INTERNAL_ERROR',
+      message: err.message,
+      details: err.details
+    }
+  });
+});
 ```
 
 ### Request Validation
 
-```javascript
+```typescript
+import { Request, Response, NextFunction } from 'express';
+
 // Validate API keys
-function validateApiKey(req, res, next) {
-  const apiKey = req.headers['x-api-key'];
+function validateApiKey(req: Request, res: Response, next: NextFunction): void {
+  const apiKey = req.headers['x-api-key'] as string;
+  
   if (!apiKey || !isValidApiKey(apiKey)) {
-    return res.status(401).json({
+    res.status(401).json({
       error: { code: "UNAUTHORIZED", message: "Invalid API key" }
     });
+    return;
   }
+  
   next();
+}
+
+// Validate package name format
+function validatePackageName(name: string): boolean {
+  const regex = /^[@a-zA-Z0-9][@a-zA-Z0-9._-]*$/;
+  return regex.test(name);
 }
 ```
 
@@ -357,13 +570,19 @@ function validateApiKey(req, res, next) {
 
 ### Connection Pooling
 
-```javascript
+```typescript
+import axios, { AxiosInstance } from 'axios';
+import { Agent } from 'http';
+
 // Example HTTP client configuration
-const httpClient = {
+const httpClient: AxiosInstance = axios.create({
   timeout: 30000,
   maxRedirects: 5,
-  pool: { maxSockets: 50 }
-};
+  httpAgent: new Agent({ 
+    keepAlive: true,
+    maxSockets: 50 
+  })
+});
 ```
 
 ## 🔐 Security Considerations
@@ -391,12 +610,18 @@ const httpClient = {
 ### Local Build
 
 ```powershell
-# Build TypeScript bridge
-cd bridge
+# Build all TypeScript services
+npm run build
+
+# Build individual service
+cd npm
 npm run build
 
 # Build all containers
 docker-compose build
+
+# Build specific container
+docker-compose build npm
 ```
 
 ### CI/CD Pipeline

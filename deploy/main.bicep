@@ -10,12 +10,12 @@ param environment string = 'prod'
 @description('Container registry server')
 param containerRegistryServer string = 'ghcr.io'
 
-@description('Container registry username')
-param containerRegistryUsername string
+@description('Container registry username (empty for public repos)')
+param containerRegistryUsername string = ''
 
 @secure()
-@description('Container registry password/token')
-param containerRegistryPassword string
+@description('Container registry password/token (empty for public repos)')
+param containerRegistryPassword string = ''
 
 @description('Container image tag')
 param imageTag string = 'latest'
@@ -23,8 +23,8 @@ param imageTag string = 'latest'
 @description('Force deployment timestamp')
 param deploymentTimestamp string = utcNow()
 
-@description('GitHub repository name for container images')
-param repositoryName string
+@description('GitHub repository owner/name for container images')
+param repositoryName string = 'clemensv/xregistry-package-registries'
 
 @description('Email address for operational alerts')
 param alertEmailAddress string = 'clemensv@microsoft.com'
@@ -36,10 +36,10 @@ param bridgeCpu string = '0.75'
 param bridgeMemory string = '1.0Gi'
 
 @description('CPU allocation for service containers')
-param serviceCpu string = '0.25'
+param serviceCpu string = '0.5'
 
 @description('Memory allocation for service containers')
-param serviceMemory string = '0.6Gi'
+param serviceMemory string = '1.5Gi'
 
 @description('Minimum number of replicas')
 param minReplicas int = 1
@@ -91,28 +91,13 @@ var baseUrl = useCustomDomain
   ? 'https://${customDomainName}'
   : 'https://${containerAppName}.${location}.azurecontainerapps.io'
 
-// Container image URIs
-// Determine image path format based on registry type
-// When using ACR, repositoryName will be 'ACR_NO_PREFIX' to indicate no prefix needed
-var imagePrefix = (empty(repositoryName) || repositoryName == 'ACR_NO_PREFIX') ? '' : '${repositoryName}/'
-var bridgeImage = (empty(repositoryName) || repositoryName == 'ACR_NO_PREFIX')
-  ? '${containerRegistryServer}/xregistry-bridge:${imageTag}'
-  : '${containerRegistryServer}/${imagePrefix}xregistry-bridge:${imageTag}'
-var npmImage = (empty(repositoryName) || repositoryName == 'ACR_NO_PREFIX')
-  ? '${containerRegistryServer}/xregistry-npm-bridge:${imageTag}'
-  : '${containerRegistryServer}/${imagePrefix}xregistry-npm-bridge:${imageTag}'
-var pypiImage = (empty(repositoryName) || repositoryName == 'ACR_NO_PREFIX')
-  ? '${containerRegistryServer}/xregistry-pypi-bridge:${imageTag}'
-  : '${containerRegistryServer}/${imagePrefix}xregistry-pypi-bridge:${imageTag}'
-var mavenImage = (empty(repositoryName) || repositoryName == 'ACR_NO_PREFIX')
-  ? '${containerRegistryServer}/xregistry-maven-bridge:${imageTag}'
-  : '${containerRegistryServer}/${imagePrefix}xregistry-maven-bridge:${imageTag}'
-var nugetImage = (empty(repositoryName) || repositoryName == 'ACR_NO_PREFIX')
-  ? '${containerRegistryServer}/xregistry-nuget-bridge:${imageTag}'
-  : '${containerRegistryServer}/${imagePrefix}xregistry-nuget-bridge:${imageTag}'
-var ociImage = (empty(repositoryName) || repositoryName == 'ACR_NO_PREFIX')
-  ? '${containerRegistryServer}/xregistry-oci-bridge:${imageTag}'
-  : '${containerRegistryServer}/${imagePrefix}xregistry-oci-bridge:${imageTag}'
+// Container image URIs from GitHub Container Registry (public repository)
+var bridgeImage = '${containerRegistryServer}/${repositoryName}/xregistry-bridge:${imageTag}'
+var npmImage = '${containerRegistryServer}/${repositoryName}/xregistry-npm-bridge:${imageTag}'
+var pypiImage = '${containerRegistryServer}/${repositoryName}/xregistry-pypi-bridge:${imageTag}'
+var mavenImage = '${containerRegistryServer}/${repositoryName}/xregistry-maven-bridge:${imageTag}'
+var nugetImage = '${containerRegistryServer}/${repositoryName}/xregistry-nuget-bridge:${imageTag}'
+var ociImage = '${containerRegistryServer}/${repositoryName}/xregistry-oci-bridge:${imageTag}'
 
 // Downstream services configuration for bridge
 var downstreamsConfig = {

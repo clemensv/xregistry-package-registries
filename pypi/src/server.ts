@@ -147,6 +147,16 @@ app.use((req, _res, next) => {
     next();
 });
 
+// Health check endpoint
+app.get('/health', (_req, res) => {
+    res.json({
+        status: 'healthy',
+        service: 'pypi-xregistry',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime()
+    });
+});
+
 // Mount routes
 app.use('/', createXRegistryRoutes(registryService));
 app.use('/', createPackageRoutes(packageService, searchService, entityState));

@@ -10,13 +10,12 @@ LOCATION="westeurope"
 RESOURCE_GROUP="xregistry-package-registries"
 ENVIRONMENT="prod"
 IMAGE_TAG="latest"
-REPOSITORY_NAME=""
+REPOSITORY_NAME="clemensv/xregistry-package-registries"
 GITHUB_ACTOR=""
 GITHUB_TOKEN=""
 AZURE_SUBSCRIPTION=""
 DRY_RUN="false"
 VERBOSE="false"
-FORCE_GHCR="true"
 ENABLE_CUSTOM_DOMAIN="false"
 
 # Script directory
@@ -66,27 +65,30 @@ OPTIONS:
     -l, --location LOCATION         Azure region (default: $LOCATION)
     -e, --environment ENV           Environment name (default: $ENVIRONMENT)
     -t, --image-tag TAG             Container image tag (default: $IMAGE_TAG)
-    -r, --repository REPO           GitHub repository name (required)
+    -r, --repository REPO           GitHub repository name (default: $REPOSITORY_NAME)
     -s, --subscription ID           Azure subscription ID (optional, uses current)
     -d, --dry-run                   Show what would be deployed without executing
     -v, --verbose                   Enable verbose output
-    --force-ghcr                    Force use of GHCR even for private repos (requires valid token)
     --enable-custom-domain          Enable custom domain and certificate creation
     -h, --help                      Show this help message
 
 EXAMPLES:
-    # Basic deployment
-    $0 -r microsoft/xregistry-package-registries
+    # Basic deployment with defaults
+    $0
 
     # Custom resource group and location
-    $0 -g my-rg -l eastus -r myrepo
+    $0 -g my-rg -l eastus
+
+    # Deploy specific image tag
+    $0 -t v1.0.0
 
     # Dry run to see what would be deployed
-    $0 --dry-run -r myrepo
+    $0 --dry-run
 
 ENVIRONMENT VARIABLES:
     AZURE_SUBSCRIPTION             Azure subscription ID
-    REPOSITORY_NAME                GitHub repository name
+    REPOSITORY_NAME                GitHub repository name (default: clemensv/xregistry-package-registries)
+    IMAGE_TAG                      Container image tag (default: latest)
 
 EOF
 }
@@ -127,10 +129,6 @@ parse_args() {
                 VERBOSE="true"
                 shift
                 ;;
-            --force-ghcr)
-                FORCE_GHCR="true"
-                shift
-                ;;
             --enable-custom-domain)
                 ENABLE_CUSTOM_DOMAIN="true"
                 shift
@@ -167,7 +165,10 @@ validate_params() {
         ((errors++))
     fi
 
-
+    # GitHub credentials are optional for public repositories
+    if [[ -z "$GITHUB_ACTOR" ]] || [[ -z "$GITHUB_TOKEN" ]]; then
+        log_info "GitHub credentials not provided - assuming public repository (no authentication required)"
+    fi
 
     if [[ ! -f "$BICEP_FILE" ]]; then
         log_error "Bicep template not found: $BICEP_FILE"
@@ -302,81 +303,59 @@ show_container_status() {
 
 # Create parameters file with substituted values
 create_parameters_file() {
-    local use_acr="$1"
-    local acr_name="$2"
     local temp_params="$SCRIPT_DIR/parameters.tmp.json"
     
     log_info "Creating parameters file with current values..."
     log_verbose "Template: $PARAMS_FILE"
     log_verbose "Output: $temp_params"
-    log_verbose "Use ACR: $use_acr"
     
     # Determine registry configuration
-    local registry_server
-    local registry_username
-    local registry_password
-    local image_repository
+    local registry_server="ghcr.io"
+    local registry_username=""
+    local registry_password=""
     
-    if [[ "$use_acr" == "true" ]]; then
-        registry_server="${acr_name}.azurecr.io"
-        
-        # Use the same credentials we retrieved earlier (they should be cached by Azure CLI)
-        registry_username=$(az acr credential show --name "$acr_name" --resource-group "$RESOURCE_GROUP" --query "username" -o tsv 2>/dev/null)
-        registry_password=$(az acr credential show --name "$acr_name" --resource-group "$RESOURCE_GROUP" --query "passwords[0].value" -o tsv 2>/dev/null)
-        
-        if [[ -z "$registry_username" ]] || [[ -z "$registry_password" ]]; then
-            log_error "Failed to retrieve ACR credentials for parameters file"
-            log_error "This should not happen if ACR was set up correctly"
-            exit 1
-        fi
-        
-        image_repository="ACR_NO_PREFIX"  # Special marker for ACR - no repository prefix needed
-        log_info "Using ACR: $registry_server (username: $registry_username)"
-            else
-            registry_server="ghcr.io"
-            image_repository="$REPOSITORY_NAME"
-        
-        # For public repositories, use GHCR without authentication
-        log_info "Using GHCR without authentication for public repository: $registry_server"
-        registry_username=""
-        registry_password=""
-    fi
-    
-    # Read template and substitute values with error handling
-    # Force useCustomDomain to false to avoid baseURL bootstrap issues
-    log_info "🔍 Checkpoint: Starting parameter substitution..."
-    log_verbose "Registry server: ${registry_server:-'(empty)'} (public, no authentication)"
-    log_verbose "Image tag: ${IMAGE_TAG:-'(empty)'}"
-    log_verbose "Repository: ${image_repository:-'(empty)'}"
-    
-    # Use explicit error handling for parameter substitution
-    set +e
-    if cat "$PARAMS_FILE" | \
-        sed "s|{{IMAGE_TAG}}|$IMAGE_TAG|g" | \
-        sed "s|{{REPOSITORY_NAME}}|$image_repository|g" | \
-        sed "s|ghcr.io|$registry_server|g" | \
-        sed 's|"useCustomDomain": {"value": true}|"useCustomDomain": {"value": false}|g' \
-        > "$temp_params"; then
-        log_info "✅ Parameter substitution successful"
-        set -e
+    # For public repositories, authentication is optional
+    if [[ -n "$GITHUB_ACTOR" ]] && [[ -n "$GITHUB_TOKEN" ]]; then
+        log_info "Using GitHub credentials for GHCR authentication"
+        registry_username="$GITHUB_ACTOR"
+        registry_password="$GITHUB_TOKEN"
     else
-        local subst_result=$?
-        set -e
-        log_error "Parameter substitution failed with exit code: $subst_result"
-        log_warning "Falling back to bootstrap parameters file for minimal deployment"
-        
-        # Use bootstrap parameters as fallback
-        local bootstrap_params="$SCRIPT_DIR/bootstrap-params.json"
-        if [[ -f "$bootstrap_params" ]]; then
-            cp "$bootstrap_params" "$temp_params"
-            log_info "Using bootstrap parameters file: $bootstrap_params"
-        else
-            log_error "Bootstrap parameters file not found, using original with no substitution"
-            cp "$PARAMS_FILE" "$temp_params"    
-        fi
+        log_info "Using GHCR without authentication for public repository"
     fi
     
-    log_info "🔍 Checkpoint: Parameter substitution completed"
+    log_info "Starting parameter substitution..."
+    log_verbose "Registry server: $registry_server"
+    log_verbose "Image tag: $IMAGE_TAG"
+    log_verbose "Repository: $REPOSITORY_NAME"
+    
+    # Use jq for proper JSON manipulation
+    if ! command -v jq &> /dev/null; then
+        log_error "jq is required but not installed. Please install jq."
+        exit 1
+    fi
+    
+    # Read template and update parameters using jq
+    jq \
+        --arg imageTag "$IMAGE_TAG" \
+        --arg repoName "$REPOSITORY_NAME" \
+        --arg regServer "$registry_server" \
+        --arg regUser "$registry_username" \
+        --arg regPass "$registry_password" \
+        '
+        .parameters.imageTag.value = $imageTag |
+        .parameters.repositoryName.value = $repoName |
+        .parameters.containerRegistryServer.value = $regServer |
+        .parameters.containerRegistryUsername.value = $regUser |
+        .parameters.containerRegistryPassword.value = $regPass
+        ' \
+        "$PARAMS_FILE" > "$temp_params"
+    
+    if [[ $? -eq 0 ]]; then
+        log_info "Parameter substitution successful"
+    else
+        log_error "Parameter substitution failed"
+        exit 1
+    fi
     
     echo "$temp_params"
 }
@@ -843,15 +822,13 @@ main() {
     
     # Force GHCR usage - no ACR needed
     log_info "Using GHCR for all container images"
-    local use_acr="false"
-    local acr_name=""
     
     # Create temporary files with substituted values
-    log_info "🔍 Checkpoint: Creating parameters file..."
+    log_info "Creating parameters file..."
     local temp_params
     local temp_bicep
-    temp_params=$(create_parameters_file "$use_acr" "$acr_name")
-    log_info "🔍 Checkpoint: Parameters file created: $temp_params"
+    temp_params=$(create_parameters_file)
+    log_info "Parameters file created: $temp_params"
     
     log_info "🔍 Checkpoint: Creating Bicep file..."
     temp_bicep=$(create_bicep_file)

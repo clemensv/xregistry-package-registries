@@ -6,17 +6,25 @@
 ![Node.js](https://img.shields.io/badge/node-%3E%3D16.0.0-brightgreen.svg)
 ![Docker](https://img.shields.io/badge/docker-supported-blue.svg)
 
-![Build NPM](https://github.com/clemensv/xregistry-package-registries/actions/workflows/build-npm.yml/badge.svg)
-![Build PyPI](https://github.com/clemensv/xregistry-package-registries/actions/workflows/build-pypi.yml/badge.svg)
-![Build Maven](https://github.com/clemensv/xregistry-package-registries/actions/workflows/build-maven.yml/badge.svg)
-![Build NuGet](https://github.com/clemensv/xregistry-package-registries/actions/workflows/build-nuget.yml/badge.svg)
-![Build OCI](https://github.com/clemensv/xregistry-package-registries/actions/workflows/build-oci.yml/badge.svg)
-![Build Bridge](https://github.com/clemensv/xregistry-package-registries/actions/workflows/build-bridge.yml/badge.svg)
-![Deploy](https://github.com/clemensv/xregistry-package-registries/actions/workflows/deploy.yml/badge.svg)
+![Build Images](https://github.com/clemensv/xregistry-package-registries/actions/workflows/build-images.yml/badge.svg)
+![Deploy to ACI](https://github.com/clemensv/xregistry-package-registries/actions/workflows/aci-deploy.yml/badge.svg)
 
-A unified xRegistry implementation that provides a single API interface for multiple package registries. Access NPM, PyPI, Maven, NuGet, and OCI registries through one consistent xRegistry-compliant API.
+This project contains a set of read-only xRegistry server implementations that
+proxy several popular package registries (NPM, PyPI, Maven, NuGet, OCI) behind a
+unified xRegistry-compliant API.
 
-## 🌟 Features
+In addition, the project contains a bridge service that merges the individual
+registries into a single API endpoint, providing a consolidated view of all
+package metadata.
+
+This shows how the CNCF xRegistry model can be used to create a unified metadata
+graph for dependency management across multiple package ecosystems for polyglot
+applications.
+
+The API and model declarations follow the official [xRegistry](https://xregistry.io) specification that
+is being developed as a CNCF sandbox project at https://github.com/xregistry/spec
+
+## Overview
 
 - **Unified API**: Single endpoint for all package registries
 - **xRegistry Compliant**: Follows the official xRegistry specification
@@ -25,7 +33,7 @@ A unified xRegistry implementation that provides a single API interface for mult
 - **Azure Integration**: Deploy to Azure Container Apps with GitHub Actions
 - **Bridge Architecture**: Intelligent proxy routing to backend services
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
@@ -92,7 +100,7 @@ npm run start:bridge
 
 ## 📡 API Endpoints
 
-Once running, the unified bridge provides these endpoints at `http://localhost:8092`:
+Once running, the unified bridge provides these endpoints at `http://localhost:8080`:
 
 ### Core xRegistry Endpoints
 
@@ -112,13 +120,13 @@ Once running, the unified bridge provides these endpoints at `http://localhost:8
 
 ```bash
 # Get unified model showing all registry types
-curl http://localhost:8092/model
+curl http://localhost:8080/model
 
 # Browse NPM packages
-curl http://localhost:8092/noderegistries
+curl http://localhost:8080/noderegistries
 
 # Get capabilities from all registries
-curl http://localhost:8092/capabilities
+curl http://localhost:8080/capabilities
 ```
 
 ## 🏗️ Architecture
@@ -126,13 +134,13 @@ curl http://localhost:8092/capabilities
 The project uses a bridge architecture where:
 
 1. **Individual Registry Services** run on separate ports:
-   - NPM: 4873
-   - PyPI: 8081
-   - Maven: 8082
-   - NuGet: 8083
-   - OCI: 8084
+   - NPM: 3000
+   - PyPI: 3100
+   - Maven: 3200
+   - NuGet: 3300
+   - OCI: 3400
 
-2. **Unified Bridge Service** (port 8092) provides:
+2. **Unified Bridge Service** (port 8080) provides:
    - Single API endpoint
    - Model and capability merging
    - Intelligent request routing
@@ -144,24 +152,11 @@ The project uses a bridge architecture where:
 
 ```bash
 # Test unified bridge
-curl http://localhost:8092/
+curl http://localhost:8080/
 
 # Check all registries are merged
-curl http://localhost:8092/model | jq '.groups | keys'
+curl http://localhost:8080/model | jq '.groups | keys'
 # Should return: ["containerregistries", "dotnetregistries", "javaregistries", "noderegistries", "pythonregistries"]
-```
-
-### Run Demo Scripts
-
-```bash
-# Comprehensive demonstration
-node run-unified-demo.js
-
-# PowerShell demo (Windows)
-.\run-unified-demo.ps1
-
-# Test with actual packages
-node test-actual-packages.js
 ```
 
 ## 🐳 Docker Deployment
@@ -242,13 +237,13 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for comprehensive details on:
 
 ### Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `XREGISTRY_PORT` | `8092` | Bridge server port |
-| `XREGISTRY_ENABLE` | `npm,pypi,maven,nuget,oci` | Enabled registries |
-| `XREGISTRY_BASEURL` | Auto-detected | Base URL for responses |
-| `XREGISTRY_API_KEY` | None | Global API key |
-| `NODE_ENV` | `development` | Environment mode |
+| Variable            | Default                    | Description            |
+| ------------------- | -------------------------- | ---------------------- |
+| `XREGISTRY_PORT`    | `8080`                     | Bridge server port     |
+| `XREGISTRY_ENABLE`  | `npm,pypi,maven,nuget,oci` | Enabled registries     |
+| `XREGISTRY_BASEURL` | Auto-detected              | Base URL for responses |
+| `XREGISTRY_API_KEY` | None                       | Global API key         |
+| `NODE_ENV`          | `development`              | Environment mode       |
 
 ### Registry-Specific Ports
 
@@ -282,7 +277,7 @@ node run-docker-integration-tests.js
 # In another terminal, start bridge
 cd bridge
 npm run build
-PORT=8092 node dist/proxy.js
+PORT=8080 node dist/proxy.js
 ```
 
 See [DEVELOPMENT.md](DEVELOPMENT.md) for detailed development documentation.
@@ -295,7 +290,7 @@ See [DEVELOPMENT.md](DEVELOPMENT.md) for detailed development documentation.
 - **[GITHUB-WORKFLOWS.md](GITHUB-WORKFLOWS.md)** - CI/CD pipeline documentation
 - **[CHANGELOG.md](CHANGELOG.md)** - Project change history
 - **[PERFORMANCE_OPTIMIZATION.md](PERFORMANCE_OPTIMIZATION.md)** - Performance tuning guidelines
-- **API Documentation** - Available at `http://localhost:8092/` when running
+- **API Documentation** - Available at `http://localhost:8080/` when running
 - **xRegistry Specification** - See the [official xRegistry specification](https://github.com/xregistry/spec) for standard compliance details
 
 ## 🔍 Troubleshooting
@@ -326,8 +321,8 @@ node --version  # Should be v16+
 cd bridge && npm run build
 
 # Check backend services are running
-curl http://localhost:4873/noderegistries
-curl http://localhost:8081/pythonregistries
+curl http://localhost:3000/noderegistries
+curl http://localhost:3100/pythonregistries
 ```
 
 ### Getting Help
@@ -349,4 +344,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Ready to get started?** Run `npm start` and visit `http://localhost:8092` to see all your package registries unified in one API! 
+**Ready to get started?** Run `npm start` and visit `http://localhost:8080` to see all your package registries unified in one API! 

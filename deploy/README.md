@@ -70,8 +70,8 @@ All environment-specific settings are centralized in `config.json`:
 1. **Azure CLI** installed and configured
 2. **Bicep CLI** (usually included with Azure CLI)
 3. **Azure subscription** with contributor permissions
-4. **GitHub repository** with container images built
-5. **GitHub token** with package read permissions
+4. **GitHub repository** with container images built and published to GHCR
+5. **GitHub token** (optional - only required for private repositories)
 
 ## Quick Start
 
@@ -81,9 +81,15 @@ All environment-specific settings are centralized in `config.json`:
 # Make script executable
 chmod +x deploy.sh
 
-# Deploy with required parameters
+# Deploy with default settings (public repository, no authentication required)
+./deploy.sh
+
+# Deploy with custom repository
+./deploy.sh --repository "myorg/xregistry-fork"
+
+# Deploy with GitHub credentials (for private repositories)
 ./deploy.sh \
-  --repository "microsoft/xregistry-package-registries" \
+  --repository "myorg/private-repo" \
   --github-actor "myusername" \
   --github-token "ghp_xxxxxxxxxxxxxxxxxxxx"
 ```
@@ -91,9 +97,15 @@ chmod +x deploy.sh
 ### Using PowerShell (Windows/Cross-platform)
 
 ```powershell
-# Deploy with required parameters
+# Deploy with default settings (public repository, no authentication required)
+.\deploy.ps1
+
+# Deploy with custom repository
+.\deploy.ps1 -RepositoryName "myorg/xregistry-fork"
+
+# Deploy with GitHub credentials (for private repositories)
 .\deploy.ps1 `
-  -RepositoryName "microsoft/xregistry-package-registries" `
+  -RepositoryName "myorg/private-repo" `
   -GitHubActor "myusername" `
   -GitHubToken "ghp_xxxxxxxxxxxxxxxxxxxx"
 ```
@@ -102,9 +114,9 @@ chmod +x deploy.sh
 
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
-| `repository` / `RepositoryName` | ✅ | - | GitHub repository name (e.g., `owner/repo`) |
-| `github-actor` / `GitHubActor` | ✅ | - | GitHub username for container registry |
-| `github-token` / `GitHubToken` | ✅ | - | GitHub personal access token |
+| `repository` / `RepositoryName` | ❌ | `clemensv/xregistry-package-registries` | GitHub repository name (e.g., `owner/repo`) |
+| `github-actor` / `GitHubActor` | ❌ | - | GitHub username (optional, only for private repos) |
+| `github-token` / `GitHubToken` | ❌ | - | GitHub personal access token (optional, only for private repos) |
 | `resource-group` / `ResourceGroup` | ❌ | `xregistry-package-registries` | Azure resource group name |
 | `location` / `Location` | ❌ | `westeurope` | Azure region |
 | `environment` / `Environment` | ❌ | `prod` | Environment identifier |

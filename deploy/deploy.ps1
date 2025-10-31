@@ -21,13 +21,13 @@
     Container image tag (default: latest)
 
 .PARAMETER RepositoryName
-    GitHub repository name (required)
+    GitHub repository name (default: clemensv/xregistry-package-registries)
 
 .PARAMETER GitHubActor
-    GitHub username (required)
+    GitHub username (optional for public repos)
 
 .PARAMETER GitHubToken
-    GitHub token (required)
+    GitHub token (optional for public repos)
 
 .PARAMETER AzureSubscription
     Azure subscription ID (optional, uses current)
@@ -39,13 +39,13 @@
     Enable verbose output
 
 .EXAMPLE
-    .\deploy.ps1 -RepositoryName "microsoft/xregistry-package-registries" -GitHubActor "myuser" -GitHubToken "ghp_token123"
+    .\deploy.ps1
 
 .EXAMPLE
-    .\deploy.ps1 -ResourceGroup "my-rg" -Location "eastus" -RepositoryName "myrepo" -GitHubActor "myuser" -GitHubToken "token123"
+    .\deploy.ps1 -ResourceGroup "my-rg" -Location "eastus"
 
 .EXAMPLE
-    .\deploy.ps1 -DryRun -RepositoryName "myrepo" -GitHubActor "myuser" -GitHubToken "token123"
+    .\deploy.ps1 -ImageTag "v1.0.0" -DryRun
 #>
 
 [CmdletBinding()]
@@ -55,11 +55,11 @@ param(
     [string]$Environment = "prod",
     [string]$ImageTag = "latest",
     [Parameter(Mandatory = $false)]
-    [string]$RepositoryName = $env:REPOSITORY_NAME,
+    [string]$RepositoryName = "clemensv/xregistry-package-registries",
     [Parameter(Mandatory = $false)]
-    [string]$GitHubActor = $env:GITHUB_ACTOR,
+    [string]$GitHubActor = "",
     [Parameter(Mandatory = $false)]
-    [string]$GitHubToken = $env:GITHUB_TOKEN,
+    [string]$GitHubToken = "",
     [string]$AzureSubscription = $env:AZURE_SUBSCRIPTION,
     [switch]$DryRun,
     [switch]$VerboseOutput
@@ -111,14 +111,10 @@ function Test-Parameters {
         $errors++
     }
 
-    if ([string]::IsNullOrWhiteSpace($GitHubActor)) {
-        Write-LogError "GitHub actor is required (-GitHubActor)"
-        $errors++
-    }
-
-    if ([string]::IsNullOrWhiteSpace($GitHubToken)) {
-        Write-LogError "GitHub token is required (-GitHubToken)"
-        $errors++
+    # GitHub credentials are optional for public repositories
+    if ([string]::IsNullOrWhiteSpace($GitHubActor) -or [string]::IsNullOrWhiteSpace($GitHubToken)) {
+        Write-LogInfo "GitHub credentials not provided - deploying from public repository"
+        Write-LogInfo "Images will be pulled from: ghcr.io/$RepositoryName"
     }
 
     if (-not (Test-Path $BicepFile)) {
@@ -206,15 +202,23 @@ function New-ParametersFile {
     Write-LogInfo "Creating parameters file with current values..."
     Write-LogVerbose "Template: $ParamsFile"
     Write-LogVerbose "Output: $tempParams"
+    Write-LogVerbose "Repository: $RepositoryName"
+    Write-LogVerbose "Image Tag: $ImageTag"
     
-    # Read template and substitute values
-    $content = Get-Content $ParamsFile -Raw
-    $content = $content -replace '{{GITHUB_ACTOR}}', $GitHubActor
-    $content = $content -replace '{{GITHUB_TOKEN}}', $GitHubToken
-    $content = $content -replace '{{IMAGE_TAG}}', $ImageTag
-    $content = $content -replace '{{REPOSITORY_NAME}}', $RepositoryName
+    # Read template and update values
+    $paramsObj = Get-Content $ParamsFile -Raw | ConvertFrom-Json
+    $paramsObj.parameters.imageTag.value = $ImageTag
+    $paramsObj.parameters.repositoryName.value = $RepositoryName
     
-    Set-Content -Path $tempParams -Value $content -Encoding UTF8
+    # Only set credentials if provided
+    if (-not [string]::IsNullOrWhiteSpace($GitHubActor)) {
+        $paramsObj.parameters.containerRegistryUsername.value = $GitHubActor
+    }
+    if (-not [string]::IsNullOrWhiteSpace($GitHubToken)) {
+        $paramsObj.parameters.containerRegistryPassword.value = $GitHubToken
+    }
+    
+    $paramsObj | ConvertTo-Json -Depth 10 | Set-Content -Path $tempParams -Encoding UTF8
     
     return $tempParams
 }

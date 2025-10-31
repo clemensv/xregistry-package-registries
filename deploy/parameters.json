@@ -18,19 +18,19 @@
       "value": ""
     },
     "imageTag": {
-      "value": "{{IMAGE_TAG}}"
+      "value": "latest"
     },
     "repositoryName": {
-      "value": "{{REPOSITORY_NAME}}"
+      "value": "clemensv/xregistry-package-registries"
     },
     "alertEmailAddress": {
       "value": "clemensv@microsoft.com"
     },
     "useCustomDomain": {
-      "value": true
+      "value": false
     },
     "autoDetectExistingCertificate": {
-      "value": true
+      "value": false
     }
   }
 }
