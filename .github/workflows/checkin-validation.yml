@@ -10,6 +10,7 @@ on:
 #      - 'maven/**'
 #      - 'nuget/**'
 #      - 'oci/**'
+#      - 'mcp/**'
 #      - 'test/**'
 #      - '*.Dockerfile'
 #      - 'package.json'
@@ -24,6 +25,7 @@ on:
 #      - 'maven/**'
 #      - 'nuget/**'
 #      - 'oci/**'
+#      - 'mcp/**'
 #      - 'test/**'
 #      - '*.Dockerfile'
 #      - 'package.json'
@@ -70,7 +72,7 @@ jobs:
     
     strategy:
       matrix:
-        service: [maven, nuget, pypi, oci, npm]
+        service: [maven, nuget, pypi, oci, npm, mcp]
       fail-fast: false
     
     steps:

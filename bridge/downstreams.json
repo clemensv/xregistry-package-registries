@@ -19,6 +19,10 @@
     {
       "url": "http://localhost:8084",
       "apikey": "oci-api-key-test-123"
+    },
+    {
+      "url": "http://localhost:3600",
+      "apikey": "mcp-api-key-test-123"
     }
   ]
 } 

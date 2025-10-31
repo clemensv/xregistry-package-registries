@@ -1,0 +1,689 @@
+{
+  "registryid": "mcp-wrapper",
+  "self": "/model",
+  "schema": "xRegistry-json/1.0-rc1",
+  "model": {
+    "groups": {
+      "mcpproviders": {
+        "plural": "mcpproviders",
+        "singular": "mcpprovider",
+        "description": "Registry of Model Context Protocol (MCP) servers and their capabilities, organized by provider.",
+        "resources": {
+          "servers": {
+            "plural": "servers",
+            "singular": "server",
+            "maxversions": 100,
+            "setversionid": true,
+            "setdefaultversionsticky": true,
+            "hasdocument": false,
+            "singleversionroot": false,
+            "labels": {},
+            "attributes": {
+              "$schema": {
+                "name": "$schema",
+                "type": "url",
+                "description": "JSON Schema URI for the server.json format (e.g., https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json)."
+              },
+              "name": {
+                "name": "name",
+                "type": "string",
+                "description": "Server name in reverse-DNS format. Must contain exactly one forward slash separating namespace from server name."
+              },
+              "title": {
+                "name": "title",
+                "type": "string",
+                "description": "Human-readable title or display name for the MCP server."
+              },
+              "description": {
+                "name": "description",
+                "type": "string",
+                "description": "Repository or server overview."
+              },
+              "icon": {
+                "name": "icon",
+                "type": "url",
+                "description": "URL to a graphical icon for the server."
+              },
+              "websiteUrl": {
+                "name": "websiteUrl",
+                "type": "url",
+                "description": "Optional URL to the server's homepage or documentation."
+              },
+              "version": {
+                "name": "version",
+                "type": "string",
+                "description": "Semantic version number of the server."
+              },
+              "packages": {
+                "name": "packages",
+                "type": "array",
+                "description": "Package registry metadata blocks per server.json schema.",
+                "item": {
+                  "type": "object",
+                  "attributes": {
+                    "registryType": {
+                      "name": "registryType",
+                      "type": "string",
+                      "description": "Type of registry (npm, pypi, oci, nuget, mcpb).",
+                      "enum": ["npm", "pypi", "oci", "nuget", "mcpb"],
+                      "ifvalues": {
+                        "npm": {
+                          "siblingattributes": {
+                            "packagexid": {
+                              "name": "packagexid",
+                              "type": "xid",
+                              "description": "xRegistry ID referencing the NPM package.",
+                              "target": "/noderegistries/packages"
+                            }
+                          }
+                        },
+                        "pypi": {
+                          "siblingattributes": {
+                            "packagexid": {
+                              "name": "packagexid",
+                              "type": "xid",
+                              "description": "xRegistry ID referencing the PyPI package.",
+                              "target": "/pythonregistries/packages"
+                            }
+                          }
+                        },
+                        "oci": {
+                          "siblingattributes": {
+                            "packagexid": {
+                              "name": "packagexid",
+                              "type": "xid",
+                              "description": "xRegistry ID referencing the container image.",
+                              "target": "/containerregistries/images"
+                            }
+                          }
+                        },
+                        "nuget": {
+                          "siblingattributes": {
+                            "packagexid": {
+                              "name": "packagexid",
+                              "type": "xid",
+                              "description": "xRegistry ID referencing the NuGet package.",
+                              "target": "/dotnetregistries/packages"
+                            }
+                          }
+                        },
+                        "mcpb": {
+                          "siblingattributes": {
+                            "packagexid": {
+                              "name": "packagexid",
+                              "type": "uri",
+                              "description": "xRegistry ID referencing the MCP bundle.",
+                              "target": "/mcpbundles"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "registryBaseUrl": {
+                      "name": "registryBaseUrl",
+                      "type": "url",
+                      "description": "Base URL of the package registry."
+                    },
+                    "identifier": {
+                      "name": "identifier",
+                      "type": "string",
+                      "description": "Package identifier - either package name (for registries) or URL (for direct downloads)."
+                    },
+                    "version": {
+                      "name": "version",
+                      "type": "string",
+                      "description": "Package version. Must be a specific version."
+                    },
+                    "fileSha256": {
+                      "name": "fileSha256",
+                      "type": "string",
+                      "description": "SHA-256 hash of the package file for integrity verification.",
+                      "pattern": "^[a-f0-9]{64}$"
+                    },
+                    "runtimeHint": {
+                      "name": "runtimeHint",
+                      "type": "string",
+                      "description": "Hint for the appropriate runtime (npx, uvx, docker, dnx).",
+                      "enum": ["npx", "uvx", "docker", "dnx"]
+                    },
+                    "transport": {
+                      "name": "transport",
+                      "type": "object",
+                      "description": "Transport protocol configuration (stdio, streamable-http, sse).",
+                      "attributes": {
+                        "type": {
+                          "name": "type",
+                          "type": "string",
+                          "description": "Transport type.",
+                          "enum": ["stdio", "streamable-http", "sse"]
+                        },
+                        "url": {
+                          "name": "url",
+                          "type": "url",
+                          "description": "URL for streamable-http or sse transports."
+                        },
+                        "headers": {
+                          "name": "headers",
+                          "type": "array",
+                          "description": "HTTP headers for streamable-http or sse transports.",
+                          "item": {
+                            "type": "object",
+                            "attributes": {
+                              "name": {
+                                "name": "name",
+                                "type": "string",
+                                "description": "Header or environment variable name."
+                              },
+                              "description": {
+                                "name": "description",
+                                "type": "string",
+                                "description": "Description of the header."
+                              },
+                              "default": {
+                                "name": "default",
+                                "type": "string",
+                                "description": "Default value."
+                              },
+                              "isRequired": {
+                                "name": "isRequired",
+                                "type": "boolean",
+                                "description": "Whether required."
+                              },
+                              "isSecret": {
+                                "name": "isSecret",
+                                "type": "boolean",
+                                "description": "Whether secret."
+                              },
+                              "format": {
+                                "name": "format",
+                                "type": "string",
+                                "description": "Input format.",
+                                "enum": ["string", "number", "boolean", "filepath"]
+                              },
+                              "value": {
+                                "name": "value",
+                                "type": "string",
+                                "description": "The value with variable substitution support."
+                              },
+                              "placeholder": {
+                                "name": "placeholder",
+                                "type": "string",
+                                "description": "Placeholder text."
+                              },
+                              "choices": {
+                                "name": "choices",
+                                "type": "array",
+                                "description": "List of possible values.",
+                                "item": {
+                                  "type": "string"
+                                }
+                              },
+                              "variables": {
+                                "name": "variables",
+                                "type": "object",
+                                "description": "Map of variable names to their input definitions."
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "runtimeArguments": {
+                      "name": "runtimeArguments",
+                      "type": "array",
+                      "description": "Arguments passed to the package runtime command (docker, npx, etc.).",
+                      "item": {
+                        "type": "object",
+                        "attributes": {
+                          "type": {
+                            "name": "type",
+                            "type": "string",
+                            "description": "Argument type.",
+                            "enum": ["positional", "named"]
+                          },
+                          "name": {
+                            "name": "name",
+                            "type": "string",
+                            "description": "Flag name for named arguments."
+                          },
+                          "valueHint": {
+                            "name": "valueHint",
+                            "type": "string",
+                            "description": "Identifier for positional arguments."
+                          },
+                          "description": {
+                            "name": "description",
+                            "type": "string",
+                            "description": "Description of the argument."
+                          },
+                          "isRequired": {
+                            "name": "isRequired",
+                            "type": "boolean",
+                            "description": "Whether the argument is required."
+                          },
+                          "isRepeated": {
+                            "name": "isRepeated",
+                            "type": "boolean",
+                            "description": "Whether the argument can be repeated."
+                          },
+                          "default": {
+                            "name": "default",
+                            "type": "string",
+                            "description": "Default value."
+                          },
+                          "format": {
+                            "name": "format",
+                            "type": "string",
+                            "description": "Input format.",
+                            "enum": ["string", "number", "boolean", "filepath"]
+                          },
+                          "value": {
+                            "name": "value",
+                            "type": "string",
+                            "description": "The value with variable substitution support."
+                          },
+                          "placeholder": {
+                            "name": "placeholder",
+                            "type": "string",
+                            "description": "Placeholder text."
+                          },
+                          "choices": {
+                            "name": "choices",
+                            "type": "array",
+                            "description": "List of possible values.",
+                            "item": {
+                              "type": "string"
+                            }
+                          },
+                          "variables": {
+                            "name": "variables",
+                            "type": "object",
+                            "description": "Map of variable names to their input definitions."
+                          }
+                        }
+                      }
+                    },
+                    "packageArguments": {
+                      "name": "packageArguments",
+                      "type": "array",
+                      "description": "Arguments passed to the package's binary.",
+                      "item": {
+                        "type": "object",
+                        "attributes": {
+                          "type": {
+                            "name": "type",
+                            "type": "string",
+                            "description": "Argument type.",
+                            "enum": ["positional", "named"]
+                          },
+                          "name": {
+                            "name": "name",
+                            "type": "string",
+                            "description": "Flag name for named arguments."
+                          },
+                          "valueHint": {
+                            "name": "valueHint",
+                            "type": "string",
+                            "description": "Identifier for positional arguments."
+                          },
+                          "description": {
+                            "name": "description",
+                            "type": "string",
+                            "description": "Description of the argument."
+                          },
+                          "isRequired": {
+                            "name": "isRequired",
+                            "type": "boolean",
+                            "description": "Whether the argument is required."
+                          },
+                          "isRepeated": {
+                            "name": "isRepeated",
+                            "type": "boolean",
+                            "description": "Whether the argument can be repeated."
+                          },
+                          "default": {
+                            "name": "default",
+                            "type": "string",
+                            "description": "Default value."
+                          },
+                          "format": {
+                            "name": "format",
+                            "type": "string",
+                            "description": "Input format.",
+                            "enum": ["string", "number", "boolean", "filepath"]
+                          },
+                          "value": {
+                            "name": "value",
+                            "type": "string",
+                            "description": "The value with variable substitution support."
+                          },
+                          "placeholder": {
+                            "name": "placeholder",
+                            "type": "string",
+                            "description": "Placeholder text."
+                          },
+                          "choices": {
+                            "name": "choices",
+                            "type": "array",
+                            "description": "List of possible values.",
+                            "item": {
+                              "type": "string"
+                            }
+                          },
+                          "variables": {
+                            "name": "variables",
+                            "type": "object",
+                            "description": "Map of variable names to their input definitions."
+                          }
+                        }
+                      }
+                    },
+                    "environmentVariables": {
+                      "name": "environmentVariables",
+                      "type": "array",
+                      "description": "Environment variables to be set when running the package.",
+                      "item": {
+                        "type": "object",
+                        "attributes": {
+                          "name": {
+                            "name": "name",
+                            "type": "string",
+                            "description": "Name of the environment variable."
+                          },
+                          "description": {
+                            "name": "description",
+                            "type": "string",
+                            "description": "Description of the variable."
+                          },
+                          "isRequired": {
+                            "name": "isRequired",
+                            "type": "boolean",
+                            "description": "Whether required."
+                          },
+                          "isSecret": {
+                            "name": "isSecret",
+                            "type": "boolean",
+                            "description": "Whether secret value."
+                          },
+                          "default": {
+                            "name": "default",
+                            "type": "string",
+                            "description": "Default value."
+                          },
+                          "format": {
+                            "name": "format",
+                            "type": "string",
+                            "description": "Input format.",
+                            "enum": ["string", "number", "boolean", "filepath"]
+                          },
+                          "value": {
+                            "name": "value",
+                            "type": "string",
+                            "description": "The value with variable substitution support."
+                          },
+                          "placeholder": {
+                            "name": "placeholder",
+                            "type": "string",
+                            "description": "Placeholder text."
+                          },
+                          "choices": {
+                            "name": "choices",
+                            "type": "array",
+                            "description": "List of possible values.",
+                            "item": {
+                              "type": "string"
+                            }
+                          },
+                          "variables": {
+                            "name": "variables",
+                            "type": "object",
+                            "description": "Map of variable names to their input definitions."
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "remotes": {
+                "name": "remotes",
+                "type": "array",
+                "description": "Remote transport endpoints (streamable-http, sse).",
+                "item": {
+                  "type": "object",
+                  "attributes": {
+                    "type": {
+                      "name": "type",
+                      "type": "string",
+                      "description": "Transport type.",
+                      "enum": ["streamable-http", "sse"]
+                    },
+                    "url": {
+                      "name": "url",
+                      "type": "url",
+                      "description": "URL for the transport endpoint."
+                    },
+                    "headers": {
+                      "name": "headers",
+                      "type": "array",
+                      "description": "HTTP headers for the transport.",
+                      "item": {
+                        "type": "object",
+                        "attributes": {
+                          "name": {
+                            "name": "name",
+                            "type": "string",
+                            "description": "Header name."
+                          },
+                          "description": {
+                            "name": "description",
+                            "type": "string",
+                            "description": "Description of the header."
+                          },
+                          "default": {
+                            "name": "default",
+                            "type": "string",
+                            "description": "Default value."
+                          },
+                          "isRequired": {
+                            "name": "isRequired",
+                            "type": "boolean",
+                            "description": "Whether required."
+                          },
+                          "isSecret": {
+                            "name": "isSecret",
+                            "type": "boolean",
+                            "description": "Whether secret."
+                          },
+                          "format": {
+                            "name": "format",
+                            "type": "string",
+                            "description": "Input format.",
+                            "enum": ["string", "number", "boolean", "filepath"]
+                          },
+                          "value": {
+                            "name": "value",
+                            "type": "string",
+                            "description": "The value with variable substitution support."
+                          },
+                          "placeholder": {
+                            "name": "placeholder",
+                            "type": "string",
+                            "description": "Placeholder text."
+                          },
+                          "choices": {
+                            "name": "choices",
+                            "type": "array",
+                            "description": "List of possible values.",
+                            "item": {
+                              "type": "string"
+                            }
+                          },
+                          "variables": {
+                            "name": "variables",
+                            "type": "object",
+                            "description": "Map of variable names to their input definitions."
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "icons": {
+                "name": "icons",
+                "type": "array",
+                "description": "Set of sized icons that can be displayed in a user interface.",
+                "item": {
+                  "type": "object",
+                  "attributes": {
+                    "src": {
+                      "name": "src",
+                      "type": "url",
+                      "description": "A standard URI pointing to an icon resource. Must be an HTTPS URL."
+                    },
+                    "mimeType": {
+                      "name": "mimeType",
+                      "type": "string",
+                      "description": "Optional MIME type override.",
+                      "enum": ["image/png", "image/jpeg", "image/jpg", "image/svg+xml", "image/webp"]
+                    },
+                    "sizes": {
+                      "name": "sizes",
+                      "type": "array",
+                      "description": "Array of sizes (e.g., '48x48', '96x96', 'any').",
+                      "item": {
+                        "type": "string",
+                        "pattern": "^(\\d+x\\d+|any)$"
+                      }
+                    },
+                    "theme": {
+                      "name": "theme",
+                      "type": "string",
+                      "description": "Theme this icon is designed for.",
+                      "enum": ["light", "dark"]
+                    }
+                  }
+                }
+              },
+              "repository": {
+                "name": "repository",
+                "type": "object",
+                "description": "Repository metadata for the MCP server source code.",
+                "attributes": {
+                  "url": {
+                    "name": "url",
+                    "type": "url",
+                    "description": "Repository URL for browsing source code."
+                  },
+                  "source": {
+                    "name": "source",
+                    "type": "string",
+                    "description": "Repository hosting service identifier (e.g., github, gitlab)."
+                  },
+                  "id": {
+                    "name": "id",
+                    "type": "string",
+                    "description": "Repository identifier from the hosting service."
+                  },
+                  "subfolder": {
+                    "name": "subfolder",
+                    "type": "string",
+                    "description": "Optional relative path from repository root to the server location."
+                  }
+                }
+              },
+              "prompts": {
+                "name": "prompts",
+                "type": "array",
+                "description": "Static prompt templates bundled with this server.",
+                "item": {
+                  "type": "object",
+                  "attributes": {
+                    "name": {
+                      "name": "name",
+                      "type": "string"
+                    },
+                    "description": {
+                      "name": "description",
+                      "type": "string"
+                    },
+                    "arguments": {
+                      "name": "arguments",
+                      "type": "array",
+                      "item": {
+                        "type": "object",
+                        "attributes": {
+                          "name": {
+                            "name": "name",
+                            "type": "string"
+                          },
+                          "description": {
+                            "name": "description",
+                            "type": "string"
+                          },
+                          "required": {
+                            "name": "required",
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "tools": {
+                "name": "tools",
+                "type": "array",
+                "description": "Tool definitions invocable via the MCP runtime.",
+                "item": {
+                  "type": "object",
+                  "attributes": {
+                    "name": {
+                      "name": "name",
+                      "type": "string"
+                    },
+                    "description": {
+                      "name": "description",
+                      "type": "string"
+                    },
+                    "inputSchema": {
+                      "name": "inputSchema",
+                      "type": "any"
+                    }
+                  }
+                }
+              },
+              "resources": {
+                "name": "resources",
+                "type": "array",
+                "description": "Data resources the server can expose or subscribe to.",
+                "item": {
+                  "type": "object",
+                  "attributes": {
+                    "uriTemplate": {
+                      "name": "uriTemplate",
+                      "type": "uritemplate"
+                    },
+                    "name": {
+                      "name": "name",
+                      "type": "string"
+                    },
+                    "description": {
+                      "name": "description",
+                      "type": "string"
+                    },
+                    "mimeType": {
+                      "name": "mimeType",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

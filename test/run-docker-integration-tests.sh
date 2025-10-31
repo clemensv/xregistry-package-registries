@@ -51,13 +51,14 @@ Docker Integration Tests for xRegistry Package Registry Services
 Usage: $0 [OPTIONS]
 
 Options:
-    -s, --service SERVICE    Specific service to test (maven, nuget, pypi, oci, npm)
+    -s, --service SERVICE    Specific service to test (maven, nuget, pypi, oci, npm, mcp)
     -p, --parallel          Run tests in parallel (default: false)
     -h, --help              Show this help message
 
 Examples:
     $0                      # Run tests for all services sequentially
     $0 -s maven            # Run tests only for Maven service
+    $0 -s mcp              # Run tests only for MCP service
     $0 --parallel          # Run tests for all services in parallel
 
 EOF
@@ -68,8 +69,8 @@ while [[ $# -gt 0 ]]; do
     case $1 in
         -s|--service)
             SERVICE="$2"
-            if [[ ! "$SERVICE" =~ ^(maven|nuget|pypi|oci|npm)$ ]]; then
-                log_error "Invalid service: $SERVICE. Valid options: maven, nuget, pypi, oci, npm"
+            if [[ ! "$SERVICE" =~ ^(maven|nuget|pypi|oci|npm|mcp)$ ]]; then
+                log_error "Invalid service: $SERVICE. Valid options: maven, nuget, pypi, oci, npm, mcp"
                 exit 1
             fi
             shift 2

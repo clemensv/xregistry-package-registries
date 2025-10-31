@@ -5,12 +5,12 @@
     Runs Docker integration tests for all package registry services.
 
 .DESCRIPTION
-    This script runs comprehensive Docker integration tests for Maven, NuGet, PyPI, OCI, and NPM services.
+    This script runs comprehensive Docker integration tests for Maven, NuGet, PyPI, OCI, NPM, and MCP services.
     Each test builds the service's Docker image, runs it on a random port, tests various endpoints,
     and cleans up afterwards.
 
 .PARAMETER Service
-    Specific service to test (maven, nuget, pypi, oci, npm). If not specified, all services are tested.
+    Specific service to test (maven, nuget, pypi, oci, npm, mcp). If not specified, all services are tested.
 
 .PARAMETER Parallel
     Whether to run tests in parallel. Default is false for better resource management.
@@ -29,7 +29,7 @@
 #>
 
 param(
-    [ValidateSet("maven", "nuget", "pypi", "oci", "npm")]
+    [ValidateSet("maven", "nuget", "pypi", "oci", "npm", "mcp")]
     [string]$Service,
     
     [switch]$Parallel
