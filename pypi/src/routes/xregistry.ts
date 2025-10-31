@@ -4,18 +4,12 @@
  */
 
 import { Request, Response, Router } from 'express';
-import { REGISTRY_METADATA } from '../config/constants';
+import { getBaseUrl, REGISTRY_METADATA } from '../config/constants';
 import { RegistryService } from '../services/registry-service';
 
 export function createXRegistryRoutes(registryService: RegistryService): Router {
     const router = Router();
     const { GROUP_TYPE, GROUP_ID } = REGISTRY_METADATA;
-
-    // Helper to get base URL
-    const getBaseUrl = (req: Request): string => {
-        const baseUrl = process.env.XREGISTRY_PYPI_BASEURL;
-        return baseUrl || `${req.protocol}://${req.get('host')}`;
-    };
 
     // Root endpoint
     router.get('/', (req: Request, res: Response) => {

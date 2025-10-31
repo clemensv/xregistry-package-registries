@@ -5,7 +5,7 @@
 
 import { NextFunction, Request, Response, Router } from 'express';
 import { EntityStateManager } from '../../../shared/entity-state-manager';
-import { REGISTRY_METADATA, SERVER_CONFIG } from '../config/constants';
+import { getBaseUrl, REGISTRY_METADATA, SERVER_CONFIG } from '../config/constants';
 import { PackageService } from '../services/package-service';
 import { SearchService } from '../services/search-service';
 import { entityNotFound } from '../utils/xregistry-errors';
@@ -17,12 +17,6 @@ export function createPackageRoutes(
 ): Router {
     const router = Router();
     const { GROUP_TYPE, GROUP_ID, RESOURCE_TYPE } = REGISTRY_METADATA;
-
-    // Helper to get base URL
-    const getBaseUrl = (req: Request): string => {
-        const baseUrl = process.env.XREGISTRY_PYPI_BASEURL;
-        return baseUrl || `${req.protocol}://${req.get('host')}`;
-    };
 
     // Async error handler
     const asyncHandler = (fn: Function) => {
