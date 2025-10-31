@@ -90,6 +90,7 @@ var pypiApiKey = 'pypi-${uniqueString(resourceGroup().id, 'pypi')}'
 var mavenApiKey = 'maven-${uniqueString(resourceGroup().id, 'maven')}'
 var nugetApiKey = 'nuget-${uniqueString(resourceGroup().id, 'nuget')}'
 var ociApiKey = 'oci-${uniqueString(resourceGroup().id, 'oci')}'
+var mcpApiKey = 'mcp-${uniqueString(resourceGroup().id, 'mcp')}'
 
 // Use a computed base URL - the actual FQDN will be different but services should handle this
 // For initial deployment, use a reasonable placeholder that won't cause startup failures
@@ -104,6 +105,7 @@ var pypiImage = '${containerRegistryServer}/${repositoryName}/xregistry-pypi-bri
 var mavenImage = '${containerRegistryServer}/${repositoryName}/xregistry-maven-bridge:${imageTag}'
 var nugetImage = '${containerRegistryServer}/${repositoryName}/xregistry-nuget-bridge:${imageTag}'
 var ociImage = '${containerRegistryServer}/${repositoryName}/xregistry-oci-bridge:${imageTag}'
+var mcpImage = '${containerRegistryServer}/${repositoryName}/xregistry-mcp-bridge:${imageTag}'
 
 // Downstream services configuration for bridge
 var downstreamsConfig = {
@@ -127,6 +129,10 @@ var downstreamsConfig = {
     {
       url: 'http://localhost:3400'
       apiKey: ociApiKey
+    }
+    {
+      url: 'http://localhost:3600'
+      apiKey: mcpApiKey
     }
   ]
 }
@@ -300,6 +306,10 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
           {
             name: 'oci-api-key'
             value: ociApiKey
+          }
+          {
+            name: 'mcp-api-key'
+            value: mcpApiKey
           }
           {
             name: 'app-insights-connection-string'
@@ -673,6 +683,59 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
           // Temporarily disable probes to test if they're causing restarts
           probes: []
         }
+        // MCP Container
+        {
+          name: 'mcp'
+          image: mcpImage
+          resources: {
+            cpu: json(serviceCpu)
+            memory: serviceMemory
+          }
+          env: [
+            {
+              name: 'NODE_ENV'
+              value: 'production'
+            }
+            {
+              name: 'PORT'
+              value: '3600'
+            }
+            {
+              name: 'XREGISTRY_MCP_PORT'
+              value: '3600'
+            }
+            {
+              name: 'XREGISTRY_MCP_BASEURL'
+              value: baseUrl
+            }
+            {
+              name: 'BASE_URL'
+              value: baseUrl
+            }
+            {
+              name: 'XREGISTRY_MCP_QUIET'
+              value: 'false'
+            }
+            {
+              name: 'XREGISTRY_MCP_API_KEY'
+              secretRef: 'mcp-api-key'
+            }
+            {
+              name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
+              secretRef: 'app-insights-connection-string'
+            }
+            {
+              name: 'LOG_LEVEL'
+              value: 'info'
+            }
+            {
+              name: 'SERVICE_NAME'
+              value: 'xregistry-mcp'
+            }
+          ]
+          // Temporarily disable probes to test if they're causing restarts
+          probes: []
+        }
       ]
       scale: {
         minReplicas: minReplicas
@@ -817,6 +880,7 @@ output apiKeys object = {
   maven: mavenApiKey
   nuget: nugetApiKey
   oci: ociApiKey
+  mcp: mcpApiKey
 }
 
 // Certificate and domain configuration outputs

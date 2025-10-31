@@ -16,6 +16,7 @@
       "maven": { "port": 3300, "name": "Maven Registry" },
       "nuget": { "port": 3200, "name": "NuGet Registry" },
       "oci": { "port": 3400, "name": "OCI Registry" },
+      "mcp": { "port": 3600, "name": "MCP Server Registry" },
       "bridge": { "port": 8092, "name": "Bridge Service" }
     }
   },
