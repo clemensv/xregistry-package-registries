@@ -2,6 +2,28 @@
  * Application constants for the NPM xRegistry wrapper
  */
 
+import { Request } from 'express';
+
+/**
+ * Get the actual base URL from the request
+ * This handles cases where the deployed FQDN differs from req.protocol/req.host
+ * Checks for x-forwarded-* headers set by reverse proxies (e.g., Azure Container Apps)
+ */
+export function getBaseUrl(req: Request): string {
+    // Get protocol - check forwarded header first (from reverse proxy)
+    const protocol = req.get('x-forwarded-proto') || req.protocol || 'https';
+    
+    // Get host - check forwarded header first (from reverse proxy)
+    const host = req.get('x-forwarded-host') || req.get('host');
+    
+    if (host) {
+        return `${protocol}://${host}`;
+    }
+
+    // Fallback to constructing from request properties
+    return `${req.protocol}://${req.get('host')}`;
+}
+
 export const REGISTRY_CONFIG = {
     ID: 'npm-wrapper',
     SPEC_VERSION: '1.0-rc1',

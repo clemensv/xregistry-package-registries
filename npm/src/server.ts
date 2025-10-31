@@ -6,7 +6,7 @@
 import express from 'express';
 import { CacheManager } from './cache/cache-manager';
 import { CacheService } from './cache/cache-service';
-import { CACHE_CONFIG } from './config/constants';
+import { CACHE_CONFIG, getBaseUrl } from './config/constants';
 import { corsMiddleware } from './middleware/cors';
 import { errorHandler } from './middleware/error-handler';
 import { createLoggingMiddleware } from './middleware/logging';
@@ -189,7 +189,7 @@ export class XRegistryServer {
         // xRegistry root endpoint
         this.app.get('/', async (req, res) => {
             try {
-                const baseUrl = `${req.protocol}://${req.get('host')}`;
+                const baseUrl = getBaseUrl(req);
                 const flags = (req as any).xregistryFlags;
                 const inline = flags?.inline || [];
 
@@ -325,7 +325,7 @@ export class XRegistryServer {
 
         // Node registries collection
         this.app.get('/noderegistries', (req, res) => {
-            const baseUrl = `${req.protocol}://${req.get('host')}`;
+            const baseUrl = getBaseUrl(req);
             const groupPath = '/noderegistries/npmjs.org';
             const noderegistries = {
                 'npmjs.org': {
@@ -351,7 +351,7 @@ export class XRegistryServer {
                 return;
             }
 
-            const baseUrl = `${req.protocol}://${req.get('host')}`;
+            const baseUrl = getBaseUrl(req);
             const groupPath = `/noderegistries/${registryId}`;
             const registry = {
                 noderegistryid: registryId,
@@ -376,7 +376,7 @@ export class XRegistryServer {
                     return;
                 }
 
-                const baseUrl = `${req.protocol}://${req.get('host')}`;
+                const baseUrl = getBaseUrl(req);
                 const limit = parseInt(req.query['limit'] as string || '20', 10);
                 const offset = parseInt(req.query['offset'] as string || '0', 10);
                 const filter = req.query['filter'] as string;
@@ -543,7 +543,7 @@ export class XRegistryServer {
                     return;
                 }
 
-                const baseUrl = `${req.protocol}://${req.get('host')}`;
+                const baseUrl = getBaseUrl(req);
                 const normalizedPackageName = normalizePackageId(packageName);
                 const packagePath = `/noderegistries/${registryId}/packages/${packageName}`;
                 const defaultVersion = metadata['dist-tags']?.latest || Object.keys(metadata.versions || {})[0] || '0.0.0';
@@ -602,7 +602,7 @@ export class XRegistryServer {
                     return;
                 }
 
-                const baseUrl = `${req.protocol}://${req.get('host')}`;
+                const baseUrl = getBaseUrl(req);
                 const packagePath = `/noderegistries/${registryId}/packages/${packageName}`;
                 const defaultVersion = metadata['dist-tags']?.latest || Object.keys(metadata.versions || {})[0] || '0.0.0';
                 const versionsCount = Object.keys(metadata.versions || {}).length;
@@ -650,7 +650,7 @@ export class XRegistryServer {
                     return;
                 }
 
-                const baseUrl = `${req.protocol}://${req.get('host')}`;
+                const baseUrl = getBaseUrl(req);
                 const versionPath = `/noderegistries/${registryId}/packages/${packageName}/versions/${version}`;
                 
                 // Get full package metadata to find default version and ancestor
@@ -701,7 +701,7 @@ export class XRegistryServer {
                     return;
                 }
 
-                const baseUrl = `${req.protocol}://${req.get('host')}`;
+                const baseUrl = getBaseUrl(req);
                 const versionPath = `/noderegistries/${registryId}/packages/${packageName}/versions/${version}`;
                 
                 // Get full package metadata to find default version
@@ -767,7 +767,7 @@ export class XRegistryServer {
                     return;
                 }
 
-                const baseUrl = `${req.protocol}://${req.get('host')}`;
+                const baseUrl = getBaseUrl(req);
                 const versionsObj: any = {};
 
                 // Get version keys and limit them
