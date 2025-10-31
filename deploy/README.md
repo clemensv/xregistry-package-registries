@@ -112,16 +112,16 @@ chmod +x deploy.sh
 
 ## Parameters
 
-| Parameter | Required | Default | Description |
-|-----------|----------|---------|-------------|
-| `repository` / `RepositoryName` | ❌ | `clemensv/xregistry-package-registries` | GitHub repository name (e.g., `owner/repo`) |
-| `github-actor` / `GitHubActor` | ❌ | - | GitHub username (optional, only for private repos) |
-| `github-token` / `GitHubToken` | ❌ | - | GitHub personal access token (optional, only for private repos) |
-| `resource-group` / `ResourceGroup` | ❌ | `xregistry-package-registries` | Azure resource group name |
-| `location` / `Location` | ❌ | `westeurope` | Azure region |
-| `environment` / `Environment` | ❌ | `prod` | Environment identifier |
-| `image-tag` / `ImageTag` | ❌ | `latest` | Container image tag |
-| `subscription` / `AzureSubscription` | ❌ | Current | Azure subscription ID |
+| Parameter                            | Required | Default                                 | Description                                                     |
+| ------------------------------------ | -------- | --------------------------------------- | --------------------------------------------------------------- |
+| `repository` / `RepositoryName`      | ❌        | `clemensv/xregistry-package-registries` | GitHub repository name (e.g., `owner/repo`)                     |
+| `github-actor` / `GitHubActor`       | ❌        | -                                       | GitHub username (optional, only for private repos)              |
+| `github-token` / `GitHubToken`       | ❌        | -                                       | GitHub personal access token (optional, only for private repos) |
+| `resource-group` / `ResourceGroup`   | ❌        | `xregistry-package-registries`          | Azure resource group name                                       |
+| `location` / `Location`              | ❌        | `westeurope`                            | Azure region                                                    |
+| `environment` / `Environment`        | ❌        | `prod`                                  | Environment identifier                                          |
+| `image-tag` / `ImageTag`             | ❌        | `latest`                                | Container image tag                                             |
+| `subscription` / `AzureSubscription` | ❌        | Current                                 | Azure subscription ID                                           |
 
 ## Environment Variables
 

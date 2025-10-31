@@ -7,7 +7,7 @@ import express from 'express';
 import { EntityStateManager } from '../../shared/entity-state-manager';
 import { CacheManager } from './cache/cache-manager';
 import { CacheService } from './cache/cache-service';
-import { CACHE_CONFIG, NUGET_REGISTRY } from './config/constants';
+import { CACHE_CONFIG, getBaseUrl, NUGET_REGISTRY } from './config/constants';
 import { corsMiddleware } from './middleware/cors';
 import { errorHandler } from './middleware/error-handler';
 import { createLoggingMiddleware } from './middleware/logging';
@@ -163,7 +163,7 @@ export class XRegistryServer {
         // xRegistry root endpoint
         this.app.get('/', async (req, res) => {
             try {
-                const baseUrl = `${req.protocol}://${req.get('host')}`;
+                const baseUrl = getBaseUrl(req);
                 const registryInfo = {
                     specversion: '1.0-rc2',
                     registryid: 'nuget-wrapper',
@@ -209,10 +209,10 @@ export class XRegistryServer {
             };
             res.json(capabilities);
         });
-        
+
         // Export endpoint - redirect to root with inline flags
         this.app.get('/export', (req, res) => {
-            const baseUrl = `${req.protocol}://${req.get('host')}`;
+            const baseUrl = getBaseUrl(req);
             res.redirect(`${baseUrl}/?doc&inline=*,capabilities,modelsource`);
         });
 
@@ -260,7 +260,7 @@ export class XRegistryServer {
 
         // Node registries collection
         this.app.get('/dotnetregistries', (req, res) => {
-            const baseUrl = `${req.protocol}://${req.get('host')}`;
+            const baseUrl = getBaseUrl(req);
             const groupPath = '/dotnetregistries/nuget.org';
             const dotnetregistries = {
                 'nuget.org': {
@@ -311,7 +311,7 @@ export class XRegistryServer {
                     return;
                 }
 
-                const baseUrl = `${req.protocol}://${req.get('host')}`;
+                const baseUrl = getBaseUrl(req);
                 const limit = parseInt(req.query['limit'] as string || '20', 10);
                 const offset = parseInt(req.query['offset'] as string || '0', 10);
                 const filter = req.query['filter'] as string;
@@ -412,14 +412,14 @@ export class XRegistryServer {
                     return;
                 }
 
-                const baseUrl = `${req.protocol}://${req.get('host')}`;
+                const baseUrl = getBaseUrl(req);
                 const resourcePath = `/dotnetregistries/nuget.org/packages/${packageName}`;
-                
+
                 // Get versions information
                 const versions = metadata.versions || {};
                 const versionsList = Object.keys(versions);
                 const latestVersion = metadata['version'] || versionsList[versionsList.length - 1] || '1.0.0';
-                
+
                 const packageInfo = {
                     name: packageName,
                     xid: resourcePath,
@@ -469,7 +469,7 @@ export class XRegistryServer {
                     return;
                 }
 
-                const baseUrl = `${req.protocol}://${req.get('host')}`;
+                const baseUrl = getBaseUrl(req);
                 const versionInfo = {
                     ...versionMetadata,
                     xid: `/dotnetregistries/nuget.org/packages/${packageName}/versions/${versionId}`,
@@ -653,7 +653,7 @@ export class XRegistryServer {
             if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') {
                 return next();
             }
-            
+
             res.status(405).json({
                 type: 'about:blank',
                 title: 'Method Not Allowed',
@@ -662,7 +662,7 @@ export class XRegistryServer {
                 instance: req.originalUrl
             });
         });
-        
+
         this.app.use(xregistryErrorHandler);
         this.app.use(errorHandler);
     }

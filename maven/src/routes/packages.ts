@@ -4,7 +4,7 @@
  */
 
 import { Request, Response, Router } from 'express';
-import { PAGINATION } from '../config/constants';
+import { getBaseUrl, PAGINATION } from '../config/constants';
 import { asyncHandler } from '../middleware/xregistry-error-handler';
 import { PackageService } from '../services/package-service';
 import { SearchService } from '../services/search-service';
@@ -44,7 +44,7 @@ export function createPackageRoutes(options: PackageRoutesOptions): Router {
             if (!groupId) {
                 throw new Error('groupId is required');
             }
-            const baseUrl = `${req.protocol}://${req.get('host')}`;
+            const baseUrl = getBaseUrl(req);
 
             // Parse pagination parameters
             const limitParam = req.query['limit'];
@@ -165,7 +165,7 @@ export function createPackageRoutes(options: PackageRoutesOptions): Router {
             if (!groupId || !packageId) {
                 throw new Error('groupId and packageId are required');
             }
-            const baseUrl = `${req.protocol}://${req.get('host')}`;
+            const baseUrl = getBaseUrl(req);
 
             const pkg = await packageService.getPackage(groupId, packageId, baseUrl);
             res.json(pkg);
@@ -182,7 +182,7 @@ export function createPackageRoutes(options: PackageRoutesOptions): Router {
             if (!groupId || !packageId) {
                 throw new Error('groupId and packageId are required');
             }
-            const baseUrl = `${req.protocol}://${req.get('host')}`;
+            const baseUrl = getBaseUrl(req);
 
             const pkg = await packageService.getPackage(groupId, packageId, baseUrl);
 
@@ -207,7 +207,7 @@ export function createPackageRoutes(options: PackageRoutesOptions): Router {
             if (!groupId || !packageId) {
                 throw new Error('groupId and packageId are required');
             }
-            const baseUrl = `${req.protocol}://${req.get('host')}`;
+            const baseUrl = getBaseUrl(req);
 
             // Parse pagination parameters
             const limit = parseInt(req.query['limit'] as string) || PAGINATION.DEFAULT_PAGE_LIMIT;
@@ -236,7 +236,7 @@ export function createPackageRoutes(options: PackageRoutesOptions): Router {
             if (!groupId || !packageId || !version) {
                 throw new Error('groupId, packageId, and version are required');
             }
-            const baseUrl = `${req.protocol}://${req.get('host')}`;
+            const baseUrl = getBaseUrl(req);
 
             const versionData = await packageService.getVersion(groupId, packageId, version, baseUrl);
             res.json(versionData);
@@ -253,7 +253,7 @@ export function createPackageRoutes(options: PackageRoutesOptions): Router {
             if (!groupId || !packageId || !version) {
                 throw new Error('groupId, packageId, and version are required');
             }
-            const baseUrl = `${req.protocol}://${req.get('host')}`;
+            const baseUrl = getBaseUrl(req);
 
             const versionData = await packageService.getVersion(groupId, packageId, version, baseUrl);
 

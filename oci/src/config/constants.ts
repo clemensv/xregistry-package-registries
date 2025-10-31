@@ -25,7 +25,7 @@ export function getBaseUrl(req: Request): string {
     // Get protocol and host from forwarded headers (for direct external access)
     const protocol = req.get('x-forwarded-proto') || req.protocol || 'https';
     const host = req.get('x-forwarded-host') || req.get('host');
-    
+
     // Construct from headers
     if (host) {
         return `${protocol}://${host}`;

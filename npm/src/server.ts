@@ -4,6 +4,7 @@
  */
 
 import express from 'express';
+import { EntityStateManager } from '../../shared/entity-state-manager';
 import { CacheManager } from './cache/cache-manager';
 import { CacheService } from './cache/cache-service';
 import { CACHE_CONFIG, getBaseUrl } from './config/constants';
@@ -14,7 +15,6 @@ import { xregistryErrorHandler } from './middleware/xregistry-error-handler';
 import { parseXRegistryFlags } from './middleware/xregistry-flags';
 import { NpmService } from './services/npm-service';
 import { normalizePackageId } from './utils/package-utils';
-import { EntityStateManager } from '../../shared/entity-state-manager';
 
 // Import shared filter utilities for two-step filtering
 // @ts-ignore - JavaScript module without TypeScript declarations
@@ -547,7 +547,7 @@ export class XRegistryServer {
                 const normalizedPackageName = normalizePackageId(packageName);
                 const packagePath = `/noderegistries/${registryId}/packages/${packageName}`;
                 const defaultVersion = metadata['dist-tags']?.latest || Object.keys(metadata.versions || {})[0] || '0.0.0';
-                
+
                 // Count total versions
                 const versionsCount = Object.keys(metadata.versions || {}).length;
 
@@ -559,14 +559,14 @@ export class XRegistryServer {
                     epoch: this.entityState.getEpoch(packagePath),
                     createdat: metadata.time?.['created'] || this.entityState.getCreatedAt(packagePath),
                     modifiedat: metadata.time?.['modified'] || this.entityState.getModifiedAt(packagePath),
-                    
+
                     // Required Resource attributes
                     versionid: defaultVersion,
                     isdefault: true,
                     metaurl: `${baseUrl}${packagePath}/meta`,
                     versionsurl: `${baseUrl}${packagePath}/versions`,
                     versionscount: versionsCount,
-                    
+
                     // NPM-specific metadata
                     description: metadata['description'] || '',
                     homepage: metadata.homepage || '',
@@ -616,7 +616,7 @@ export class XRegistryServer {
                     epoch: this.entityState.getEpoch(packagePath),
                     createdat: metadata.time?.['created'] || this.entityState.getCreatedAt(packagePath),
                     modifiedat: metadata.time?.['modified'] || this.entityState.getModifiedAt(packagePath),
-                    
+
                     // Meta-specific attributes (from xRegistry spec)
                     versionid: defaultVersion,
                     isdefault: true,
@@ -652,12 +652,12 @@ export class XRegistryServer {
 
                 const baseUrl = getBaseUrl(req);
                 const versionPath = `/noderegistries/${registryId}/packages/${packageName}/versions/${version}`;
-                
+
                 // Get full package metadata to find default version and ancestor
                 const packageMetadata = await this.npmService.getPackageMetadata(packageName);
                 const defaultVersion = packageMetadata?.['dist-tags']?.latest;
                 const isDefaultVersion = version === defaultVersion;
-                
+
                 // Find ancestor version (previous version in time)
                 const allVersions = Object.keys(packageMetadata?.versions || {});
                 const versionIndex = allVersions.indexOf(version);
@@ -703,12 +703,12 @@ export class XRegistryServer {
 
                 const baseUrl = getBaseUrl(req);
                 const versionPath = `/noderegistries/${registryId}/packages/${packageName}/versions/${version}`;
-                
+
                 // Get full package metadata to find default version
                 const packageMetadata = await this.npmService.getPackageMetadata(packageName);
                 const defaultVersion = packageMetadata?.['dist-tags']?.latest;
                 const isDefaultVersion = version === defaultVersion;
-                
+
                 // Find ancestor version (previous version in time)
                 const allVersions = Object.keys(packageMetadata?.versions || {});
                 const versionIndex = allVersions.indexOf(version);
@@ -809,7 +809,7 @@ export class XRegistryServer {
         // Catch-all for unsupported write operations (PUT, PATCH, POST, DELETE)
         this.app.all('*', (req, res, next) => {
             const method = req.method.toUpperCase();
-            
+
             // Only intercept write methods
             if (['PUT', 'PATCH', 'POST', 'DELETE'].includes(method)) {
                 res.status(405).json(createProblemDetails(
@@ -820,7 +820,7 @@ export class XRegistryServer {
                 ));
                 return;
             }
-            
+
             // Pass through GET, HEAD, OPTIONS
             next();
         });
@@ -895,19 +895,19 @@ export class XRegistryServer {
                 this.logger.info('Starting background index building for FilterOptimizer', {
                     packageCount: this.packageNamesCache.length
                 });
-                
+
                 // Schedule index building to happen after a short delay
                 // This gives the server time to start and become healthy
                 setTimeout(() => {
                     const startTime = Date.now();
                     this.logger.info('Building FilterOptimizer indices...');
-                    
+
                     try {
                         this.filterOptimizer.buildIndices(
                             this.packageNamesCache,
                             (entity: any) => entity.name
                         );
-                        
+
                         const duration = Date.now() - startTime;
                         this.logger.info('FilterOptimizer indices built successfully', {
                             packageCount: this.packageNamesCache.length,

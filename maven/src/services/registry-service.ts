@@ -4,13 +4,14 @@
  */
 
 import { Request, Response } from 'express';
+import { EntityStateManager } from '../../../shared/entity-state-manager';
 import {
+    getBaseUrl,
     GROUP_CONFIG,
     RESOURCE_CONFIG,
     XREGISTRY_CONFIG
 } from '../config/constants';
 import { throwEntityNotFound } from '../middleware/xregistry-error-handler';
-import { EntityStateManager } from '../../../shared/entity-state-manager';
 
 export interface RegistryServiceOptions {
     baseUrl?: string;
@@ -28,7 +29,7 @@ export class RegistryService {
      * Get registry root
      */
     async getRegistry(req: Request, res: Response): Promise<void> {
-        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const baseUrl = getBaseUrl(req);
         const registryPath = '/';
 
         const registry = {
@@ -82,7 +83,7 @@ export class RegistryService {
      * Get all groups
      */
     async getGroups(req: Request, res: Response): Promise<void> {
-        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const baseUrl = getBaseUrl(req);
         const pagesize = parseInt(req.query['pagesize'] as string) || 100;
         const page = parseInt(req.query['page'] as string) || 1;
 
@@ -149,7 +150,7 @@ export class RegistryService {
      */
     async getGroup(req: Request, res: Response): Promise<void> {
         const { groupId } = req.params;
-        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const baseUrl = getBaseUrl(req);
 
         if (!groupId || (groupId !== GROUP_CONFIG.ID && groupId !== 'central.maven.org')) {
             throwEntityNotFound(
@@ -222,7 +223,7 @@ export class RegistryService {
      * Get groups inline (for inline expansion)
      */
     private async getGroupsInline(req: Request): Promise<any> {
-        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const baseUrl = getBaseUrl(req);
         const groupPath = `/${GROUP_CONFIG.TYPE}/${GROUP_CONFIG.ID}`;
 
         return {

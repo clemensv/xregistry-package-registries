@@ -23,7 +23,7 @@ export function getBaseUrl(req: Request): string {
     // Construct from request
     const protocol = req.get('x-forwarded-proto') || req.protocol || 'https';
     const host = req.get('x-forwarded-host') || req.get('host');
-    
+
     if (host) {
         return `${protocol}://${host}`;
     }

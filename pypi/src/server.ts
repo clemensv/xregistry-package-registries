@@ -218,7 +218,7 @@ async function startServer(): Promise<void> {
                 port: PORT,
                 url: `http://0.0.0.0:${PORT}`,
             });
-            
+
             // Initialize search service asynchronously in background
             console.log('[INFO] Initializing PyPI search service in background...');
             searchService.initialize().then(() => {

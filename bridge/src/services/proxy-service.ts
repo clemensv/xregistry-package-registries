@@ -83,7 +83,7 @@ export class ProxyService {
             onProxyRes: (proxyRes, req, res) => {
                 // Get the actual base URL from the request that was set by headerMiddleware
                 const actualBaseUrl = req.headers[BASE_URL_HEADER] as string;
-                
+
                 // Add CORS headers
                 if (!proxyRes.headers['access-control-allow-origin']) {
                     proxyRes.headers['access-control-allow-origin'] = '*';

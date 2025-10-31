@@ -5,7 +5,7 @@
 
 import { Request, Response } from 'express';
 import { EntityStateManager } from '../../../shared/entity-state-manager';
-import { GROUP_CONFIG, REGISTRY_CONFIG, RESOURCE_CONFIG } from '../config/constants';
+import { getBaseUrl, GROUP_CONFIG, REGISTRY_CONFIG, RESOURCE_CONFIG } from '../config/constants';
 import { generateETag } from '../utils/xregistry-utils';
 import { ImageService } from './image-service';
 
@@ -27,7 +27,7 @@ export class RegistryService {
 
     async getRegistry(req: Request, res: Response): Promise<void> {
         try {
-            const baseUrl = `${req.protocol}://${req.get('host')}`;
+            const baseUrl = getBaseUrl(req);
             const backends = this.imageService.getBackends();
 
             const registryPath = '/';
@@ -81,7 +81,7 @@ export class RegistryService {
 
     async getGroups(req: Request, res: Response): Promise<void> {
         try {
-            const baseUrl = `${req.protocol}://${req.get('host')}`;
+            const baseUrl = getBaseUrl(req);
             const backends = this.imageService.getBackends();
 
             const groupsObject: any = {};
@@ -119,7 +119,7 @@ export class RegistryService {
                 return;
             }
 
-            const baseUrl = `${req.protocol}://${req.get('host')}`;
+            const baseUrl = getBaseUrl(req);
             const groupPath = `/${GROUP_CONFIG.TYPE}/${backend.id}`;
             const group = {
                 groupid: backend.id,
@@ -188,7 +188,7 @@ export class RegistryService {
             }
 
             // Check if there are more results and set Link header
-            const baseUrl = `${req.protocol}://${req.get('host')}`;
+            const baseUrl = getBaseUrl(req);
             const hasMore = filteredImages.length > limit;
             if (hasMore) {
                 const nextOffset = offset + limit;

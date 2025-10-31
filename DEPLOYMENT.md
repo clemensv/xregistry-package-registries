@@ -38,12 +38,12 @@ Available images:
 
 Set these secrets in your GitHub repository settings:
 
-| Secret Name | Description | Example |
-|-------------|-------------|---------|
-| `AZURE_CREDENTIALS` | Azure service principal JSON | See setup below |
-| `AZURE_RESOURCE_GROUP` | Resource group name | `rg-xregistry-prod` |
-| `AZURE_CONTAINER_APP_NAME` | Container app name | `ca-xregistry-unified` |
-| `AZURE_CONTAINER_APP_ENVIRONMENT` | Container app environment | `cae-xregistry-prod` |
+| Secret Name                       | Description                  | Example                |
+| --------------------------------- | ---------------------------- | ---------------------- |
+| `AZURE_CREDENTIALS`               | Azure service principal JSON | See setup below        |
+| `AZURE_RESOURCE_GROUP`            | Resource group name          | `rg-xregistry-prod`    |
+| `AZURE_CONTAINER_APP_NAME`        | Container app name           | `ca-xregistry-unified` |
+| `AZURE_CONTAINER_APP_ENVIRONMENT` | Container app environment    | `cae-xregistry-prod`   |
 
 ## 🚀 Quick Setup
 
@@ -187,19 +187,19 @@ node server.js --enable pypi,npm
 
 ### Bridge Service
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `BRIDGE_PORT` | `8080` | Bridge server port |
-| `NODE_ENV` | `production` | Node environment |
+| Variable           | Default                | Description                      |
+| ------------------ | ---------------------- | -------------------------------- |
+| `BRIDGE_PORT`      | `8080`                 | Bridge server port               |
+| `NODE_ENV`         | `production`           | Node environment                 |
 | `DOWNSTREAMS_JSON` | See docker-compose.yml | JSON config for backend services |
 
 ### Registry Services
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | Varies by service | Service port (NPM: 3000, PyPI: 3100, etc.) |
-| `HOST` | `0.0.0.0` | Bind address |
-| `NODE_ENV` | `production` | Node environment |
+| Variable   | Default           | Description                                |
+| ---------- | ----------------- | ------------------------------------------ |
+| `PORT`     | Varies by service | Service port (NPM: 3000, PyPI: 3100, etc.) |
+| `HOST`     | `0.0.0.0`         | Bind address                               |
+| `NODE_ENV` | `production`      | Node environment                           |
 
 ## 🔍 Monitoring & Health Checks
 
@@ -340,14 +340,14 @@ All container images are published to **GitHub Container Registry (ghcr.io)** an
 
 ### Available Images
 
-| Service | Image URL | Port |
-|---------|-----------|------|
-| Bridge | `ghcr.io/clemensv/xregistry-package-registries/xregistry-bridge` | 8080 |
-| NPM | `ghcr.io/clemensv/xregistry-package-registries/xregistry-npm-bridge` | 3000 |
-| PyPI | `ghcr.io/clemensv/xregistry-package-registries/xregistry-pypi-bridge` | 3100 |
-| Maven | `ghcr.io/clemensv/xregistry-package-registries/xregistry-maven-bridge` | 3200 |
-| NuGet | `ghcr.io/clemensv/xregistry-package-registries/xregistry-nuget-bridge` | 3300 |
-| OCI | `ghcr.io/clemensv/xregistry-package-registries/xregistry-oci-bridge` | 3400 |
+| Service | Image URL                                                              | Port |
+| ------- | ---------------------------------------------------------------------- | ---- |
+| Bridge  | `ghcr.io/clemensv/xregistry-package-registries/xregistry-bridge`       | 8080 |
+| NPM     | `ghcr.io/clemensv/xregistry-package-registries/xregistry-npm-bridge`   | 3000 |
+| PyPI    | `ghcr.io/clemensv/xregistry-package-registries/xregistry-pypi-bridge`  | 3100 |
+| Maven   | `ghcr.io/clemensv/xregistry-package-registries/xregistry-maven-bridge` | 3200 |
+| NuGet   | `ghcr.io/clemensv/xregistry-package-registries/xregistry-nuget-bridge` | 3300 |
+| OCI     | `ghcr.io/clemensv/xregistry-package-registries/xregistry-oci-bridge`   | 3400 |
 
 ### Image Tags
 

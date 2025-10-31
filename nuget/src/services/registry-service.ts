@@ -5,7 +5,7 @@
 
 import { Request, Response } from 'express';
 import { CacheService } from '../cache/cache-service';
-import { GROUP_CONFIG, PAGINATION, RESOURCE_CONFIG } from '../config/constants';
+import { getBaseUrl, GROUP_CONFIG, PAGINATION, RESOURCE_CONFIG } from '../config/constants';
 import { throwEntityNotFound, throwInternalError } from '../middleware/xregistry-error-handler';
 import { applyFilterFlag, applySortFlag } from '../middleware/xregistry-flags';
 import {
@@ -49,7 +49,7 @@ export class RegistryService {
      */
     async getRegistry(req: Request, res: Response): Promise<void> {
         try {
-            const baseUrl = `${req.protocol}://${req.get('host')}`;
+            const baseUrl = getBaseUrl(req);
 
             let registryEntity: XRegistryEntity & Record<string, any> = createXRegistryEntity({
                 xid: '/',
@@ -158,7 +158,7 @@ export class RegistryService {
 
             let groupEntity: XRegistryEntity & Record<string, any> = createXRegistryEntity({
                 xid: `/${GROUP_CONFIG.TYPE}/${groupId}`,
-                self: `${req.protocol}://${req.get('host')}${req.originalUrl.split('?')[0]}`,
+                self: `${getBaseUrl(req)}${req.originalUrl.split('?')[0]}`,
                 id: groupId,
                 name: 'NuGet Registry',
                 description: 'NuGet package registry at nuget.org',
@@ -291,7 +291,7 @@ export class RegistryService {
 
             let packageEntity: XRegistryEntity & Record<string, any> = createXRegistryEntity({
                 xid: `/${GROUP_CONFIG.TYPE}/${groupId}/${RESOURCE_CONFIG.TYPE}/${resourceId}`,
-                self: `${req.protocol}://${req.get('host')}${req.originalUrl.split('?')[0]}`,
+                self: `${getBaseUrl(req)}${req.originalUrl.split('?')[0]}`,
                 id: packageMetadata['packageid'],
                 name: packageMetadata['name'] || packageMetadata['packageid'],
                 description: packageMetadata['description'],
@@ -340,7 +340,7 @@ export class RegistryService {
      * Get groups for inline inclusion
      */
     private async getGroupsInline(req: Request): Promise<XRegistryEntity[]> {
-        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const baseUrl = getBaseUrl(req);
 
         return [
             createXRegistryEntity({
@@ -374,7 +374,7 @@ export class RegistryService {
         }
         const packageResults = await this.NuGetService.getPackages(packageOptions);
 
-        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const baseUrl = getBaseUrl(req);
 
         return packageResults.packages.map((packageName: string) => {
             const entity: any = {
