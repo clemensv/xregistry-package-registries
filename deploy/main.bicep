@@ -30,22 +30,22 @@ param repositoryName string = 'clemensv/xregistry-package-registries'
 param alertEmailAddress string = 'clemensv@microsoft.com'
 
 @description('CPU allocation for bridge container')
-param bridgeCpu string = '0.5'
+param bridgeCpu string = '0.25'
 
 @description('Memory allocation for bridge container')
-param bridgeMemory string = '1.0Gi'
+param bridgeMemory string = '0.5Gi'
 
 @description('CPU allocation for PyPI, Maven, NuGet, OCI, MCP service containers')
-param serviceCpu string = '0.5'
+param serviceCpu string = '0.25'
 
 @description('Memory allocation for PyPI, Maven, NuGet, OCI, MCP service containers')  
-param serviceMemory string = '0.8Gi'
+param serviceMemory string = '0.25Gi'
 
 @description('CPU allocation specifically for NPM service - needs more for package loading')
-param npmCpu string = '1.0'
+param npmCpu string = '0.5'
 
-@description('Memory allocation specifically for NPM service - needs 3.0Gi for 4 million packages')
-param npmMemory string = '3.0Gi'
+@description('Memory allocation specifically for NPM service - needs 1.75Gi for 4 million packages')
+param npmMemory string = '1.75Gi'
 
 @description('Minimum number of replicas')
 param minReplicas int = 1
