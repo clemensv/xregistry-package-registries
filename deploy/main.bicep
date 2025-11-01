@@ -30,22 +30,22 @@ param repositoryName string = 'clemensv/xregistry-package-registries'
 param alertEmailAddress string = 'clemensv@microsoft.com'
 
 @description('CPU allocation for bridge container')
-param bridgeCpu string = '0.25'
+param bridgeCpu string = '0.5'
 
 @description('Memory allocation for bridge container')
-param bridgeMemory string = '0.5Gi'
+param bridgeMemory string = '1.0Gi'
 
 @description('CPU allocation for PyPI, Maven, NuGet, OCI, MCP service containers')
-param serviceCpu string = '0.25'
+param serviceCpu string = '0.5'
 
 @description('Memory allocation for PyPI, Maven, NuGet, OCI, MCP service containers')  
-param serviceMemory string = '0.5Gi'
+param serviceMemory string = '1.0Gi'
 
 @description('CPU allocation specifically for NPM service - needs more for package loading')
-param npmCpu string = '0.5'
+param npmCpu string = '1.0'
 
-@description('Memory allocation specifically for NPM service - needs 1.0Gi for 4 million packages')
-param npmMemory string = '1.0Gi'
+@description('Memory allocation specifically for NPM service - needs 3.0Gi for 4 million packages and FilterOptimizer')
+param npmMemory string = '3.0Gi'
 
 @description('Minimum number of replicas')
 param minReplicas int = 1
@@ -183,7 +183,7 @@ resource actionGroup 'Microsoft.Insights/actionGroups@2023-01-01' = {
   }
 }
 
-// Container App Environment
+// Container App Environment with Dedicated workload profile for 4 CPU / 8 GB
 resource containerAppEnvironment 'Microsoft.App/managedEnvironments@2023-05-01' = {
   name: containerAppEnvName
   location: location
@@ -195,6 +195,14 @@ resource containerAppEnvironment 'Microsoft.App/managedEnvironments@2023-05-01' 
         sharedKey: logAnalyticsWorkspace.listKeys().primarySharedKey
       }
     }
+    workloadProfiles: [
+      {
+        name: 'Dedicated-D4'
+        workloadProfileType: 'D4'
+        minimumCount: 1
+        maximumCount: 1
+      }
+    ]
   }
 }
 
@@ -241,6 +249,7 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
       ]
   properties: {
     environmentId: containerAppEnvironment.id
+    workloadProfileName: 'Dedicated-D4'
     configuration: {
       ingress: {
         external: true
