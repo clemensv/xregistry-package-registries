@@ -4,7 +4,7 @@
  */
 
 import dotenv from 'dotenv';
-import express from 'express';
+import express, { Router } from 'express';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { createLogger } from '../../shared/logging/logger';
@@ -89,6 +89,8 @@ const logger = createLogger({
 const app = express();
 
 // Global middleware
+app.use(express.json()); // Parse JSON request bodies
+app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
 app.use(logger.middleware());
 app.use(createCorsMiddleware(logger));
 
@@ -124,7 +126,7 @@ if (VIEWER_ENABLED && VIEWER_PROXY_ENABLED) {
     });
     
     if (viewerProxyRoutes) {
-        app.use(viewerProxyRoutes);
+        app.use('/viewer', viewerProxyRoutes);
         logger.info('Viewer CORS proxy enabled at /viewer/api/proxy');
     }
 }
@@ -152,6 +154,25 @@ if (apiPrefix) {
 } else {
     // Default: API at root
     app.use('/', xregistryRoutes);
+}
+
+// Create a router for dynamic proxy routes that will be populated later
+const dynamicRouter = Router();
+
+// Mount the dynamic router at the same path as xregistryRoutes
+if (apiPrefix) {
+    app.use(apiPrefix, dynamicRouter);
+    logger.info(`Dynamic router mounted at ${apiPrefix}`);
+} else {
+    app.use(dynamicRouter);
+    logger.info('Dynamic router mounted at root');
+}
+
+// Export a function to add routes to the dynamic router
+// Routes should be registered WITHOUT the apiPrefix since the router is already mounted there
+export function setupDynamicRoutesLater() {
+    // Pass empty string as pathPrefix since router is already mounted at apiPrefix
+    setupDynamicProxyRoutes(dynamicRouter as any, modelService, proxyService, logger, '');
 }
 
 // Authentication middleware for dynamic routes
@@ -182,9 +203,6 @@ function startHttpServer(): void {
         isServerRunning = true;
         logger.info('xRegistry Proxy running', { baseUrl: BASE_URL, port: argv.port });
         logger.info('Available registry groups', { groups: modelService.getAvailableGroups() });
-
-        // Set up dynamic routes after server starts
-        setupDynamicProxyRoutes(app, modelService, proxyService, logger);
     });
 
     // Handle server startup errors
@@ -235,7 +253,7 @@ async function retryInactiveServers(): Promise<void> {
 
                 if (modelChanged) {
                     // Setup dynamic routes with updated model
-                    setupDynamicProxyRoutes(app, modelService, proxyService, logger);
+                    setupDynamicRoutesLater();
                 }
             } catch (error) {
                 logger.error('Error during model rebuild', {
@@ -275,6 +293,14 @@ async function initializeWithResilience(): Promise<void> {
 
     // Build initial consolidated model
     modelService.rebuildConsolidatedModel(downstreamService.getServerStates());
+
+    // Set up dynamic proxy routes AFTER model is built
+    // Routes are added to the pre-registered dynamic router
+    setupDynamicRoutesLater();
+    logger.info('Dynamic proxy routes configured', {
+        prefix: API_PATH_PREFIX || '(root)',
+        groups: modelService.getAvailableGroups()
+    });
 
     // Start HTTP server even if no servers are active
     startHttpServer();

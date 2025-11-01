@@ -5,7 +5,7 @@
 
 import { RequestHandler } from 'express';
 import { createProxyMiddleware, Options } from 'http-proxy-middleware';
-import { BASE_URL_HEADER, getBaseUrl } from '../config/constants';
+import { BASE_URL_HEADER, getBaseUrl, getApiBaseUrl } from '../config/constants';
 import { DownstreamConfig } from '../types/bridge';
 
 export class ProxyService {
@@ -60,8 +60,8 @@ export class ProxyService {
         // Middleware to inject base URL header
         const headerMiddleware: RequestHandler = (req, res, next) => {
             try {
-                // Get the actual base URL from the incoming request
-                const actualBaseUrl = getBaseUrl(req);
+                // Get the actual API base URL (including API_PATH_PREFIX) from the incoming request
+                const actualBaseUrl = getApiBaseUrl(req);
                 req.headers[BASE_URL_HEADER] = actualBaseUrl;
                 next();
             } catch (error) {
@@ -78,6 +78,26 @@ export class ProxyService {
             target: targetUrl,
             changeOrigin: true,
             selfHandleResponse: true,
+            
+            // Rewrite path to ensure it goes to the correct backend endpoint
+            // The path may include the API prefix (e.g., /registry), which we need to remove
+            pathRewrite: (path, req) => {
+                // Remove any API prefix if present, then ensure group type is at the start
+                let cleanPath = path;
+                
+                // Remove /registry prefix if present
+                const apiPrefix = process.env.API_PATH_PREFIX || '';
+                if (apiPrefix && cleanPath.startsWith(apiPrefix)) {
+                    cleanPath = cleanPath.substring(apiPrefix.length) || '/';
+                }
+                
+                // Ensure the path starts with the group type
+                if (!cleanPath.startsWith(`/${groupType}`)) {
+                    cleanPath = `/${groupType}${cleanPath}`;
+                }
+                
+                return cleanPath;
+            },
 
             // Intercept and rewrite response body
             onProxyRes: (proxyRes, req, res) => {

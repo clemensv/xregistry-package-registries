@@ -1,0 +1,163 @@
+services:
+  # Bridge with Viewer - Main API Gateway with integrated Web UI
+  bridge-viewer:
+    build:
+      context: .
+      dockerfile: bridge/Dockerfile.viewer
+    ports:
+      - "8080:8080"
+    environment:
+      - NODE_ENV=production
+      - PORT=8080
+      - VIEWER_ENABLED=true
+      - VIEWER_PROXY_ENABLED=true
+      - API_PATH_PREFIX=/registry
+      - DOWNSTREAMS_JSON={"servers":[{"url":"http://npm:3000","apikey":"npm-api-key"},{"url":"http://pypi:3100","apikey":"pypi-api-key"},{"url":"http://maven:3200","apikey":"maven-api-key"},{"url":"http://nuget:3300","apikey":"nuget-api-key"},{"url":"http://oci:3400","apikey":"oci-api-key"},{"url":"http://mcp:3600","apikey":"mcp-api-key"}]}
+    volumes:
+      - ./logs/bridge:/app/logs
+      - ./cache:/app/cache
+    restart: unless-stopped
+    depends_on:
+      - npm
+      - pypi
+      - maven
+      - nuget
+      - oci
+      - mcp
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/registry/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # NPM Service
+  npm:
+    build:
+      context: .
+      dockerfile: npm.Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    volumes:
+      - ./logs/npm:/app/logs
+      - ./npm/cache:/app/cache
+      - ./npm/all-packages:/app/all-packages
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # PyPI Service
+  pypi:
+    build:
+      context: .
+      dockerfile: pypi.Dockerfile
+    ports:
+      - "3100:3100"
+    environment:
+      - NODE_ENV=production
+      - PORT=3100
+    volumes:
+      - ./logs/pypi:/app/logs
+      - ./pypi/cache:/app/cache
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3100/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Maven Service
+  maven:
+    build:
+      context: .
+      dockerfile: maven.Dockerfile
+    ports:
+      - "3200:3200"
+    environment:
+      - NODE_ENV=production
+      - PORT=3200
+    volumes:
+      - ./logs/maven:/app/logs
+      - ./maven/cache:/app/cache
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3200/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # NuGet Service
+  nuget:
+    build:
+      context: .
+      dockerfile: nuget.Dockerfile
+    ports:
+      - "3300:3300"
+    environment:
+      - NODE_ENV=production
+      - PORT=3300
+    volumes:
+      - ./logs/nuget:/app/logs
+      - ./nuget/cache:/app/cache
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3300/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # OCI Service
+  oci:
+    build:
+      context: .
+      dockerfile: oci.Dockerfile
+    ports:
+      - "3400:3400"
+    environment:
+      - NODE_ENV=production
+      - PORT=3400
+    volumes:
+      - ./logs/oci:/app/logs
+      - ./oci/cache:/app/cache
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3400/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # MCP Service
+  mcp:
+    build:
+      context: .
+      dockerfile: mcp.Dockerfile
+    ports:
+      - "3600:3600"
+    environment:
+      - NODE_ENV=production
+      - PORT=3600
+    volumes:
+      - ./logs/mcp:/app/logs
+      - ./mcp/cache:/app/cache
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3600/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  logs:
+  cache:

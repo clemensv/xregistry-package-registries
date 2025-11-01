@@ -10,7 +10,7 @@ export const BASE_URL = process.env['BASE_URL'] || `http://localhost:${PORT}`;
 export const BASE_URL_HEADER = process.env['BASE_URL_HEADER'] || 'x-base-url';
 
 /**
- * Get the actual base URL from the request
+ * Get the actual base URL from the request (protocol + host only)
  * This handles cases where the deployed FQDN differs from the configured BASE_URL
  */
 export function getBaseUrl(req: Request): string {
@@ -30,6 +30,23 @@ export function getBaseUrl(req: Request): string {
 
     // Fallback to configured BASE_URL
     return BASE_URL;
+}
+
+/**
+ * Get the full API base URL including the API path prefix
+ * This is used for generating URLs in xRegistry responses
+ */
+export function getApiBaseUrl(req: Request): string {
+    const baseUrl = getBaseUrl(req);
+    
+    // Add API_PATH_PREFIX if configured
+    if (API_PATH_PREFIX) {
+        // Ensure no double slashes
+        const prefix = API_PATH_PREFIX.startsWith('/') ? API_PATH_PREFIX : `/${API_PATH_PREFIX}`;
+        return `${baseUrl}${prefix}`;
+    }
+    
+    return baseUrl;
 }
 
 // Authentication configuration

@@ -14,25 +14,27 @@ export function setupDynamicProxyRoutes(
     app: Express,
     modelService: ModelService,
     proxyService: ProxyService,
-    logger: any
+    logger: any,
+    pathPrefix: string = ''
 ): void {
     try {
         const groupTypeToBackend = modelService.getGroupTypeToBackend();
         const groups = Object.keys(groupTypeToBackend);
 
-        logger.info('Setting up dynamic routes for groups', { groups });
+        logger.info('Setting up dynamic routes for groups', { groups, pathPrefix });
 
         // Add dynamic routes for each group type
         for (const [groupType, backend] of Object.entries(groupTypeToBackend)) {
             try {
-                const basePath = `/${groupType}`;
+                // Build path with optional prefix
+                const basePath = pathPrefix ? `${pathPrefix}/${groupType}` : `/${groupType}`;
 
                 logger.info('Setting up route', { basePath, targetUrl: backend.url });
 
                 // Get proxy middleware from ProxyService
                 const middlewares = proxyService.createProxyMiddleware(groupType, backend);
 
-                // Mount the middlewares
+                // Use router.use() which handles sub-paths and preserves path structure
                 app.use(basePath, ...middlewares);
 
             } catch (error) {
