@@ -44,8 +44,8 @@ param serviceMemory string = '0.5Gi'
 @description('CPU allocation specifically for NPM service - needs more for package loading')
 param npmCpu string = '0.5'
 
-@description('Memory allocation specifically for NPM service - needs 1.5Gi for 4 million packages')
-param npmMemory string = '1.5Gi'
+@description('Memory allocation specifically for NPM service - needs 1.0Gi for 4 million packages')
+param npmMemory string = '1.0Gi'
 
 @description('Minimum number of replicas')
 param minReplicas int = 1
