@@ -31,6 +31,9 @@
     },
     "autoDetectExistingCertificate": {
       "value": false
+    },
+    "enableWorkloadProfiles": {
+      "value": true
     }
   }
 }
