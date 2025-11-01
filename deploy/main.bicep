@@ -30,10 +30,10 @@ param repositoryName string = 'clemensv/xregistry-package-registries'
 param alertEmailAddress string = 'clemensv@microsoft.com'
 
 @description('CPU allocation for bridge container')
-param bridgeCpu string = '0.5'
+param bridgeCpu string = '0.25'
 
 @description('Memory allocation for bridge container')
-param bridgeMemory string = '1.0Gi'
+param bridgeMemory string = '0.5Gi'
 
 @description('CPU allocation for PyPI, Maven, NuGet, OCI service containers')
 param serviceCpu string = '0.25'
