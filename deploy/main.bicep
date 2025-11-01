@@ -68,6 +68,12 @@ param createManagedCertificate bool = false // Default to false to avoid conflic
 @description('Existing managed certificate resource ID (if not creating new)')
 param existingCertificateId string = ''
 
+@description('Enable the xRegistry Viewer UI')
+param enableViewer bool = false
+
+@description('API path prefix when viewer is enabled (e.g., /registry)')
+param apiPathPrefix string = '/registry'
+
 @description('Auto-detect and use existing certificate if available')
 param autoDetectExistingCertificate bool = true
 
@@ -102,7 +108,10 @@ var baseUrl = useCustomDomain
   : 'https://${containerAppName}.${location}.azurecontainerapps.io'
 
 // Container image URIs from GitHub Container Registry (public repository)
-var bridgeImage = '${containerRegistryServer}/${repositoryName}/xregistry-bridge:${imageTag}'
+// Use viewer image when viewer is enabled, otherwise use standard bridge
+var bridgeImage = enableViewer 
+  ? '${containerRegistryServer}/${repositoryName}/xregistry-bridge-viewer:${imageTag}'
+  : '${containerRegistryServer}/${repositoryName}/xregistry-bridge:${imageTag}'
 var npmImage = '${containerRegistryServer}/${repositoryName}/xregistry-npm-bridge:${imageTag}'
 var pypiImage = '${containerRegistryServer}/${repositoryName}/xregistry-pypi-bridge:${imageTag}'
 var mavenImage = '${containerRegistryServer}/${repositoryName}/xregistry-maven-bridge:${imageTag}'
@@ -233,9 +242,6 @@ resource managedCertificate 'Microsoft.App/managedEnvironments/managedCertificat
     // You need to create a TXT record in your DNS with name: asuid.packages.mcpxreg.com
     // and value: the domain verification key provided as parameter
   }
-  dependsOn: [
-    containerAppEnvironment
-  ]
 }
 
 // Container App
@@ -392,6 +398,14 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             {
               name: 'DEPLOYMENT_TIMESTAMP'
               value: deploymentTimestamp
+            }
+            {
+              name: 'VIEWER_ENABLED'
+              value: string(enableViewer)
+            }
+            {
+              name: 'API_PATH_PREFIX'
+              value: enableViewer ? apiPathPrefix : ''
             }
           ]
           probes: [

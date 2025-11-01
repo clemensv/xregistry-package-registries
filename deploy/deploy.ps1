@@ -32,6 +32,9 @@
 .PARAMETER AzureSubscription
     Azure subscription ID (optional, uses current)
 
+.PARAMETER EnableViewer
+    Enable the xRegistry Viewer UI (default: false)
+
 .PARAMETER DryRun
     Show what would be deployed without executing
 
@@ -46,6 +49,9 @@
 
 .EXAMPLE
     .\deploy.ps1 -ImageTag "v1.0.0" -DryRun
+
+.EXAMPLE
+    .\deploy.ps1 -EnableViewer
 #>
 
 [CmdletBinding()]
@@ -61,6 +67,7 @@ param(
     [Parameter(Mandatory = $false)]
     [string]$GitHubToken = "",
     [string]$AzureSubscription = $env:AZURE_SUBSCRIPTION,
+    [switch]$EnableViewer,
     [switch]$DryRun,
     [switch]$VerboseOutput
 )
@@ -210,6 +217,14 @@ function New-ParametersFile {
     $paramsObj.parameters.imageTag.value = $ImageTag
     $paramsObj.parameters.repositoryName.value = $RepositoryName
     
+    # Set viewer enablement
+    if ($paramsObj.parameters.PSObject.Properties.Name -contains 'enableViewer') {
+        $paramsObj.parameters.enableViewer.value = $EnableViewer.IsPresent
+    }
+    else {
+        $paramsObj.parameters | Add-Member -NotePropertyName enableViewer -NotePropertyValue @{ value = $EnableViewer.IsPresent }
+    }
+    
     # Only set credentials if provided
     if (-not [string]::IsNullOrWhiteSpace($GitHubActor)) {
         $paramsObj.parameters.containerRegistryUsername.value = $GitHubActor
@@ -249,6 +264,7 @@ function Start-InfrastructureDeployment {
     Write-LogInfo "Location: $Location"
     Write-LogInfo "Image Tag: $ImageTag"
     Write-LogInfo "Repository: $RepositoryName"
+    Write-LogInfo "Viewer Enabled: $($EnableViewer.IsPresent)"
     
     if ($DryRun) {
         Write-LogInfo "[DRY RUN] Would deploy with the following parameters:"
