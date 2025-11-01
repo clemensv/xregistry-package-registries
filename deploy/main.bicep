@@ -404,6 +404,14 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
               value: string(enableViewer)
             }
             {
+              name: 'VIEWER_PATH'
+              value: enableViewer ? '/app/bridge/viewer/dist/xregistry-viewer' : ''
+            }
+            {
+              name: 'VIEWER_PROXY_ENABLED'
+              value: string(enableViewer)
+            }
+            {
               name: 'API_PATH_PREFIX'
               value: enableViewer ? apiPathPrefix : ''
             }
