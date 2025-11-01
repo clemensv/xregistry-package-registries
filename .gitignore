@@ -7,6 +7,9 @@ tmp/
 
 .azure-credentials.json
 
+# Compiled ARM templates (generated from Bicep)
+deploy/main.json
+
 # Cache directories
 cache/
 
