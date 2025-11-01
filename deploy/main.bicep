@@ -39,13 +39,13 @@ param bridgeMemory string = '0.5Gi'
 param serviceCpu string = '0.25'
 
 @description('Memory allocation for PyPI, Maven, NuGet, OCI, MCP service containers')  
-param serviceMemory string = '0.25Gi'
+param serviceMemory string = '0.5Gi'
 
 @description('CPU allocation specifically for NPM service - needs more for package loading')
 param npmCpu string = '0.5'
 
-@description('Memory allocation specifically for NPM service - needs 1.75Gi for 4 million packages')
-param npmMemory string = '1.75Gi'
+@description('Memory allocation specifically for NPM service - needs 1.5Gi for 4 million packages')
+param npmMemory string = '1.5Gi'
 
 @description('Minimum number of replicas')
 param minReplicas int = 1
