@@ -1,0 +1,94 @@
+# Multi-stage Dockerfile for xRegistry Bridge with Viewer
+# Builds both the xRegistry Viewer Angular app and the Bridge server
+
+# Stage 1: Build xRegistry Viewer
+FROM node:23-alpine AS viewer-builder
+
+WORKDIR /viewer
+
+# Copy viewer source from submodule
+COPY viewer/package*.json ./
+
+# Install dependencies
+RUN npm ci
+
+# Copy source files
+COPY viewer/ ./
+
+# Build Angular app for production with base href for proper asset loading
+RUN npm run build -- --configuration production --base-href /viewer/
+
+# Stage 2: Build Bridge TypeScript
+FROM node:23-alpine AS bridge-builder
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY bridge/ bridge/
+COPY shared/ shared/
+
+WORKDIR /app/bridge
+# Install all dependencies (including dev dependencies for build)
+RUN npm ci && npm cache clean --force
+
+# Install shared logging dependencies for build
+WORKDIR /app/shared/logging
+RUN npm install && npm cache clean --force
+
+# Return to bridge directory and build TypeScript
+WORKDIR /app/bridge
+RUN npm run build
+
+# Stage 3: Runtime image
+FROM node:23-alpine AS production
+
+# Install diagnostic tools for troubleshooting
+RUN apk add --no-cache \
+    curl \
+    wget \
+    bind-tools \
+    bash
+
+WORKDIR /app/bridge
+
+# Copy built bridge server
+COPY --from=bridge-builder /app/bridge/dist ./dist
+COPY --from=bridge-builder /app/bridge/package*.json ./
+
+# Copy shared utilities
+COPY --from=bridge-builder /app/shared ../shared
+
+# Install production dependencies only
+RUN npm ci --omit=dev && npm cache clean --force
+
+# Install shared logging production dependencies
+WORKDIR /app/shared/logging
+COPY --from=bridge-builder /app/shared/logging/package*.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+
+# Return to bridge directory
+WORKDIR /app/bridge
+
+# Copy built viewer (Angular dist output)
+COPY --from=viewer-builder /viewer/dist/xregistry-viewer ./viewer/dist/xregistry-viewer
+
+# Set production environment
+ENV NODE_ENV=production
+ENV PORT=8092
+
+# Viewer enabled by default in this image
+ENV VIEWER_ENABLED=true
+ENV VIEWER_PATH=/app/bridge/viewer/dist/xregistry-viewer
+ENV VIEWER_PROXY_ENABLED=true
+ENV API_PATH_PREFIX=/registry
+
+# Expose port
+EXPOSE 8092
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:8092/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+
+# Start server
+CMD ["node", "dist/server.js"]
