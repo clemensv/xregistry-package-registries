@@ -98,6 +98,28 @@ npm run start:pypi
 npm run start:bridge
 ```
 
+### Web UI (xRegistry Viewer)
+
+The bridge server can optionally serve the [xRegistry Viewer](https://github.com/clemensv/xregistry-viewer) web interface:
+
+```bash
+# PowerShell (Windows)
+.\start-bridge-with-viewer.ps1
+
+# Bash (Linux/Mac)
+./start-bridge-with-viewer.sh
+```
+
+Access the viewer at: `http://localhost:8080/viewer/`
+
+**Features**:
+- Web-based UI for browsing xRegistry services
+- Visualize package metadata across all registries
+- Built-in CORS proxy for external xRegistry endpoints
+- Flexible routing (API at root or `/registry/`)
+
+See [bridge/VIEWER.md](bridge/VIEWER.md) for complete documentation.
+
 ## 📡 API Endpoints
 
 Once running, the unified bridge provides these endpoints at `http://localhost:8080`:
