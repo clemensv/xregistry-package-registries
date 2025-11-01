@@ -5,6 +5,11 @@ dist/
 tmp/
 **/dist
 
+# Viewer build output (submodule itself is tracked)
+viewer/dist/
+viewer/node_modules/
+viewer/.angular/
+
 .azure-credentials.json
 
 # Compiled ARM templates (generated from Bicep)

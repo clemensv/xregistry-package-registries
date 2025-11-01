@@ -9,19 +9,25 @@ import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { createLogger } from '../../shared/logging/logger';
 import {
+    API_PATH_PREFIX,
     BASE_URL,
     NODE_ENV,
     PORT,
     RETRY_INTERVAL,
     SERVICE_NAME,
     SERVICE_VERSION,
-    STARTUP_WAIT_TIME
+    STARTUP_WAIT_TIME,
+    VIEWER_ENABLED,
+    VIEWER_PATH,
+    VIEWER_PROXY_ENABLED
 } from './config/constants';
 import { loadDownstreamConfig } from './config/downstreams';
 import { createAuthMiddleware } from './middleware/auth';
 import { createCorsMiddleware } from './middleware/cors';
 import { createErrorHandler } from './middleware/error-handler';
+import { createViewerStaticMiddleware } from './middleware/viewer-static';
 import { setupDynamicProxyRoutes } from './routes/proxy';
+import { createViewerProxyRoutes } from './routes/viewer-proxy';
 import { createXRegistryRoutes } from './routes/xregistry';
 import { DownstreamService } from './services/downstream-service';
 import { HealthService } from './services/health-service';
@@ -95,14 +101,58 @@ const modelService = new ModelService(logger);
 const healthService = new HealthService(downstreamService, modelService, logger);
 const proxyService = new ProxyService(logger);
 
-// Mount xRegistry static routes
+// Setup viewer static file serving (if enabled)
+const viewerStatic = createViewerStaticMiddleware({
+    enabled: VIEWER_ENABLED,
+    viewerPath: VIEWER_PATH,
+    indexFallback: true
+});
+
+if (viewerStatic) {
+    app.use(viewerStatic);
+    logger.info('xRegistry Viewer enabled', { 
+        path: '/viewer',
+        proxyEnabled: VIEWER_PROXY_ENABLED 
+    });
+}
+
+// Setup viewer proxy routes (if enabled)
+if (VIEWER_ENABLED && VIEWER_PROXY_ENABLED) {
+    const viewerProxyRoutes = createViewerProxyRoutes({
+        enabled: true,
+        logger
+    });
+    
+    if (viewerProxyRoutes) {
+        app.use(viewerProxyRoutes);
+        logger.info('Viewer CORS proxy enabled at /viewer/api/proxy');
+    }
+}
+
+// Mount xRegistry static routes with optional path prefix
 const xregistryRoutes = createXRegistryRoutes(
     modelService,
     healthService,
     downstreamService,
     logger
 );
-app.use('/', xregistryRoutes);
+
+const apiPrefix = API_PATH_PREFIX || '';
+if (apiPrefix) {
+    // API shifted to prefix path
+    app.use(apiPrefix, xregistryRoutes);
+    logger.info(`xRegistry API mounted at ${apiPrefix}`);
+    
+    // Redirect root to viewer if viewer is enabled
+    if (VIEWER_ENABLED) {
+        app.get('/', (_req, res) => {
+            res.redirect('/viewer/');
+        });
+    }
+} else {
+    // Default: API at root
+    app.use('/', xregistryRoutes);
+}
 
 // Authentication middleware for dynamic routes
 app.use(createAuthMiddleware(logger) as any);

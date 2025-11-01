@@ -156,6 +156,39 @@ services:
       retries: 3
       start_period: 60s
 
+  # Bridge with Viewer - Optional service with integrated viewer UI
+  # Uncomment to run bridge with viewer instead of standard bridge
+  # bridge-viewer:
+  #   build:
+  #     context: .
+  #     dockerfile: bridge/Dockerfile.viewer
+  #   ports:
+  #     - "8092:8092"
+  #   environment:
+  #     - NODE_ENV=production
+  #     - PORT=8092
+  #     - VIEWER_ENABLED=true
+  #     - VIEWER_PROXY_ENABLED=true
+  #     - API_PATH_PREFIX=/registry
+  #     - DOWNSTREAMS_JSON={"servers":[{"url":"http://npm:3000","apikey":"npm-api-key"},{"url":"http://pypi:3100","apikey":"pypi-api-key"},{"url":"http://maven:3200","apikey":"maven-api-key"},{"url":"http://nuget:3300","apikey":"nuget-api-key"},{"url":"http://oci:3400","apikey":"oci-api-key"},{"url":"http://mcp:3600","apikey":"mcp-api-key"}]}
+  #   volumes:
+  #     - ./logs/bridge:/app/logs
+  #     - ./cache:/app/cache
+  #   restart: unless-stopped
+  #   depends_on:
+  #     - npm
+  #     - pypi
+  #     - maven
+  #     - nuget
+  #     - oci
+  #     - mcp
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8092/health"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 60s
+
 volumes:
   logs:
   cache:

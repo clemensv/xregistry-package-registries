@@ -51,6 +51,12 @@ export const SERVICE_VERSION = process.env['SERVICE_VERSION'] || '1.0.0';
 export const LOG_LEVEL = process.env['LOG_LEVEL'] || 'info';
 export const NODE_ENV = process.env['NODE_ENV'] || 'production';
 
+// Viewer configuration
+export const VIEWER_ENABLED = process.env['VIEWER_ENABLED'] === 'true' || false;
+export const VIEWER_PATH = process.env['VIEWER_PATH'] || undefined;
+export const VIEWER_PROXY_ENABLED = process.env['VIEWER_PROXY_ENABLED'] !== 'false'; // Default true if not explicitly disabled
+export const API_PATH_PREFIX = process.env['API_PATH_PREFIX'] || ''; // Empty means root, '/registry' shifts API
+
 // Bridge metadata
 export const BRIDGE_STARTUP_TIME = new Date().toISOString();
 export let BRIDGE_EPOCH = 1;
