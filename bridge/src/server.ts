@@ -141,6 +141,21 @@ if (viewerStatic) {
     logger.warn('[VIEWER-DEBUG] Viewer middleware is NULL - not registering!');
 }
 
+// Add debug request handler for /viewer/ to diagnose 404
+app.use('/viewer', (req, res, next) => {
+    logger.info('[VIEWER-REQUEST-DEBUG] Request to /viewer', {
+        url: req.url,
+        path: req.path,
+        originalUrl: req.originalUrl,
+        method: req.method,
+        VIEWER_ENABLED,
+        VIEWER_PATH,
+        viewerStaticIsNull: viewerStatic === null,
+        viewerStaticType: typeof viewerStatic
+    });
+    next();
+});
+
 // Setup viewer proxy routes (if enabled)
 if (VIEWER_ENABLED && VIEWER_PROXY_ENABLED) {
     const viewerProxyRoutes = createViewerProxyRoutes({
