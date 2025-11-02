@@ -156,9 +156,12 @@ export class RegistryService {
                 throwEntityNotFound(req.originalUrl, 'group', groupId);
             }
 
+            const baseUrl = getBaseUrl(req);
+            const groupPath = `/${GROUP_CONFIG.TYPE}/${groupId}`;
+            
             let groupEntity: XRegistryEntity & Record<string, any> = createXRegistryEntity({
-                xid: `/${GROUP_CONFIG.TYPE}/${groupId}`,
-                self: `${getBaseUrl(req)}${req.originalUrl.split('?')[0]}`,
+                xid: groupPath,
+                self: `${baseUrl}${groupPath}`,
                 id: groupId,
                 name: 'NuGet Registry',
                 description: 'NuGet package registry at nuget.org',
@@ -289,9 +292,12 @@ export class RegistryService {
                 throwEntityNotFound(req.originalUrl, 'package', resourceId);
             }
 
+            const baseUrl = getBaseUrl(req);
+            const resourcePath = `/${GROUP_CONFIG.TYPE}/${groupId}/${RESOURCE_CONFIG.TYPE}/${resourceId}`;
+            
             let packageEntity: XRegistryEntity & Record<string, any> = createXRegistryEntity({
-                xid: `/${GROUP_CONFIG.TYPE}/${groupId}/${RESOURCE_CONFIG.TYPE}/${resourceId}`,
-                self: `${getBaseUrl(req)}${req.originalUrl.split('?')[0]}`,
+                xid: resourcePath,
+                self: `${baseUrl}${resourcePath}`,
                 id: packageMetadata['packageid'],
                 name: packageMetadata['name'] || packageMetadata['packageid'],
                 description: packageMetadata['description'],
