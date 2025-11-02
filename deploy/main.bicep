@@ -103,9 +103,10 @@ var mcpApiKey = 'mcp-${uniqueString(resourceGroup().id, 'mcp')}'
 
 // Use a computed base URL - the actual FQDN will be different but services should handle this
 // For initial deployment, use a reasonable placeholder that won't cause startup failures
+// The deploy script will replace {{CONTAINER_APP_FQDN}} with the actual FQDN after deployment
 var baseUrl = useCustomDomain
   ? 'https://${customDomainName}'
-  : 'https://${containerAppName}.${location}.azurecontainerapps.io'
+  : 'https://{{CONTAINER_APP_FQDN}}'
 
 // Container image URIs from GitHub Container Registry (public repository)
 // Use viewer image when viewer is enabled, otherwise use standard bridge
