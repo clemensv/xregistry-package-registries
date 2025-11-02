@@ -1,13 +1,13 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
-import { Logger } from '../../../shared/logging/logger';
+import { XRegistryLogger } from '../../../shared/logging/logger';
 
 export interface ViewerStaticOptions {
     enabled: boolean;
     viewerPath?: string;
     indexFallback?: boolean;
-    logger?: Logger;
+    logger?: XRegistryLogger;
 }
 
 /**
