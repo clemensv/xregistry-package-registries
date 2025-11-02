@@ -25,11 +25,17 @@ export function getBaseUrl(req: Request): string {
         xBaseUrlValue: baseUrlHeader,
         forwardedHost: req.get('x-forwarded-host'),
         host: req.get('host'),
-        originalUrl: req.originalUrl
+        originalUrl: req.originalUrl,
+        baseUrlEnv: process.env['BASE_URL']
     });
     
     if (baseUrlHeader) {
         return baseUrlHeader;
+    }
+
+    // Check BASE_URL environment variable (fallback when header not forwarded)
+    if (process.env['BASE_URL']) {
+        return process.env['BASE_URL'];
     }
 
     // Get protocol and host from forwarded headers (for direct external access)

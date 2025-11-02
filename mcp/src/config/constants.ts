@@ -21,14 +21,19 @@ export function getBaseUrl(req: Request): string {
         return baseUrlHeader;
     }
 
-    // Priority 2: Check for x-forwarded-* headers (external access)
+    // Priority 2: Check BASE_URL environment variable (fallback when header not forwarded)
+    if (process.env['BASE_URL']) {
+        return process.env['BASE_URL'];
+    }
+
+    // Priority 3: Check for x-forwarded-* headers (external access)
     const forwardedProto = req.get('x-forwarded-proto');
     const forwardedHost = req.get('x-forwarded-host');
     if (forwardedProto && forwardedHost) {
         return `${forwardedProto}://${forwardedHost}`;
     }
 
-    // Priority 3: Fallback to request properties
+    // Priority 4: Fallback to request properties
     return `${req.protocol}://${req.get('host')}`;
 }
 

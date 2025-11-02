@@ -22,6 +22,11 @@ export function getBaseUrl(req: Request): string {
         return baseUrlHeader;
     }
 
+    // Check BASE_URL environment variable (fallback when header not forwarded)
+    if (process.env['BASE_URL']) {
+        return process.env['BASE_URL'];
+    }
+
     // Get protocol and host from forwarded headers (for direct external access)
     const protocol = req.get('x-forwarded-proto') || req.protocol || 'https';
     const host = req.get('x-forwarded-host') || req.get('host');
