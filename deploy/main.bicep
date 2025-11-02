@@ -484,10 +484,10 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             }
             {
               name: 'BASE_URL'
-              value: baseUrl
+              value: enableViewer ? '${baseUrl}${apiPathPrefix}' : baseUrl
             }
             {
-              name: 'XREGISTRY_NPM_QUIET'
+              name: 'XREGISTRY_NPM_BACKENDS'
               value: 'false'
             }
             {
@@ -537,10 +537,10 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             }
             {
               name: 'BASE_URL'
-              value: baseUrl
+              value: enableViewer ? '${baseUrl}${apiPathPrefix}' : baseUrl
             }
             {
-              name: 'XREGISTRY_PYPI_QUIET'
+              name: 'XREGISTRY_PYPI_BACKENDS'
               value: 'false'
             }
             {
@@ -590,7 +590,7 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             }
             {
               name: 'BASE_URL'
-              value: baseUrl
+              value: enableViewer ? '${baseUrl}${apiPathPrefix}' : baseUrl
             }
             {
               name: 'XREGISTRY_MAVEN_QUIET'
@@ -643,7 +643,7 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             }
             {
               name: 'BASE_URL'
-              value: baseUrl
+              value: enableViewer ? '${baseUrl}${apiPathPrefix}' : baseUrl
             }
             {
               name: 'XREGISTRY_NUGET_QUIET'
@@ -696,10 +696,10 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             }
             {
               name: 'BASE_URL'
-              value: baseUrl
+              value: enableViewer ? '${baseUrl}${apiPathPrefix}' : baseUrl
             }
             {
-              name: 'XREGISTRY_OCI_QUIET'
+              name: 'XREGISTRY_OCI_BACKENDS'
               value: 'false'
             }
             {
@@ -749,10 +749,10 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             }
             {
               name: 'BASE_URL'
-              value: baseUrl
+              value: enableViewer ? '${baseUrl}${apiPathPrefix}' : baseUrl
             }
             {
-              name: 'XREGISTRY_MCP_QUIET'
+              name: 'XREGISTRY_MCP_BACKENDS'
               value: 'false'
             }
             {
