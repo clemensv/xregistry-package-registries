@@ -25,7 +25,7 @@ export function createViewerProxyRoutes(options: ViewerProxyOptions): Router | n
     const { logger, maxRedirects = 5, timeout = 30000 } = options;
 
     /**
-     * POST /viewer/api/proxy
+     * POST /api/proxy
      * Proxies requests to xRegistry endpoints
      * 
      * Request body:
@@ -37,7 +37,7 @@ export function createViewerProxyRoutes(options: ViewerProxyOptions): Router | n
      *   data?: any            // Request body (for POST/PUT)
      * }
      */
-    router.post('/viewer/api/proxy', async (req: Request, res: Response): Promise<void> => {
+    router.post('/api/proxy', async (req: Request, res: Response): Promise<void> => {
         try {
             const { url, method = 'GET', headers = {}, params = {}, data } = req.body;
 
@@ -129,7 +129,7 @@ export function createViewerProxyRoutes(options: ViewerProxyOptions): Router | n
     });
 
     // Handle OPTIONS for CORS preflight
-    router.options('/viewer/api/proxy', (_req: Request, res: Response) => {
+    router.options('/api/proxy', (_req: Request, res: Response) => {
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
         res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
