@@ -5,6 +5,7 @@
 
 import { Request } from 'express';
 import { XRegistryEntity } from '../types/xregistry';
+import { getBaseUrl as getBaseUrlFromRequest } from '../config/constants';
 
 export interface EntityGenerationOptions {
     id: string;
@@ -14,6 +15,7 @@ export interface EntityGenerationOptions {
     type: string;
     labels?: Record<string, string>;
     documentation?: string;
+    req?: Request; // Optional request to extract baseUrl from headers
 }
 
 export interface SimpleEntityOptions {
@@ -25,6 +27,7 @@ export interface SimpleEntityOptions {
     docs?: string;
     tags?: Record<string, string>;
     xRegistry?: any;
+    req?: Request; // Optional request to extract baseUrl from headers
 }
 
 /**
@@ -68,13 +71,13 @@ export function generateXRegistryEntity(options: EntityGenerationOptions | Simpl
     }
 
     // Handle EntityGenerationOptions (original behavior)
-    const { id, name, description, parentUrl, labels, documentation } = options as EntityGenerationOptions;
+    const { id, name, description, parentUrl, labels, documentation, req } = options as EntityGenerationOptions;
 
     // Generate xid (path identifier starting with /)
     const xid = `${parentUrl}/${encodeURIComponent(id)}`;
 
     // Generate self URL (absolute URL)
-    const baseUrl = getBaseUrl();
+    const baseUrl = getBaseUrl(req);
     const self = `${baseUrl}${xid}`;
 
     // Generate RFC3339 timestamps
@@ -347,9 +350,15 @@ export function parseFilterExpressions(filterParam: string | string[]): Array<{
 
 /**
  * Get base URL for generating absolute URLs
- * Can be overridden via environment variable
+ * Priority:
+ * 1. From request headers (via getBaseUrlFromRequest)
+ * 2. From BASE_URL environment variable
+ * 3. Fallback to localhost
  */
-function getBaseUrl(): string {
+function getBaseUrl(req?: Request): string {
+    if (req) {
+        return getBaseUrlFromRequest(req);
+    }
     return process.env['BASE_URL'] || 'http://localhost:3400';
 }
 
