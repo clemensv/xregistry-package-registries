@@ -63,6 +63,13 @@ export class ProxyService {
                 // Get the actual API base URL (including API_PATH_PREFIX) from the incoming request
                 const actualBaseUrl = getApiBaseUrl(req);
                 req.headers[BASE_URL_HEADER] = actualBaseUrl;
+                this.logger.info('Setting x-base-url header for proxy', {
+                    groupType,
+                    actualBaseUrl,
+                    originalUrl: req.originalUrl,
+                    forwardedHost: req.get('x-forwarded-host'),
+                    host: req.get('host')
+                });
                 next();
             } catch (error) {
                 this.logger.error('Error in route header middleware', {

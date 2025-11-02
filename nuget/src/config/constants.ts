@@ -18,6 +18,16 @@ import { Request } from 'express';
 export function getBaseUrl(req: Request): string {
     // Check for x-base-url header first (sent by bridge with actual external FQDN)
     const baseUrlHeader = req.get('x-base-url');
+    
+    // Log what we received for debugging
+    console.log('[NuGet] getBaseUrl called:', {
+        hasXBaseUrlHeader: !!baseUrlHeader,
+        xBaseUrlValue: baseUrlHeader,
+        forwardedHost: req.get('x-forwarded-host'),
+        host: req.get('host'),
+        originalUrl: req.originalUrl
+    });
+    
     if (baseUrlHeader) {
         return baseUrlHeader;
     }
