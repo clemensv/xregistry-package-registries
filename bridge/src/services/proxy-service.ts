@@ -178,6 +178,17 @@ export class ProxyService {
             // Inject API key and tracing headers
             onProxyReq: (proxyReq, req: any) => {
                 try {
+                    // Forward x-base-url header to downstream service
+                    const baseUrlValue = req.headers[BASE_URL_HEADER];
+                    if (baseUrlValue) {
+                        proxyReq.setHeader(BASE_URL_HEADER, baseUrlValue);
+                        this.logger.info('Forwarding x-base-url header to downstream service', {
+                            groupType,
+                            baseUrlValue,
+                            targetUrl
+                        });
+                    }
+                    
                     if (backend.apiKey) {
                         proxyReq.setHeader('Authorization', `Bearer ${backend.apiKey}`);
                     }
