@@ -312,54 +312,67 @@ async function retryInactiveServers(): Promise<void> {
  */
 async function initializeWithResilience(): Promise<void> {
     logger.info('Starting resilient bridge initialization...');
-    logger.info('Waiting for downstream servers', {
+    
+    // Start HTTP server IMMEDIATELY so health checks pass
+    // Downstream initialization happens in background
+    startHttpServer();
+    logger.info('HTTP server started - health checks will now pass');
+
+    // Initialize downstreams in background
+    logger.info('Starting background downstream initialization', {
         startupWaitTime: STARTUP_WAIT_TIME / 1000,
         seconds: STARTUP_WAIT_TIME / 1000
     });
 
-    // Wait initial period for servers to start
-    await sleep(STARTUP_WAIT_TIME);
+    // Perform downstream initialization asynchronously without blocking server startup
+    (async () => {
+        try {
+            // Wait initial period for servers to start
+            await sleep(STARTUP_WAIT_TIME);
 
-    // Initialize all downstream servers
-    await downstreamService.initialize();
+            // Initialize all downstream servers
+            await downstreamService.initialize();
 
-    const activeCount = downstreamService.getActiveServers().length;
-    logger.info('Server discovery complete', {
-        activeServers: activeCount,
-        totalServers: downstreams.length
-    });
+            const activeCount = downstreamService.getActiveServers().length;
+            logger.info('Server discovery complete', {
+                activeServers: activeCount,
+                totalServers: downstreams.length
+            });
 
-    // Build initial consolidated model
-    modelService.rebuildConsolidatedModel(downstreamService.getServerStates());
+            // Build initial consolidated model
+            modelService.rebuildConsolidatedModel(downstreamService.getServerStates());
 
-    // Set up dynamic proxy routes AFTER model is built
-    // Routes are added to the pre-registered dynamic router
-    setupDynamicRoutesLater();
-    logger.info('Dynamic proxy routes configured', {
-        prefix: API_PATH_PREFIX || '(root)',
-        groups: modelService.getAvailableGroups()
-    });
+            // Set up dynamic proxy routes AFTER model is built
+            // Routes are added to the pre-registered dynamic router
+            setupDynamicRoutesLater();
+            logger.info('Dynamic proxy routes configured', {
+                prefix: API_PATH_PREFIX || '(root)',
+                groups: modelService.getAvailableGroups()
+            });
 
-    // Start HTTP server even if no servers are active
-    startHttpServer();
+            if (activeCount === 0) {
+                logger.warn('No servers are currently active. The bridge will continue retrying...');
+            }
 
-    if (activeCount === 0) {
-        logger.warn('No servers are currently active. The bridge will continue retrying...');
-    }
+            // Start periodic retry timer
+            retryIntervalHandle = setInterval(() => {
+                retryInactiveServers().catch(error => {
+                    logger.error('Error in periodic retry interval', {
+                        error: error instanceof Error ? error.message : String(error)
+                    });
+                });
+            }, RETRY_INTERVAL);
 
-    // Start periodic retry timer
-    retryIntervalHandle = setInterval(() => {
-        retryInactiveServers().catch(error => {
-            logger.error('Error in periodic retry interval', {
+            logger.info('Started periodic retry', {
+                retryInterval: RETRY_INTERVAL / 1000,
+                seconds: RETRY_INTERVAL / 1000
+            });
+        } catch (error) {
+            logger.error('Error during background initialization', {
                 error: error instanceof Error ? error.message : String(error)
             });
-        });
-    }, RETRY_INTERVAL);
-
-    logger.info('Started periodic retry', {
-        retryInterval: RETRY_INTERVAL / 1000,
-        seconds: RETRY_INTERVAL / 1000
-    });
+        }
+    })();
 }
 
 /**
