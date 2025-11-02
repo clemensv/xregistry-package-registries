@@ -1,0 +1,127 @@
+version: '3.8'
+
+services:
+  # Bridge Service with Viewer - Testing GitHub image
+  bridge:
+    image: ghcr.io/clemensv/xregistry-package-registries/xregistry-bridge-viewer:latest
+    ports:
+      - "8080:8080"
+    environment:
+      - NODE_ENV=production
+      - PORT=8080
+      - VIEWER_ENABLED=true
+      - VIEWER_PATH=/app/bridge/viewer/dist/xregistry-viewer
+      - VIEWER_PROXY_ENABLED=true
+      - API_PATH_PREFIX=/registry
+      - DOWNSTREAMS_JSON={"servers":[{"url":"http://npm:3000","apikey":"npm-api-key"},{"url":"http://pypi:3100","apikey":"pypi-api-key"},{"url":"http://maven:3200","apikey":"maven-api-key"},{"url":"http://nuget:3300","apikey":"nuget-api-key"},{"url":"http://oci:3400","apikey":"oci-api-key"},{"url":"http://mcp:3600","apikey":"mcp-api-key"}]}
+    restart: unless-stopped
+    depends_on:
+      - npm
+      - pypi
+      - maven
+      - nuget
+      - oci
+      - mcp
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Maven Service
+  maven:
+    image: ghcr.io/clemensv/xregistry-package-registries/xregistry-maven-bridge:latest
+    ports:
+      - "3200:3200"
+    environment:
+      - NODE_ENV=production
+      - PORT=3200
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3200/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # NPM Service
+  npm:
+    image: ghcr.io/clemensv/xregistry-package-registries/xregistry-npm-bridge:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOST=0.0.0.0
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # PyPI Service
+  pypi:
+    image: ghcr.io/clemensv/xregistry-package-registries/xregistry-pypi-bridge:latest
+    ports:
+      - "3100:3100"
+    environment:
+      - NODE_ENV=production
+      - PORT=3100
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3100/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # NuGet Service
+  nuget:
+    image: ghcr.io/clemensv/xregistry-package-registries/xregistry-nuget-bridge:latest
+    ports:
+      - "3300:3300"
+    environment:
+      - NODE_ENV=production
+      - PORT=3300
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3300/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # OCI Service
+  oci:
+    image: ghcr.io/clemensv/xregistry-package-registries/xregistry-oci-bridge:latest
+    ports:
+      - "3400:3400"
+    environment:
+      - NODE_ENV=production
+      - PORT=3400
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3400/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # MCP Service
+  mcp:
+    image: ghcr.io/clemensv/xregistry-package-registries/xregistry-mcp-bridge:latest
+    ports:
+      - "3600:3600"
+    environment:
+      - NODE_ENV=production
+      - PORT=3600
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3600/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s

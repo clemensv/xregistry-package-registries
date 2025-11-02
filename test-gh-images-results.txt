@@ -1,0 +1,67 @@
+## GitHub Image Verification Results - 2025-11-02 14:43:34
+
+### Test Configuration
+- Image: ghcr.io/clemensv/xregistry-package-registries/xregistry-bridge-viewer:latest
+- Digest: sha256:38123a7f36c400779b9f819f26ad182eb84b80c66c5b134bef3d9935c2c1a0e3
+- Environment: docker-compose-gh.yml (local testing with GitHub images)
+
+### Environment Variables Used
+`
+VIEWER_ENABLED=true
+VIEWER_PATH=/app/bridge/viewer/dist/xregistry-viewer
+VIEWER_PROXY_ENABLED=true
+API_PATH_PREFIX=/registry
+`
+
+### Test Results: ✅ ALL PASSED
+
+#### 1. Health Endpoint (Root Level)
+- URL: http://localhost:8080/health
+- Status: ✅ HTTP 200 OK
+- Response Time: < 100ms
+- Content-Type: application/json
+
+#### 2. Viewer UI
+- URL: http://localhost:8080/viewer/
+- Status: ✅ HTTP 200 OK
+- Content-Type: text/html
+- Title: xRegistry Explorer
+- Size: 17,639 bytes
+- Renders: ✅ Successfully in browser
+
+#### 3. API Endpoints (Prefixed)
+- URL: http://localhost:8080/registry/model
+- Status: ✅ HTTP 200 OK
+- Content-Type: application/json
+- API Path Prefix: ✅ Correctly set to /registry
+
+#### 4. Root Redirect
+- URL: http://localhost:8080/
+- Status: ✅ HTTP 302 Found
+- Location: /viewer/
+- Redirect: ✅ Working correctly
+
+#### 5. Startup Behavior
+- Health endpoint responds: ✅ Immediately (< 5 seconds)
+- Log message: 'HTTP server started - health checks will now pass'
+- Timing: ✅ Server starts before downstream wait
+
+### Configuration Verification from Logs
+`
+[VIEWER-DEBUG] Viewer path EXISTS!
+xRegistry Viewer enabled
+Viewer CORS proxy enabled at /viewer/api/proxy
+xRegistry API mounted at /registry
+Health endpoint available at both /health and /registry/health
+HTTP server started - health checks will now pass
+`
+
+### Conclusion
+The GitHub image **xregistry-bridge-viewer:latest** is correctly configured and working perfectly:
+- ✅ Viewer accessible at /viewer/
+- ✅ API accessible at /registry/
+- ✅ Health checks pass immediately
+- ✅ All environment variables properly applied
+- ✅ Root redirects to viewer
+
+The image is ready for Azure deployment.
