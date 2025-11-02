@@ -4,7 +4,7 @@
  */
 
 import dotenv from 'dotenv';
-import express, { Router } from 'express';
+import express, { Request, Response, Router } from 'express';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { createLogger } from '../../shared/logging/logger';
@@ -83,7 +83,7 @@ const logger = createLogger({
     enableW3CLog: !!(argv.w3log || argv['w3log-stdout']),
     w3cLogFile: argv.w3log,
     w3cLogToStdout: argv['w3log-stdout']
-});
+});     
 
 // Create Express app
 const app = express();
@@ -169,6 +169,13 @@ if (VIEWER_ENABLED && VIEWER_PROXY_ENABLED) {
     }
 }
 
+// Add root-level /health endpoint that always responds (for Azure health checks)
+// This must be registered BEFORE API prefix routing
+app.get('/health', async (_req: Request, res: Response) => {
+    const health = await healthService.getHealth();
+    res.status(200).json(health);
+});
+
 // Mount xRegistry static routes with optional path prefix
 const xregistryRoutes = createXRegistryRoutes(
     modelService,
@@ -182,6 +189,7 @@ if (apiPrefix) {
     // API shifted to prefix path
     app.use(apiPrefix, xregistryRoutes);
     logger.info(`xRegistry API mounted at ${apiPrefix}`);
+    logger.info(`Health endpoint available at both /health and ${apiPrefix}/health`);
     
     // Redirect root to viewer if viewer is enabled
     if (VIEWER_ENABLED) {
