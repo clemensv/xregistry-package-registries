@@ -103,11 +103,32 @@ const modelService = new ModelService(logger);
 const healthService = new HealthService(downstreamService, modelService, logger);
 const proxyService = new ProxyService(logger);
 
+// Log viewer configuration for debugging
+logger.info('[VIEWER-DEBUG] Environment variables', {
+    VIEWER_ENABLED_RAW: process.env['VIEWER_ENABLED'],
+    VIEWER_PATH_RAW: process.env['VIEWER_PATH'],
+    VIEWER_PROXY_ENABLED_RAW: process.env['VIEWER_PROXY_ENABLED'],
+    API_PATH_PREFIX_RAW: process.env['API_PATH_PREFIX']
+});
+
+logger.info('[VIEWER-DEBUG] Parsed constants', {
+    VIEWER_ENABLED,
+    VIEWER_PATH,
+    VIEWER_PROXY_ENABLED,
+    API_PATH_PREFIX
+});
+
 // Setup viewer static file serving (if enabled)
 const viewerStatic = createViewerStaticMiddleware({
     enabled: VIEWER_ENABLED,
     viewerPath: VIEWER_PATH,
-    indexFallback: true
+    indexFallback: true,
+    logger
+});
+
+logger.info('[VIEWER-DEBUG] createViewerStaticMiddleware returned', {
+    isNull: viewerStatic === null,
+    type: typeof viewerStatic
 });
 
 if (viewerStatic) {
@@ -116,6 +137,8 @@ if (viewerStatic) {
         path: '/viewer',
         proxyEnabled: VIEWER_PROXY_ENABLED 
     });
+} else {
+    logger.warn('[VIEWER-DEBUG] Viewer middleware is NULL - not registering!');
 }
 
 // Setup viewer proxy routes (if enabled)

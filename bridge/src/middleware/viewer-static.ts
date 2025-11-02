@@ -1,11 +1,13 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
+import { Logger } from '../../../shared/logging/logger';
 
 export interface ViewerStaticOptions {
     enabled: boolean;
     viewerPath?: string;
     indexFallback?: boolean;
+    logger?: Logger;
 }
 
 /**
@@ -15,28 +17,42 @@ export interface ViewerStaticOptions {
  * @returns Express middleware or null if disabled
  */
 export function createViewerStaticMiddleware(options: ViewerStaticOptions): express.RequestHandler | null {
-    console.log('[VIEWER-DEBUG] createViewerStaticMiddleware called with:', {
-        enabled: options.enabled,
-        viewerPath: options.viewerPath,
-        indexFallback: options.indexFallback
-    });
+    const logger = options.logger;
+    
+    if (logger) {
+        logger.info('[VIEWER-DEBUG] createViewerStaticMiddleware called', {
+            enabled: options.enabled,
+            viewerPath: options.viewerPath,
+            indexFallback: options.indexFallback
+        });
+    }
     
     if (!options.enabled) {
-        console.log('[VIEWER-DEBUG] Viewer is DISABLED, returning null');
+        if (logger) {
+            logger.info('[VIEWER-DEBUG] Viewer is DISABLED, returning null');
+        }
         return null;
     }
 
     // Default to viewer submodule dist path (Angular builds to dist/xregistry-viewer by default)
     const viewerPath = options.viewerPath || path.join(__dirname, '../../../viewer/dist/xregistry-viewer');
-    console.log(`[VIEWER-DEBUG] Checking if viewer path exists: ${viewerPath}`);
+    
+    if (logger) {
+        logger.info(`[VIEWER-DEBUG] Checking if viewer path exists`, { viewerPath });
+    }
     
     if (!fs.existsSync(viewerPath)) {
-        console.warn(`[VIEWER-DEBUG] Viewer path ${viewerPath} does NOT EXIST. Viewer will not be served.`);
-        console.warn('Build the viewer first: cd viewer && npm install && npm run build');
+        if (logger) {
+            logger.warn(`[VIEWER-DEBUG] Viewer path does NOT EXIST. Viewer will not be served.`, { viewerPath });
+            logger.warn('Build the viewer first: cd viewer && npm install && npm run build');
+        }
         return null;
     }
     
-    console.log(`[VIEWER-DEBUG] Viewer path EXISTS! Contents:`, fs.readdirSync(viewerPath).slice(0, 5));
+    if (logger) {
+        const contents = fs.readdirSync(viewerPath).slice(0, 5);
+        logger.info(`[VIEWER-DEBUG] Viewer path EXISTS!`, { viewerPath, fileCount: fs.readdirSync(viewerPath).length, firstFiles: contents });
+    }
 
     // Create static file middleware with proper configuration
     const staticMiddleware = express.static(viewerPath, {
