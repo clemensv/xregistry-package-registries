@@ -15,18 +15,28 @@ export interface ViewerStaticOptions {
  * @returns Express middleware or null if disabled
  */
 export function createViewerStaticMiddleware(options: ViewerStaticOptions): express.RequestHandler | null {
+    console.log('[VIEWER-DEBUG] createViewerStaticMiddleware called with:', {
+        enabled: options.enabled,
+        viewerPath: options.viewerPath,
+        indexFallback: options.indexFallback
+    });
+    
     if (!options.enabled) {
+        console.log('[VIEWER-DEBUG] Viewer is DISABLED, returning null');
         return null;
     }
 
     // Default to viewer submodule dist path (Angular builds to dist/xregistry-viewer by default)
     const viewerPath = options.viewerPath || path.join(__dirname, '../../../viewer/dist/xregistry-viewer');
+    console.log(`[VIEWER-DEBUG] Checking if viewer path exists: ${viewerPath}`);
     
     if (!fs.existsSync(viewerPath)) {
-        console.warn(`Viewer path ${viewerPath} does not exist. Viewer will not be served.`);
+        console.warn(`[VIEWER-DEBUG] Viewer path ${viewerPath} does NOT EXIST. Viewer will not be served.`);
         console.warn('Build the viewer first: cd viewer && npm install && npm run build');
         return null;
     }
+    
+    console.log(`[VIEWER-DEBUG] Viewer path EXISTS! Contents:`, fs.readdirSync(viewerPath).slice(0, 5));
 
     // Create static file middleware with proper configuration
     const staticMiddleware = express.static(viewerPath, {
@@ -52,9 +62,14 @@ export function createViewerStaticMiddleware(options: ViewerStaticOptions): expr
         }
     });
 
-    // Return middleware that handles /viewer/* routes
+    // Return middleware that handles /viewer/* routes (except API)
     return (req, res, next) => {
         if (req.path.startsWith('/viewer')) {
+            // Skip static serving for API routes
+            if (req.path.startsWith('/viewer/api/')) {
+                return next();
+            }
+            
             // Remove /viewer prefix for static file serving
             req.url = req.url.replace(/^\/viewer/, '');
             

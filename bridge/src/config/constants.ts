@@ -69,10 +69,22 @@ export const LOG_LEVEL = process.env['LOG_LEVEL'] || 'info';
 export const NODE_ENV = process.env['NODE_ENV'] || 'production';
 
 // Viewer configuration
+console.log('[VIEWER-DEBUG] Raw env vars:', {
+    VIEWER_ENABLED: process.env['VIEWER_ENABLED'],
+    VIEWER_PATH: process.env['VIEWER_PATH'],
+    VIEWER_PROXY_ENABLED: process.env['VIEWER_PROXY_ENABLED'],
+    API_PATH_PREFIX: process.env['API_PATH_PREFIX']
+});
 export const VIEWER_ENABLED = (process.env['VIEWER_ENABLED'] || '').toLowerCase() === 'true';
 export const VIEWER_PATH = process.env['VIEWER_PATH'] || undefined;
 export const VIEWER_PROXY_ENABLED = (process.env['VIEWER_PROXY_ENABLED'] || 'true').toLowerCase() !== 'false'; // Default true if not explicitly disabled
 export const API_PATH_PREFIX = process.env['API_PATH_PREFIX'] || ''; // Empty means root, '/registry' shifts API
+console.log('[VIEWER-DEBUG] Parsed constants:', {
+    VIEWER_ENABLED,
+    VIEWER_PATH,
+    VIEWER_PROXY_ENABLED,
+    API_PATH_PREFIX
+});
 
 // Bridge metadata
 export const BRIDGE_STARTUP_TIME = new Date().toISOString();
