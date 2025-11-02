@@ -180,13 +180,17 @@ export class ProxyService {
                 try {
                     // Forward x-base-url header to downstream service
                     const baseUrlValue = req.headers[BASE_URL_HEADER];
+                    console.log(`[BRIDGE] onProxyReq - BASE_URL_HEADER=${BASE_URL_HEADER}, value=${baseUrlValue}, groupType=${groupType}, targetUrl=${targetUrl}`);
                     if (baseUrlValue) {
                         proxyReq.setHeader(BASE_URL_HEADER, baseUrlValue);
+                        console.log(`[BRIDGE] Set ${BASE_URL_HEADER} header on proxyReq to: ${baseUrlValue}`);
                         this.logger.info('Forwarding x-base-url header to downstream service', {
                             groupType,
                             baseUrlValue,
                             targetUrl
                         });
+                    } else {
+                        console.log(`[BRIDGE] WARNING: No ${BASE_URL_HEADER} value in req.headers!`);
                     }
                     
                     if (backend.apiKey) {
