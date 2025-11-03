@@ -45,7 +45,7 @@ param serviceMemory string = enableWorkloadProfiles ? '1.0Gi' : '0.5Gi'
 param npmCpu string = enableWorkloadProfiles ? '1.0' : '0.5'
 
 @description('Memory allocation specifically for NPM service - needs more memory for 4 million packages and FilterOptimizer')
-param npmMemory string = enableWorkloadProfiles ? '3.0Gi' : '1.5Gi'
+param npmMemory string = enableWorkloadProfiles ? '3.0Gi' : '1.0Gi'
 
 @description('Minimum number of replicas')
 param minReplicas int = 1
@@ -239,7 +239,7 @@ resource managedCertificate 'Microsoft.App/managedEnvironments/managedCertificat
   properties: {
     subjectName: customDomainName
     domainControlValidation: 'TXT'
-    // The domain verification token will be used by Azure to validate domain ownership
+    // The domain verification token will be used by Azu  re to validate domain ownership
     // You need to create a TXT record in your DNS with name: asuid.packages.mcpxreg.com
     // and value: the domain verification key provided as parameter
   }
