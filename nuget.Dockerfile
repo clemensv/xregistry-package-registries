@@ -29,6 +29,9 @@ RUN npm install && npm cache clean --force
 # Return to service directory
 WORKDIR /app/nuget
 
+# Build TypeScript
+RUN npm run build
+
 # Copy restart wrapper script
 COPY <<EOF /app/nuget/restart-wrapper.sh
 #!/bin/bash
@@ -90,7 +93,7 @@ while true; do
     log_with_timestamp "Starting NuGet server (attempt \$((++RESTART_COUNT)))"
     
     # Start the server and capture its exit code
-    node server.js 2>&1 | tee -a "\$LOG_FILE"
+    node dist/nuget/src/server.js 2>&1 | tee -a "\$LOG_FILE"
     EXIT_CODE=\$?
     
     # Record this restart time
