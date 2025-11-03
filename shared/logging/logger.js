@@ -443,7 +443,25 @@ class XRegistryLogger {
     const service = logEntry.service;
     const contextStr = logEntry.requestId ? ` [${logEntry.requestId}]` : '';
     
-    return `${color}[${timestamp}] ${level.toUpperCase()} ${service}${contextStr}: ${message}${reset}`;
+    // Extract important fields from logEntry to display
+    const importantFields = [
+      'serverUrl', 'url', 'duration', 'error', 'statusCode', 
+      'traceId', 'correlationId', 'groups', 'activeServers', 
+      'totalServers', 'count', 'consecutiveFailures'
+    ];
+    
+    const details = {};
+    for (const field of importantFields) {
+      if (logEntry[field] !== undefined && logEntry[field] !== null) {
+        details[field] = logEntry[field];
+      }
+    }
+    
+    const detailsStr = Object.keys(details).length > 0 
+      ? ' ' + JSON.stringify(details) 
+      : '';
+    
+    return `${color}[${timestamp}] ${level.toUpperCase()} ${service}${contextStr}: ${message}${detailsStr}${reset}`;
   }
 
   /**
