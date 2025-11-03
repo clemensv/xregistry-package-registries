@@ -54,4 +54,4 @@ coverage/
 .DS_Store
 Thumbs.db .cursor/
 
-tmp/
+tmp/deploy/parameters-api-*.json
