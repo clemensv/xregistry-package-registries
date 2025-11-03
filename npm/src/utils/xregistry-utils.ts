@@ -4,8 +4,8 @@
  */
 
 import { Request } from 'express';
-import { XRegistryEntity } from '../types/xregistry';
 import { getBaseUrl as getBaseUrlFromRequest } from '../config/constants';
+import { XRegistryEntity } from '../types/xregistry';
 
 export interface EntityGenerationOptions {
     id: string;
@@ -297,6 +297,10 @@ export function generatePaginationLinks(
         query.set('limit', limit.toString());
         links.push(`<${baseUrl}?${query.toString()}>; rel="last"`);
     }
+
+    // Add count and per-page metadata
+    links.push(`count="${totalCount}"`);
+    links.push(`per-page="${limit}"`);
 
     return links.join(', ');
 }

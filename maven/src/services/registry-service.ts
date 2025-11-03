@@ -134,18 +134,37 @@ export class RegistryService {
 
             // Add Link header for pagination
             const linkHeaders: string[] = [];
+            const totalCount = allGroupKeys.length;
+            const totalPages = Math.ceil(totalCount / pagesize);
 
-            // Always add self link when pagination is requested
-            linkHeaders.push(`<${baseUrl}/${GROUP_CONFIG.TYPE}?page=${page}&pagesize=${pagesize}>; rel="self"`);
-
-            if (endIndex < allGroupKeys.length) {
-                const nextPage = page + 1;
-                linkHeaders.push(`<${baseUrl}/${GROUP_CONFIG.TYPE}?page=${nextPage}&pagesize=${pagesize}>; rel="next"`);
+            // First link
+            if (page > 1) {
+                linkHeaders.push(`<${baseUrl}/${GROUP_CONFIG.TYPE}?page=1&pagesize=${pagesize}>; rel="first"`);
             }
+
+            // Previous link
             if (page > 1) {
                 const prevPage = page - 1;
                 linkHeaders.push(`<${baseUrl}/${GROUP_CONFIG.TYPE}?page=${prevPage}&pagesize=${pagesize}>; rel="prev"`);
             }
+
+            // Always add self link when pagination is requested
+            linkHeaders.push(`<${baseUrl}/${GROUP_CONFIG.TYPE}?page=${page}&pagesize=${pagesize}>; rel="self"`);
+
+            // Next link
+            if (endIndex < totalCount) {
+                const nextPage = page + 1;
+                linkHeaders.push(`<${baseUrl}/${GROUP_CONFIG.TYPE}?page=${nextPage}&pagesize=${pagesize}>; rel="next"`);
+            }
+
+            // Last link
+            if (page < totalPages) {
+                linkHeaders.push(`<${baseUrl}/${GROUP_CONFIG.TYPE}?page=${totalPages}&pagesize=${pagesize}>; rel="last"`);
+            }
+
+            // Add count and per-page metadata
+            linkHeaders.push(`count="${totalCount}"`);
+            linkHeaders.push(`per-page="${pagesize}"`);
 
             res.setHeader('Link', linkHeaders.join(', '));
 

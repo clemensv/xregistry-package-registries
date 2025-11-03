@@ -144,11 +144,55 @@ export function createPackageRoutes(options: PackageRoutesOptions): Router {
             }
 
             // Apply pagination after filtering/sorting
-            const paginatedList = packageList.slice(0, limit);
+            const totalCount = packageList.length;
+            const paginatedList = packageList.slice(offset, offset + limit);
 
             // Convert to object format
             for (const pkg of paginatedList) {
                 packages[pkg.packageid] = pkg;
+            }
+
+            // Add pagination Link header
+            if (totalCount > 0) {
+                const linkHeaders: string[] = [];
+                const queryParams = new URLSearchParams(req.query as Record<string, string>);
+
+                // First link
+                if (offset > 0) {
+                    queryParams.set('offset', '0');
+                    queryParams.set('limit', limit.toString());
+                    linkHeaders.push(`<${baseUrl}${req.path}?${queryParams.toString()}>; rel="first"`);
+                }
+
+                // Previous link
+                if (offset > 0) {
+                    const prevOffset = Math.max(0, offset - limit);
+                    queryParams.set('offset', prevOffset.toString());
+                    queryParams.set('limit', limit.toString());
+                    linkHeaders.push(`<${baseUrl}${req.path}?${queryParams.toString()}>; rel="prev"`);
+                }
+
+                // Next link
+                if (offset + limit < totalCount) {
+                    const nextOffset = offset + limit;
+                    queryParams.set('offset', nextOffset.toString());
+                    queryParams.set('limit', limit.toString());
+                    linkHeaders.push(`<${baseUrl}${req.path}?${queryParams.toString()}>; rel="next"`);
+                }
+
+                // Last link
+                if (offset + limit < totalCount) {
+                    const lastOffset = Math.floor((totalCount - 1) / limit) * limit;
+                    queryParams.set('offset', lastOffset.toString());
+                    queryParams.set('limit', limit.toString());
+                    linkHeaders.push(`<${baseUrl}${req.path}?${queryParams.toString()}>; rel="last"`);
+                }
+
+                // Add count and per-page metadata
+                linkHeaders.push(`count="${totalCount}"`);
+                linkHeaders.push(`per-page="${limit}"`);
+
+                res.setHeader('Link', linkHeaders.join(', '));
             }
 
             res.json(packages);

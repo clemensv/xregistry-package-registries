@@ -112,9 +112,47 @@ export function createPackageRoutes(
             }
 
             // Add pagination headers
-            if (allPackages.length > offset + limit) {
-                const nextOffset = offset + limit;
-                res.set('Link', `<${baseUrl}${req.path}?offset=${nextOffset}&limit=${limit}>; rel="next"`);
+            const totalCount = allPackages.length;
+            if (totalCount > 0) {
+                const links: string[] = [];
+                const queryParams = new URLSearchParams(req.query as Record<string, string>);
+
+                // First link
+                if (offset > 0) {
+                    queryParams.set('offset', '0');
+                    queryParams.set('limit', limit.toString());
+                    links.push(`<${baseUrl}${req.path}?${queryParams.toString()}>; rel="first"`);
+                }
+
+                // Previous link
+                if (offset > 0) {
+                    const prevOffset = Math.max(0, offset - limit);
+                    queryParams.set('offset', prevOffset.toString());
+                    queryParams.set('limit', limit.toString());
+                    links.push(`<${baseUrl}${req.path}?${queryParams.toString()}>; rel="prev"`);
+                }
+
+                // Next link
+                if (offset + limit < totalCount) {
+                    const nextOffset = offset + limit;
+                    queryParams.set('offset', nextOffset.toString());
+                    queryParams.set('limit', limit.toString());
+                    links.push(`<${baseUrl}${req.path}?${queryParams.toString()}>; rel="next"`);
+                }
+
+                // Last link
+                if (offset + limit < totalCount) {
+                    const lastOffset = Math.floor((totalCount - 1) / limit) * limit;
+                    queryParams.set('offset', lastOffset.toString());
+                    queryParams.set('limit', limit.toString());
+                    links.push(`<${baseUrl}${req.path}?${queryParams.toString()}>; rel="last"`);
+                }
+
+                // Add count and per-page metadata
+                links.push(`count="${totalCount}"`);
+                links.push(`per-page="${limit}"`);
+
+                res.set('Link', links.join(', '));
             }
 
             res.json(packages);
