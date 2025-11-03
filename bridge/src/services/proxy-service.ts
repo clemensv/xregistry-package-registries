@@ -5,7 +5,7 @@
 
 import { RequestHandler } from 'express';
 import { createProxyMiddleware, Options } from 'http-proxy-middleware';
-import { BASE_URL_HEADER, getBaseUrl, getApiBaseUrl } from '../config/constants';
+import { BASE_URL_HEADER, getApiBaseUrl } from '../config/constants';
 import { DownstreamConfig } from '../types/bridge';
 
 export class ProxyService {
@@ -85,24 +85,24 @@ export class ProxyService {
             target: targetUrl,
             changeOrigin: true,
             selfHandleResponse: true,
-            
+
             // Rewrite path to ensure it goes to the correct backend endpoint
             // The path may include the API prefix (e.g., /registry), which we need to remove
             pathRewrite: (path, req) => {
                 // Remove any API prefix if present, then ensure group type is at the start
                 let cleanPath = path;
-                
+
                 // Remove /registry prefix if present
                 const apiPrefix = process.env.API_PATH_PREFIX || '';
                 if (apiPrefix && cleanPath.startsWith(apiPrefix)) {
                     cleanPath = cleanPath.substring(apiPrefix.length) || '/';
                 }
-                
+
                 // Ensure the path starts with the group type
                 if (!cleanPath.startsWith(`/${groupType}`)) {
                     cleanPath = `/${groupType}${cleanPath}`;
                 }
-                
+
                 return cleanPath;
             },
 
@@ -122,12 +122,29 @@ export class ProxyService {
                     proxyRes.headers['access-control-allow-headers'] =
                         'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-MS-Client-Principal, X-Base-Url, X-Correlation-Id, X-Trace-Id';
                 }
+                if (!proxyRes.headers['access-control-expose-headers']) {
+                    proxyRes.headers['access-control-expose-headers'] =
+                        'X-Correlation-Id, X-Trace-Id, X-Request-Id, Location, Link, ETag, Cache-Control, Content-Length, Content-Type, Date, Expires, Last-Modified, X-Registry-Id, X-Registry-Version, X-Registry-Epoch, X-Registry-Self';
+                }
 
                 // Only rewrite JSON responses
                 const contentType = proxyRes.headers['content-type'] || '';
                 if (!contentType.includes('application/json')) {
-                    // Pass through non-JSON responses
-                    res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
+                    // Pass through non-JSON responses, but rewrite Link header if present
+                    const passThruHeaders = { ...proxyRes.headers };
+                    if (passThruHeaders['link']) {
+                        const linkHeader = passThruHeaders['link'] as string;
+                        passThruHeaders['link'] = linkHeader.replace(
+                            new RegExp(targetUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
+                            actualBaseUrl
+                        );
+                        this.logger.debug('Rewrote Link header in non-JSON response', {
+                            groupType,
+                            original: linkHeader,
+                            rewritten: passThruHeaders['link']
+                        });
+                    }
+                    res.writeHead(proxyRes.statusCode || 200, passThruHeaders);
                     proxyRes.pipe(res);
                     return;
                 }
@@ -144,10 +161,25 @@ export class ProxyService {
                         const data = JSON.parse(body);
                         const rewrittenData = this.rewriteUrls(data, targetUrl, actualBaseUrl);
 
+                        // Rewrite Link header if present (used for pagination)
+                        const rewrittenHeaders = { ...proxyRes.headers };
+                        if (rewrittenHeaders['link']) {
+                            const linkHeader = rewrittenHeaders['link'] as string;
+                            rewrittenHeaders['link'] = linkHeader.replace(
+                                new RegExp(targetUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
+                                actualBaseUrl
+                            );
+                            this.logger.debug('Rewrote Link header', {
+                                groupType,
+                                original: linkHeader,
+                                rewritten: rewrittenHeaders['link']
+                            });
+                        }
+
                         // Send rewritten response
                         const rewrittenBody = JSON.stringify(rewrittenData);
                         res.writeHead(proxyRes.statusCode || 200, {
-                            ...proxyRes.headers,
+                            ...rewrittenHeaders,
                             'content-length': Buffer.byteLength(rewrittenBody).toString()
                         });
                         res.end(rewrittenBody);
@@ -192,7 +224,7 @@ export class ProxyService {
                     } else {
                         console.log(`[BRIDGE] WARNING: No ${BASE_URL_HEADER} value in req.headers!`);
                     }
-                    
+
                     if (backend.apiKey) {
                         proxyReq.setHeader('Authorization', `Bearer ${backend.apiKey}`);
                     }
