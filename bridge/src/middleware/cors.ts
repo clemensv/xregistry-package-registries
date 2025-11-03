@@ -16,7 +16,7 @@ export function createCorsMiddleware(logger: any) {
         res.header('Access-Control-Allow-Headers',
             'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-MS-Client-Principal, X-Base-Url, X-Correlation-Id, X-Trace-Id');
         res.header('Access-Control-Expose-Headers',
-            'X-Correlation-Id, X-Trace-Id, X-Request-Id, Location, ETag');
+            'X-Correlation-Id, X-Trace-Id, X-Request-Id, Location, Link, ETag, Cache-Control, Content-Length, Content-Type, Date, Expires, Last-Modified, X-Registry-Id, X-Registry-Version, X-Registry-Epoch, X-Registry-Self');
         res.header('Access-Control-Max-Age', '86400'); // Cache preflight for 24 hours
 
         // Handle preflight OPTIONS requests

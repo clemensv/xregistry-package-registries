@@ -55,6 +55,7 @@ const DEFAULT_CORS_OPTIONS: CorsOptions = {
         'ETag',
         'Expires',
         'Last-Modified',
+        'Link',
         'Location',
         // xRegistry specific headers
         'X-Registry-Id',
