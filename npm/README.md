@@ -33,11 +33,11 @@ npm start
 npm run dev
 ```
 
-By default, the server runs on port 3100. You can customize this with environment variables:
+By default, the server runs on port 3000. You can customize this with environment variables:
 
 ```bash
 # Set custom port
-XREGISTRY_NPM_PORT=4000 npm start
+PORT=4000 npm start
 
 # Enable logging to file
 XREGISTRY_NPM_LOG=./logs/npm.log npm start

@@ -170,17 +170,20 @@ docker-compose up unified
 docker-compose up pypi npm
 ```
 
-### Using Node.js Directly
+### Using Individual Services
 
 ```bash
-# Install dependencies
+# Install and build all services
 npm install
+npm run build
 
-# Start with all registries
-npm start
-
-# Start with specific registries
-node server.js --enable pypi,npm
+# Start individual services
+npm run start:npm    # Starts NPM registry on port 3000
+npm run start:pypi   # Starts PyPI registry on port 3100
+npm run start:maven  # Starts Maven registry on port 3200
+npm run start:nuget  # Starts NuGet registry on port 3300
+npm run start:oci    # Starts OCI registry on port 3400
+npm run start:bridge # Starts bridge on port 8080
 ```
 
 ## 🌐 Environment Variables

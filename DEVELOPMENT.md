@@ -105,20 +105,16 @@ npm run test:nuget
 npm run test:oci
 ```
 
-### Manual Testing and Demos
+### Manual Testing
 
 ```powershell
-# Run unified bridge demonstration
-node run-unified-demo.js
+# Run all tests
+npm test
 
-# Alternative PowerShell demo
-.\run-unified-demo.ps1
-
-# Test with actual packages
-node test-actual-packages.js
-
-# Test popular packages
-node test-popular-packages.js
+# Run specific test suites
+npm run test:npm
+npm run test:pypi
+npm run test:integration
 ```
 
 ### Testing Individual Registries
@@ -203,7 +199,8 @@ xregistry-package-registries/
 ### Adding a New Registry
 
 1. **Create registry directory** with standard TypeScript structure:
-   ```
+
+   ```text
    {registry}/
    ├── src/
    │   ├── server.ts       # Main server implementation
@@ -218,24 +215,17 @@ xregistry-package-registries/
    ```
 
 2. **Implement required xRegistry endpoints:**
+
    - `GET /` - Root document
    - `GET /capabilities` - Registry capabilities
    - `GET /model` - Data model
    - `GET /{groupType}` - List groups
    - `GET /{groupType}/{groupId}` - Group details
 
-3. **Configure TypeScript:**
-   ```json
-   {
-     "extends": "../tsconfig.base.json",
-     "compilerOptions": {
-       "outDir": "./dist",
-       "rootDir": "./src"
-     }
-   }
-   ```
+3. **Configure TypeScript** using the existing pattern in other services
 
 4. **Add build scripts to package.json:**
+
    ```json
    {
      "scripts": {

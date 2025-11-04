@@ -1,16 +1,15 @@
 <img src="https://github.com/cncf/artwork/raw/main/projects/xregistry/horizontal/color/xregistry-horizontal-color.svg" alt="xRegistry" style="max-height: 30px;">
 
-# xRegistry Package Registries
+# xRegistry - Comnmon Package Registry Proxies
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Node.js](https://img.shields.io/badge/node-%3E%3D16.0.0-brightgreen.svg)
 ![Docker](https://img.shields.io/badge/docker-supported-blue.svg)
 
 ![Build Images](https://github.com/clemensv/xregistry-package-registries/actions/workflows/build-images.yml/badge.svg)
-![Deploy to ACI](https://github.com/clemensv/xregistry-package-registries/actions/workflows/aci-deploy.yml/badge.svg)
 
 This project contains a set of read-only xRegistry server implementations that
-proxy several popular package registries (NPM, PyPI, Maven, NuGet, OCI) behind a
+proxy several popular package registries (NPM, PyPI, Maven, NuGet, OCI, MCP) behind a
 unified xRegistry-compliant API.
 
 In addition, the project contains a bridge service that merges the individual
@@ -56,7 +55,7 @@ npm install
 
 #### Option 1: All-in-One Script (Recommended)
 
-For Windows with automatic port detection:
+For Windows:
 
 ```bash
 # Command Prompt
@@ -64,12 +63,6 @@ start-servers-dynamic.bat
 
 # PowerShell
 .\start-servers.ps1
-```
-
-For cross-platform using npm:
-
-```bash
-npm start
 ```
 
 #### Option 2: Docker Compose
@@ -113,6 +106,7 @@ The bridge server can optionally serve the [xRegistry Viewer](https://github.com
 Access the viewer at: `http://localhost:8080/viewer/`
 
 **Features**:
+
 - Web-based UI for browsing xRegistry services
 - Visualize package metadata across all registries
 - Built-in CORS proxy for external xRegistry endpoints
@@ -137,6 +131,7 @@ Once running, the unified bridge provides these endpoints at `http://localhost:8
 - **`GET /javaregistries`** - Maven packages (Java)
 - **`GET /dotnetregistries`** - NuGet packages (.NET)
 - **`GET /containerregistries`** - OCI images (Containers)
+- **`GET /mcpproviders`** - MCP packages (Model Context Protocol)
 
 ### Example Usage
 
@@ -309,10 +304,8 @@ See [DEVELOPMENT.md](DEVELOPMENT.md) for detailed development documentation.
 - **[DEVELOPMENT.md](DEVELOPMENT.md)** - Comprehensive development guide
 - **[DEPLOYMENT.md](DEPLOYMENT.md)** - Production deployment guide
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribution guidelines
-- **[GITHUB-WORKFLOWS.md](GITHUB-WORKFLOWS.md)** - CI/CD pipeline documentation
 - **[CHANGELOG.md](CHANGELOG.md)** - Project change history
-- **[PERFORMANCE_OPTIMIZATION.md](PERFORMANCE_OPTIMIZATION.md)** - Performance tuning guidelines
-- **API Documentation** - Available at `http://localhost:8080/` when running
+- **[bridge/VIEWER.md](bridge/VIEWER.md)** - xRegistry Viewer integration guide
 - **xRegistry Specification** - See the [official xRegistry specification](https://github.com/xregistry/spec) for standard compliance details
 
 ## 🔍 Troubleshooting
@@ -366,4 +359,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Ready to get started?** Run `npm start` and visit `http://localhost:8080` to see all your package registries unified in one API! 
+**Ready to get started?** Use Docker Compose (`docker-compose up`) or the startup scripts to launch all services!

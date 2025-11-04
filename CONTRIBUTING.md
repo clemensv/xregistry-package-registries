@@ -105,7 +105,7 @@ node test-actual-packages.js
 
 ## 🏗️ Project Structure
 
-```
+```text
 xregistry-package-registries/
 ├── bridge/           # Unified xRegistry bridge
 ├── npm/             # NPM registry implementation
@@ -113,11 +113,11 @@ xregistry-package-registries/
 ├── maven/           # Maven registry implementation
 ├── nuget/           # NuGet registry implementation
 ├── oci/             # OCI registry implementation
+├── mcp/             # MCP registry implementation
+├── shared/          # Shared utilities and filters
 ├── test/            # Test suites
-│   ├── unit/        # Unit tests
-│   ├── integration/ # Integration tests
-│   └── regression/  # Regression tests
-└── types/           # TypeScript definitions
+├── deploy/          # Deployment scripts and Bicep templates
+└── viewer/          # xRegistry Viewer (git submodule)
 ```
 
 ## 📝 Coding Standards
@@ -149,10 +149,11 @@ When adding support for a new package registry:
 
 ### Required Files
 
-1. **Server implementation** (`{registry}/server.js`)
-2. **Dockerfile** (`{registry}/Dockerfile`)
+1. **Server implementation** (`{registry}/src/server.ts`)
+2. **Dockerfile** (`{registry}.Dockerfile` in project root)
 3. **Package metadata** (`{registry}/package.json`)
-4. **Tests** (`test/unit/{registry}/**`)
+4. **TypeScript configuration** (`{registry}/tsconfig.json`)
+5. **Tests** (`{registry}/tests/**` or `test/{registry}/**`)
 
 ### Required Endpoints
 
@@ -234,4 +235,4 @@ By contributing to this project, you agree that your contributions will be licen
 
 ---
 
-Thank you for contributing to xRegistry Package Registries! 🎉 
+Thank you for contributing to xRegistry Package Registries! 🎉

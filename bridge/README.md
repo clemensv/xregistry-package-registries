@@ -1,16 +1,41 @@
-# xRegistry Bridge# xRegistry Proxy Bridge
+# xRegistry Bridge
 
+A modular TypeScript-based xRegistry bridge that aggregates multiple downstream package registries into a unified xRegistry endpoint. The bridge provides resilient startup, health monitoring, and automatic failover for downstream services.
 
+## 🚀 Features
 
-A modular TypeScript-based xRegistry bridge that aggregates multiple downstream package registries into a unified xRegistry endpoint. The bridge provides resilient startup, health monitoring, and automatic failover for downstream services.A TypeScript-based reverse proxy for xRegistry package registries that provides a unified gateway to multiple package registry types including NPM, PyPI, Maven, NuGet, and OCI.
+- **Multi-Registry Support**: Proxies requests to NPM, PyPI, Maven, NuGet, OCI, and MCP registries
+- **Resilient Startup**: Gracefully handles unavailable downstream servers with configurable retry logic
+- **TypeScript**: Fully typed codebase with strict TypeScript configuration
+- **Security**: Built-in authentication, CORS, and security headers
+- **Health Monitoring**: Health check endpoints for container orchestration
+- **Docker Ready**: Multi-stage Dockerfile for production deployments
+- **Azure Container Apps**: Ready-to-deploy scripts for Azure Container Apps
 
+## Architecture
 
+The bridge uses a service-oriented architecture:
 
-## Architecture## 🚀 Features- **Multi-Registry Support**: Proxies requests to NPM, PyPI, Maven, NuGet, and OCI registries- **Resilient Startup**: Gracefully handles unavailable downstream servers with configurable retry logic- **Resilient Startup**: Gracefully handles unavailable downstream servers with configurable retry logic- **TypeScript**: Fully typed codebase with strict TypeScript configuration- **Security**: Built-in authentication, CORS, and security headers- **Health Monitoring**: Health check endpoints for container orchestration- **Docker Ready**: Multi-stage Dockerfile for production deployments- **Azure Container Apps**: Ready-to-deploy scripts for Azure Container Apps- **CI/CD**: GitHub Actions workflow for automated deployments
+### Services
 
+- **DownstreamService**: Manages downstream server health checks, connectivity testing, and state management
+- **ModelService**: Consolidates xRegistry models from multiple downstream servers
+- **HealthService**: Provides health monitoring and status endpoints
+- **ProxyService**: Routes requests to appropriate downstream servers using http-proxy-middleware
 
+### Middleware
 
-The bridge uses a service-oriented architecture:## 📦 Prerequisites
+- **Authentication**: API key and Azure Container Apps principal authentication
+- **CORS**: Cross-origin resource sharing configuration
+- **Error Handler**: Global error handling with structured logging
+- **Logging**: Enhanced request/response logging with W3C Extended Log Format support
+
+### Routes
+
+- **xRegistry Routes**: Static endpoints (/, /model, /capabilities, /health, /status)
+- **Dynamic Proxy Routes**: Automatically created for each available group type, proxying to downstream servers
+
+## 📦 Prerequisites
 
 
 
@@ -319,52 +344,47 @@ The bridge implements xRegistry 1.0-rc2 specification, providing:GET,POST,PUT,DE
 - Dynamic group-based routing```
 
 - Inline query parameter support
+- Proper HTTP status codes and error handling
 
-- Proper HTTP status codes and error handling### Authentication
+## Logging
 
+Enhanced logging with:
 
-
-## LoggingAll registry endpoints require the `x-api-key` header:
-
-
-
-Enhanced logging with:```bash
-
-- Structured JSON loggingcurl -H "x-api-key: your-secret-key" https://your-proxy.azurecontainerapps.io/npm/package-name
-
-- Correlation ID tracking```
-
+- Structured JSON logging
+- Correlation ID tracking
 - W3C Extended Log Format support
-
-- Configurable log levels## 🔧 Configuration
-
+- Configurable log levels
 - Request/response logging
+
+## Authentication
+
+All registry endpoints require the `x-api-key` header:
+
+```bash
+curl -H "x-api-key: your-secret-key" <https://your-proxy.azurecontainerapps.io/npm/package-name>
+```
+
+## 🔧 Configuration
 
 ### Environment Variables
 
+| Variable          | Description                       | Default                 |
+| ----------------- | --------------------------------- | ----------------------- |
+| `PORT`            | Server port                       | `8080`                  |
+| `BASE_URL`        | Base URL for the proxy            | `http://localhost:8080` |
+| `BASE_URL_HEADER` | Header name for base URL          | `x-base-url`            |
+| `BRIDGE_API_KEY`  | API key for authentication        | (required)              |
+| `REQUIRED_GROUPS` | Required groups (comma-separated) | `[]`                    |
+
+### Downstream Configuration
+
+Configure downstream servers in `downstreams.json` or via the `DOWNSTREAMS_JSON` environment variable. See [downstreams.json](downstreams.json) for the configuration format.
+
 ## Deployment
 
-| Variable | Description | Default |
+See [DEPLOYMENT.md](../DEPLOYMENT.md) for Azure Container Apps deployment instructions.
 
-See [DEPLOYMENT.md](../DEPLOYMENT.md) for Azure Container Apps deployment instructions.|----------|-------------|---------|
-
-| `PORT` | Server port | `8080` |
-
-See [RESILIENT-STARTUP.md](./RESILIENT-STARTUP.md) for details on resilient startup implementation.| `BASE_URL` | Base URL for the proxy | `http://localhost:8080` |
-
-| `BASE_URL_HEADER` | Header name for base URL | `x-base-url` |
-| `PROXY_API_KEY` | API key for authentication | `supersecret` |
-| `REQUIRED_GROUPS` | Required groups (comma-separated) | `[]` |
-
-### Registry Targets
-
-The proxy routes requests to these default targets:
-
-- **NPM**: `http://localhost:4873`
-- **PyPI**: `http://localhost:8081`
-- **Maven**: `http://localhost:8082`
-- **NuGet**: `http://localhost:8083`
-- **OCI**: `http://localhost:8084`
+See [RESILIENT-STARTUP.md](./RESILIENT-STARTUP.md) for details on resilient startup implementation.
 
 ## 🔍 Monitoring
 
@@ -379,10 +399,6 @@ The `/health` endpoint provides service status:
   "version": "1.0.0"
 }
 ```
-
-### Logging
-
-The proxy logs all requests and proxy operations to the console with timestamps.
 
 ## 🛡️ Security
 
@@ -410,4 +426,4 @@ For issues and questions:
 
 1. Check the [Issues](https://github.com/your-repo/issues) section
 2. Create a new issue with detailed information
-3. Include logs and configuration details 
+3. Include logs and configuration details
