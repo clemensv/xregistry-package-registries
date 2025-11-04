@@ -336,7 +336,7 @@ Verify signed container images:
 
 # Verify image signature
 cosign verify \
-  --certificate-identity-regexp="https://github.com/clemensv/xregistry-package-registries" \
+  --certificate-identity-regexp="https://github.com/xregistry/xrproxy" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
   ghcr.io/clemensv/xregistry-package-registries/xregistry-bridge:latest
 ``` 

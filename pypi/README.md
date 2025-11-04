@@ -189,4 +189,4 @@ The server provides these main endpoints:
 
 ## More Information
 
-For advanced usage and documentation, visit [https://github.com/clemensv/xregistry-package-registries](https://github.com/clemensv/xregistry-package-registries) 
+For advanced usage and documentation, visit [https://github.com/xregistry/xrproxy](https://github.com/xregistry/xrproxy) 

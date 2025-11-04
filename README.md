@@ -6,7 +6,7 @@
 ![Node.js](https://img.shields.io/badge/node-%3E%3D16.0.0-brightgreen.svg)
 ![Docker](https://img.shields.io/badge/docker-supported-blue.svg)
 
-![Build Images](https://github.com/clemensv/xregistry-package-registries/actions/workflows/build-images.yml/badge.svg)
+![Build Images](https://github.com/xregistry/xrproxy/actions/workflows/build-images.yml/badge.svg)
 
 This project contains a set of read-only xRegistry server implementations that
 proxy several popular package registries (NPM, PyPI, Maven, NuGet, OCI, MCP) behind a
@@ -44,8 +44,8 @@ is being developed as a CNCF sandbox project at https://github.com/xregistry/spe
 
 ```bash
 # Clone the repository
-git clone https://github.com/xregistry/xregistry-package-registries.git
-cd xregistry-package-registries
+git clone https://github.com/xregistry/xrproxy.git
+cd xrproxy
 
 # Install dependencies
 npm install

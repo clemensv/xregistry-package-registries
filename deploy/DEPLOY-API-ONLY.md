@@ -280,6 +280,6 @@ curl -H "Accept: application/json" "$BASE_URL/dotnetregistries/nuget.org/package
 ## Support
 
 For issues or questions:
-- GitHub Issues: https://github.com/clemensv/xregistry-package-registries/issues
+- GitHub Issues: https://github.com/xregistry/xrproxy/issues
 - Check logs with Azure CLI commands above
 - Review main deployment docs: [DEPLOYMENT.md](../DEPLOYMENT.md)

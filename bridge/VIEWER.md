@@ -167,8 +167,8 @@ The proxy:
 
 ```bash
 # Clone repository
-git clone https://github.com/clemensv/xregistry-package-registries.git
-cd xregistry-package-registries
+git clone https://github.com/xregistry/xrproxy.git
+cd xrproxy
 
 # Initialize viewer submodule
 git submodule update --init --recursive
