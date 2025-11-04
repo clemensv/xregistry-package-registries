@@ -93,7 +93,7 @@ npm run start:bridge
 
 ### Web UI (xRegistry Viewer)
 
-The bridge server can optionally serve the [xRegistry Viewer](https://github.com/clemensv/xregistry-viewer) web interface:
+The bridge server can optionally serve the [xRegistry Viewer](https://github.com/xregistry/viewer) web interface:
 
 ```bash
 # PowerShell (Windows)

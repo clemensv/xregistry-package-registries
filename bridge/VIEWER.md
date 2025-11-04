@@ -4,7 +4,7 @@ This document describes how to use the xRegistry Viewer with the bridge server.
 
 ## Overview
 
-The xRegistry Bridge can optionally serve the [xRegistry Viewer](https://github.com/clemensv/xregistry-viewer) Angular application, providing a web-based UI for browsing xRegistry services. The integration includes:
+The xRegistry Bridge can optionally serve the [xRegistry Viewer](https://github.com/xregistry/viewer) Angular application, providing a web-based UI for browsing xRegistry services. The integration includes:
 
 - **Static file serving** - Serves the Angular viewer app from `/viewer/`
 - **CORS proxy** - Allows the viewer to access external xRegistry endpoints without CORS issues
@@ -381,6 +381,6 @@ describe('Viewer Integration', () => {
 
 ## References
 
-- [xRegistry Viewer Repository](https://github.com/clemensv/xregistry-viewer)
+- [xRegistry Viewer Repository](https://github.com/xregistry/viewer)
 - [xRegistry Specification](https://github.com/xregistry/spec)
 - [Integration Plan](../INTEGRATE_VIEWER.md)
