@@ -37,312 +37,281 @@ The bridge uses a service-oriented architecture:
 
 ## 📦 Prerequisites
 
-
-
-### Services- Node.js 18+
-
-- **DownstreamService**: Manages downstream server health checks, connectivity testing, and state management- npm or yarn
-
-- **ModelService**: Consolidates xRegistry models from multiple downstream servers- Docker (for containerization)
-
-- **HealthService**: Provides health monitoring and status endpoints- Azure CLI (for Azure deployments)
-
-- **ProxyService**: Routes requests to appropriate downstream servers using http-proxy-middleware
+- Node.js 18+
+- npm or yarn
+- Docker (for containerization)
+- Azure CLI (for Azure deployments)
 
 ## 🛠️ Local Development
 
-### Middleware
+### Install Dependencies
 
-- **Authentication**: API key and Azure Container Apps principal authentication### Install Dependencies
-
-- **CORS**: Cross-origin resource sharing configuration
-
-- **Error Handler**: Global error handling with structured logging```bash
-
-- **Logging**: Enhanced request/response logging with W3C Extended Log Format supportnpm install
-
+```bash
+npm install
 ```
 
-### Routes
-
-- **xRegistry Routes**: Static endpoints (/, /model, /capabilities, /registries, /health, /status)### Environment Configuration
-
-- **Dynamic Proxy Routes**: Automatically created for each available group type, proxying to downstream servers
+### Environment Configuration
 
 Copy the example environment file and configure:
 
-## Quick Start
-
 ```bash
-
-### Build and Runcp env.example .env
-
+cp env.example .env
 ```
 
-```bash
-
-# Install dependenciesEdit `.env` with your configuration:
-
-npm install
+Edit `.env` with your configuration:
 
 ```env
-
-# Build TypeScript# Server configuration
-
-npm run buildPORT=8080
-
+# Server configuration
+PORT=8080
 BASE_URL=http://localhost:8080
+BASE_URL_HEADER=x-base-url
 
-# Start serverBASE_URL_HEADER=x-base-url
-
-npm start
-
-```# Security
-
+# Security
 PROXY_API_KEY=your-secret-api-key
+REQUIRED_GROUPS=group-id-1,group-id-2
 
-### ConfigurationREQUIRED_GROUPS=group-id-1,group-id-2
-
-
-
-Configure downstream servers in `downstreams.json`:# Registry targets
-
+# Registry targets
 NPM_TARGET=http://localhost:4873
+PYPI_TARGET=http://localhost:8081
+MAVEN_TARGET=http://localhost:8082
+NUGET_TARGET=http://localhost:8083
+OCI_TARGET=http://localhost:8084
+```
 
-```jsonPYPI_TARGET=http://localhost:8081
+### Configuration
 
-{MAVEN_TARGET=http://localhost:8082
+Configure downstream servers in `downstreams.json`:
 
-  "servers": [NUGET_TARGET=http://localhost:8083
-
-    {OCI_TARGET=http://localhost:8084
-
-      "url": "http://localhost:3000",```
-
-      "apiKey": "pypi-api-key"
-
-    },### Development Server
-
+```json
+{
+  "servers": [
     {
-
-      "url": "http://localhost:4873",```bash
-
-      "apiKey": "npm-api-key"# Run in development mode with hot reload
-
-    }npm run dev
-
+      "url": "http://localhost:3000",
+      "apiKey": "pypi-api-key"
+    },
+    {
+      "url": "http://localhost:4873",
+      "apiKey": "npm-api-key"
+    }
   ]
+}
+```
 
-}# Build TypeScript
+Or use environment variable:
 
-```npm run build
-
-
-
-Or use environment variable:# Start production server
-
-npm start
-
-```bash```
-
+```bash
 export DOWNSTREAMS_JSON='{"servers":[{"url":"http://localhost:3000"}]}'
+```
 
-```## 🐳 Docker Deployment
+### Build and Run
 
+```bash
+# Install dependencies
+npm install
 
+# Build TypeScript
+npm run build
 
-### Environment Variables### Build Docker Image
+# Start server
+npm start
+```
 
+### Development Server
 
+```bash
+# Run in development mode with hot reload
+npm run dev
 
-- `PORT`: Server port (default: 8080)```bash
+# Build TypeScript
+npm run build
 
-- `BASE_URL`: External base URL for the bridgedocker build -f ../bridge.Dockerfile -t xregistry-proxy ..
+# Start production server
+npm start
+```
 
-- `BRIDGE_API_KEY`: Optional API key for authentication```
+### Environment Variables
 
+- `PORT`: Server port (default: 8080)
+- `BASE_URL`: External base URL for the bridge
+- `BRIDGE_API_KEY`: Optional API key for authentication
 - `REQUIRED_GROUPS`: Comma-separated list of required Azure AD groups
-
-- `STARTUP_WAIT_TIME`: Wait time for downstream servers (default: 60000ms)### Run Container
-
+- `STARTUP_WAIT_TIME`: Wait time for downstream servers (default: 60000ms)
 - `RETRY_INTERVAL`: Interval for retrying failed servers (default: 60000ms)
+- `SERVER_HEALTH_TIMEOUT`: Timeout for health checks (default: 10000ms)
+- `LOG_LEVEL`: Logging level (debug, info, warn, error)
 
-- `SERVER_HEALTH_TIMEOUT`: Timeout for health checks (default: 10000ms)```bash
+## 🐳 Docker Deployment
 
-- `LOG_LEVEL`: Logging level (debug, info, warn, error)docker run -d \
+### Build Docker Image
 
+```bash
+docker build -f ../bridge.Dockerfile -t xregistry-proxy ..
+```
+
+### Run Container
+
+```bash
+docker run -d \
   --name xregistry-proxy \
-
-## Resilient Startup  -p 8080:8080 \
-
+  -p 8080:8080 \
   -e PROXY_API_KEY=your-secret-key \
-
-The bridge implements resilient startup that:  -e BASE_URL=http://localhost:8080 \
-
+  -e BASE_URL=http://localhost:8080 \
   xregistry-proxy
+```
 
-1. Waits for configured time (STARTUP_WAIT_TIME) before testing servers```
+## Resilient Startup
 
+The bridge implements resilient startup that:
+
+1. Waits for configured time (STARTUP_WAIT_TIME) before testing servers
 2. Tests all downstream servers in parallel
-
-3. Builds consolidated model from active servers## ☁️ Azure Container Apps Deployment
-
+3. Builds consolidated model from active servers
 4. Starts HTTP server even if no downstreams are available
+5. Continuously retries inactive servers at configured interval
 
-5. Continuously retries inactive servers at configured interval### Prerequisites
+This ensures the bridge stays operational even when downstream services are temporarily unavailable.
 
+## API Endpoints
 
+### Static Endpoints
 
-This ensures the bridge stays operational even when downstream services are temporarily unavailable.1. Azure CLI installed and logged in
-
-2. Docker installed
-
-## API Endpoints3. Required Azure permissions
-
-
-
-### Static Endpoints### Quick Deployment
-
-
-
-- `GET /` - Root endpoint with consolidated registry metadataRun the PowerShell deployment script:
-
+- `GET /` - Root endpoint with consolidated registry metadata
   - Query params: `inline` (model, capabilities, group collections), `specversion`
-
-- `GET /model` - Consolidated xRegistry model from all active downstreams```powershell
-
-- `GET /capabilities` - Consolidated capabilities.\deploy.ps1 -ResourceGroup "my-rg" -Location "westeurope"
-
-- `GET /registries` - List of available registry groups```
-
+- `GET /model` - Consolidated xRegistry model from all active downstreams
+- `GET /capabilities` - Consolidated capabilities
+- `GET /registries` - List of available registry groups
 - `GET /health` - Health status of bridge and downstream servers
+- `GET /status` - Detailed status information
 
-- `GET /status` - Detailed status information### Manual Deployment
+### Dynamic Proxy Routes
 
-
-
-### Dynamic Proxy Routes```bash
-
-# Create resource group
-
-For each available group type (e.g., `pythonregistries`, `noderegistries`):az group create --name xregistry-rg --location westeurope
+For each available group type (e.g., `pythonregistries`, `noderegistries`):
 
 - `GET /:groupType/*` - Proxied to appropriate downstream server
 
-# Create Azure Container Registry
+## ☁️ Azure Container Apps Deployment
 
-## Developmentaz acr create --name xregistryacr --resource-group xregistry-rg --sku Basic --admin-enabled true
+### Prerequisites
+
+1. Azure CLI installed and logged in
+2. Docker installed
+3. Required Azure permissions
+
+### Quick Deployment
+
+Run the PowerShell deployment script:
+
+```powershell
+.\deploy.ps1 -ResourceGroup "my-rg" -Location "westeurope"
+```
+
+### Manual Deployment
+
+```bash
+# Create resource group
+az group create --name xregistry-rg --location westeurope
+
+# Create Azure Container Registry
+az acr create --name xregistryacr --resource-group xregistry-rg --sku Basic --admin-enabled true
 
 
 
 ### Project Structure# Build and push image
-
 az acr login --name xregistryacr
+docker build -f ../bridge.Dockerfile -t xregistryacr.azurecr.io/xregistry-proxy:latest ..
+docker push xregistryacr.azurecr.io/xregistry-proxy:latest
 
-```docker build -f ../bridge.Dockerfile -t xregistryacr.azurecr.io/xregistry-proxy:latest ..
+# Create Container App Environment
+az containerapp env create \
+  --name xregistry-env \
+  --resource-group xregistry-rg \
+  --location westeurope
 
-bridge/docker push xregistryacr.azurecr.io/xregistry-proxy:latest
-
-├── src/
-
-│   ├── config/           # Configuration management# Create Container App Environment
-
-│   │   ├── constants.tsaz containerapp env create \
-
-│   │   └── downstreams.ts  --name xregistry-env \
-
-│   ├── middleware/       # Express middleware  --resource-group xregistry-rg \
-
-│   │   ├── auth.ts  --location westeurope
-
-│   │   ├── cors.ts
-
-│   │   └── error-handler.ts# Deploy the proxy
-
-│   ├── routes/           # Route handlersaz containerapp create \
-
-│   │   ├── xregistry.ts  --name xregistry-proxy \
-
-│   │   └── proxy.ts  --resource-group xregistry-rg \
-
-│   ├── services/         # Business logic services  --environment xregistry-env \
-
-│   │   ├── downstream-service.ts  --image xregistryacr.azurecr.io/xregistry-proxy:latest \
-
-│   │   ├── model-service.ts  --target-port 8080 \
-
-│   │   ├── health-service.ts  --ingress external \
-
-│   │   └── proxy-service.ts  --registry-server xregistryacr.azurecr.io \
-
-│   ├── types/            # TypeScript type definitions  --env-vars "PROXY_API_KEY=supersecret" "BASE_URL=https://xregistry-proxy.westeurope.azurecontainerapps.io"
-
-│   │   ├── bridge.ts```
-
-│   │   └── xregistry.ts
-
-│   └── server.ts         # Main entry point## 🔐 GitHub Actions CI/CD
-
-├── downstreams.json      # Downstream configuration
-
-├── package.json### Required Secrets
-
-└── tsconfig.json
-
-```Set these secrets in your GitHub repository:
-
-
-
-### Build Commands- `AZURE_CREDENTIALS`: JSON output from `az ad sp create-for-rbac --sdk-auth`
-
-- `ACR_USERNAME`: Azure Container Registry username
-
-```bash- `ACR_PASSWORD`: Azure Container Registry password
-
-npm run clean          # Remove dist folder- `PROXY_API_KEY`: Your secure API key
-
-npm run build          # Compile TypeScript- `REQUIRED_GROUPS`: Comma-separated list of required group IDs
-
-npm run watch          # Watch mode
-
-npm run dev            # Development mode with ts-node### Workflow
-
-npm start              # Start production server
-
-```The workflow automatically triggers on pushes to the `main` branch that affect the `bridge/` directory.
-
-
-
-## Features## 📡 API Endpoints
-
-
-
-- **Model Consolidation**: Automatically merges xRegistry models from multiple downstreams### Health Check
-
-- **Health Monitoring**: Continuous health checks with automatic failover```
-
-- **Distributed Tracing**: OpenTelemetry-compatible trace context propagationGET /health
-
-- **Graceful Shutdown**: Clean shutdown handling for containerized environments```
-
-- **Type Safety**: Full TypeScript with strict mode enabled
-
-- **API Key Authentication**: Support for API key and Azure AD group-based auth### Registry Proxies
-
+# Deploy the proxy
+az containerapp create \
+  --name xregistry-proxy \
+  --resource-group xregistry-rg \
+  --environment xregistry-env \
+  --image xregistryacr.azurecr.io/xregistry-proxy:latest \
+  --target-port 8080 \
+  --ingress external \
+  --registry-server xregistryacr.azurecr.io \
+  --env-vars "PROXY_API_KEY=supersecret" "BASE_URL=https://xregistry-proxy.westeurope.azurecontainerapps.io"
 ```
 
-## xRegistry ComplianceGET,POST,PUT,DELETE /npm/*     -> NPM Registry
+## Development
 
-GET,POST,PUT,DELETE /pypi/*    -> PyPI Registry  
+### Project Structure
 
-The bridge implements xRegistry 1.0-rc2 specification, providing:GET,POST,PUT,DELETE /maven/*   -> Maven Registry
+```text
+bridge/
+├── src/
+│   ├── config/           # Configuration management
+│   │   ├── constants.ts
+│   │   └── downstreams.ts
+│   ├── middleware/       # Express middleware
+│   │   ├── auth.ts
+│   │   ├── cors.ts
+│   │   └── error-handler.ts
+│   ├── routes/           # Route handlers
+│   │   ├── xregistry.ts
+│   │   └── proxy.ts
+│   ├── services/         # Business logic services
+│   │   ├── downstream-service.ts
+│   │   ├── model-service.ts
+│   │   ├── health-service.ts
+│   │   └── proxy-service.ts
+│   ├── types/            # TypeScript type definitions
+│   │   ├── bridge.ts
+│   │   └── xregistry.ts
+│   └── server.ts         # Main entry point
+├── downstreams.json      # Downstream configuration
+├── package.json
+└── tsconfig.json
+```
 
-- Registry root endpoint with metadataGET,POST,PUT,DELETE /nuget/*   -> NuGet Registry
+### Build Commands
 
-- Model and capabilities endpointsGET,POST,PUT,DELETE /oci/*     -> OCI Registry
+```bash
+npm run clean          # Remove dist folder
+npm run build          # Compile TypeScript
+npm run watch          # Watch mode
+npm run dev            # Development mode with ts-node
+npm start              # Start production server
+```
 
-- Dynamic group-based routing```
+## 🔐 GitHub Actions CI/CD
 
+### Required Secrets
+
+Set these secrets in your GitHub repository:
+
+- `AZURE_CREDENTIALS`: JSON output from `az ad sp create-for-rbac --sdk-auth`
+- `ACR_USERNAME`: Azure Container Registry username
+- `ACR_PASSWORD`: Azure Container Registry password
+- `PROXY_API_KEY`: Your secure API key
+- `REQUIRED_GROUPS`: Comma-separated list of required group IDs
+
+### Workflow
+
+The workflow automatically triggers on pushes to the `main` branch that affect the `bridge/` directory.
+
+## Features
+
+- **Model Consolidation**: Automatically merges xRegistry models from multiple downstreams
+- **Health Monitoring**: Continuous health checks with automatic failover
+- **Distributed Tracing**: OpenTelemetry-compatible trace context propagation
+- **Graceful Shutdown**: Clean shutdown handling for containerized environments
+- **Type Safety**: Full TypeScript with strict mode enabled
+- **API Key Authentication**: Support for API key and Azure AD group-based auth
+
+## xRegistry Compliance
+
+The bridge implements xRegistry 1.0-rc2 specification, providing:
+
+- Registry root endpoint with metadata
+- Model and capabilities endpoints
+- Dynamic group-based routing
 - Inline query parameter support
 - Proper HTTP status codes and error handling
 
@@ -364,9 +333,9 @@ All registry endpoints require the `x-api-key` header:
 curl -H "x-api-key: your-secret-key" <https://your-proxy.azurecontainerapps.io/npm/package-name>
 ```
 
-## 🔧 Configuration
+## 🔧 Configuration Reference
 
-### Environment Variables
+### Configuration Variables
 
 | Variable          | Description                       | Default                 |
 | ----------------- | --------------------------------- | ----------------------- |
