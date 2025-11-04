@@ -2,6 +2,7 @@ import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import { XRegistryLogger } from '../../../shared/logging/logger';
+import { getApiBaseUrl } from '../config/constants';
 
 export interface ViewerStaticOptions {
     enabled: boolean;
@@ -84,6 +85,41 @@ export function createViewerStaticMiddleware(options: ViewerStaticOptions): expr
             // Skip static serving for API routes
             if (req.path.startsWith('/viewer/api/')) {
                 return next();
+            }
+            
+            // Intercept config.json requests to inject the deployed registry endpoint
+            if (req.path === '/viewer/config.json') {
+                const apiBaseUrl = getApiBaseUrl(req);
+                const configPath = path.join(viewerPath, 'config.json');
+                
+                try {
+                    // Read the default config.json from the viewer dist
+                    let config: any = { apiEndpoints: [], modelUris: [], baseUrl: '/viewer', defaultDocumentView: true };
+                    
+                    if (fs.existsSync(configPath)) {
+                        const configContent = fs.readFileSync(configPath, 'utf-8');
+                        config = JSON.parse(configContent);
+                    }
+                    
+                    // Override apiEndpoints with the deployed registry endpoint
+                    config.apiEndpoints = [apiBaseUrl];
+                    
+                    if (logger) {
+                        logger.info('Serving dynamically generated config.json for viewer', {
+                            apiBaseUrl,
+                            originalEndpoints: fs.existsSync(configPath) ? JSON.parse(fs.readFileSync(configPath, 'utf-8')).apiEndpoints?.length : 0
+                        });
+                    }
+                    
+                    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+                    return res.json(config);
+                } catch (error) {
+                    if (logger) {
+                        logger.error('Failed to generate dynamic config.json', { error });
+                    }
+                    return next();
+                }
             }
             
             // Remove /viewer prefix for static file serving
