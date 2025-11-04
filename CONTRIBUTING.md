@@ -14,17 +14,20 @@ Thank you for your interest in contributing to the xRegistry Package Registries 
 ### Setting Up the Development Environment
 
 1. **Fork and clone the repository:**
+
    ```bash
    git clone https://github.com/your-username/xregistry-package-registries.git
    cd xregistry-package-registries
    ```
 
 2. **Install dependencies:**
+
    ```bash
    npm install
    ```
 
 3. **Start the development environment:**
+
    ```bash
    # For Windows
    ./start-servers.ps1
@@ -46,6 +49,7 @@ Thank you for your interest in contributing to the xRegistry Package Registries 
 ### Submitting Changes
 
 1. **Create a feature branch:**
+
    ```bash
    git checkout -b feature/your-feature-name
    ```
@@ -53,9 +57,11 @@ Thank you for your interest in contributing to the xRegistry Package Registries 
 2. **Make your changes** following our coding standards
 3. **Test thoroughly** (see Testing section below)
 4. **Commit with clear messages:**
+
    ```bash
    git commit -m "feat: add new package registry support"
    ```
+
 5. **Push and create a pull request**
 
 ### Pull Request Guidelines

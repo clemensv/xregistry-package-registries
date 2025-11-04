@@ -1,15 +1,17 @@
-# Unified xRegistry Deployment Guide
+# xRegistry Bridge Deployment Guide
 
-This document outlines the deployment process for the unified xRegistry server that includes all package registries (PyPI, NPM, Maven, NuGet, OCI) in a single container.
+This document outlines the deployment process for the unified xRegistry bridge that includes all package registries (PyPI, NPM, Maven, NuGet, OCI, MCP) in a single container.
 
 ## 🏗️ Architecture
 
-The unified xRegistry server runs all five package registries in a single Node.js process:
+The unified xRegistry server runs all six package registries in a single Node.js process:
+
 - **PyPI** at `/pythonregistries`
 - **NPM** at `/noderegistries` 
 - **Maven** at `/javaregistries`
 - **NuGet** at `/dotnetregistries`
-- **OCI** at `/containerregistries`
+- **OCI** at `/containerregistries`    
+- **MCP** at `/mcpproviders`
 
 ## 🔧 Prerequisites
 
@@ -33,6 +35,7 @@ Available images:
 - `ghcr.io/clemensv/xregistry-package-registries/xregistry-maven-bridge`
 - `ghcr.io/clemensv/xregistry-package-registries/xregistry-nuget-bridge`
 - `ghcr.io/clemensv/xregistry-package-registries/xregistry-oci-bridge`
+- `ghcr.io/clemensv/xregistry-package-registries/xregistry-mcp-bridge`
 
 ### GitHub Secrets Required
 
@@ -183,6 +186,7 @@ npm run start:pypi   # Starts PyPI registry on port 3100
 npm run start:maven  # Starts Maven registry on port 3200
 npm run start:nuget  # Starts NuGet registry on port 3300
 npm run start:oci    # Starts OCI registry on port 3400
+npm run start:mcp    # Starts MCP registry on port 3600
 npm run start:bridge # Starts bridge on port 8080
 ```
 
@@ -351,6 +355,7 @@ All container images are published to **GitHub Container Registry (ghcr.io)** an
 | Maven   | `ghcr.io/clemensv/xregistry-package-registries/xregistry-maven-bridge` | 3200 |
 | NuGet   | `ghcr.io/clemensv/xregistry-package-registries/xregistry-nuget-bridge` | 3300 |
 | OCI     | `ghcr.io/clemensv/xregistry-package-registries/xregistry-oci-bridge`   | 3400 |
+| MCP     | `ghcr.io/clemensv/xregistry-package-registries/xregistry-mcp-bridge`   | 3600 |
 
 ### Image Tags
 
@@ -378,4 +383,4 @@ For Azure Container Apps deployment, the recommended resource allocation is:
 - Each Registry Service (5×): 0.3 CPU + 0.6 GB
 - **Total: 1.75 CPU + 3.5 GB** ✅
 
-This allocation exactly matches Azure Container Apps limits and ensures optimal performance. 
+This allocation exactly matches Azure Container Apps limits and ensures optimal performance.
