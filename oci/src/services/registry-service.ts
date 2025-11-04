@@ -4,8 +4,8 @@
  */
 
 import { Request, Response } from 'express';
-import * as modelData from '../../model.json';
 import { EntityStateManager } from '../../../shared/entity-state-manager';
+import * as modelData from '../../model.json';
 import { getBaseUrl, GROUP_CONFIG, REGISTRY_CONFIG, RESOURCE_CONFIG } from '../config/constants';
 import { generateETag } from '../utils/xregistry-utils';
 import { ImageService } from './image-service';
@@ -172,12 +172,10 @@ export class RegistryService {
                 }
             }
 
-            // When no filter is provided, return a limited set (avoid fetching all images)
             // Request limit + 1 to check if there are more results
             let result;
             try {
-                // Use a smaller limit when no filter to avoid overwhelming the backend
-                const fetchLimit = filter ? (limit + 1) : Math.min(limit + 1, 10);
+                const fetchLimit = limit + 1;
                 result = await this.imageService.getAllImages(groupId, {}, offset, fetchLimit);
             } catch (imageError: any) {
                 this.logger.error('Failed to get images from backend', { error: imageError.message });
