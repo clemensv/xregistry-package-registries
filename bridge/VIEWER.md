@@ -50,12 +50,12 @@ Access the API at: `http://localhost:8080/registry/`
 
 ### Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `VIEWER_ENABLED` | `false` | Enable viewer serving |
-| `VIEWER_PATH` | `../viewer/dist/xregistry-viewer` | Path to viewer dist files |
-| `VIEWER_PROXY_ENABLED` | `true` | Enable CORS proxy for viewer |
-| `API_PATH_PREFIX` | ` ` (empty) | API path prefix (use `/registry` to shift API) |
+| Variable               | Default                           | Description                                    |
+| ---------------------- | --------------------------------- | ---------------------------------------------- |
+| `VIEWER_ENABLED`       | `false`                           | Enable viewer serving                          |
+| `VIEWER_PATH`          | `../viewer/dist/xregistry-viewer` | Path to viewer dist files                      |
+| `VIEWER_PROXY_ENABLED` | `true`                            | Enable CORS proxy for viewer                   |
+| `API_PATH_PREFIX`      | ` ` (empty)                       | API path prefix (use `/registry` to shift API) |
 
 ### Deployment Scenarios
 

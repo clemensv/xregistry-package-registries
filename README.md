@@ -1,6 +1,6 @@
 <img src="https://github.com/cncf/artwork/raw/main/projects/xregistry/horizontal/color/xregistry-horizontal-color.svg" alt="xRegistry" style="max-height: 30px;">
 
-# xRegistry - Comnmon Package Registry Proxies
+# xRegistry - Common Package Registry Proxies
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Node.js](https://img.shields.io/badge/node-%3E%3D16.0.0-brightgreen.svg)
