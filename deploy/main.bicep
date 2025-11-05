@@ -24,7 +24,7 @@ param imageTag string = 'latest'
 param deploymentTimestamp string = utcNow()
 
 @description('GitHub repository owner/name for container images')
-param repositoryName string = 'clemensv/xregistry-package-registries'
+param repositoryName string = 'xregistry/xrproxy'
 
 @description('Email address for operational alerts')
 param alertEmailAddress string = 'clemensv@microsoft.com'

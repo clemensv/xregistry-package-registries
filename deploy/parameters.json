@@ -21,7 +21,7 @@
       "value": "latest"
     },
     "repositoryName": {
-      "value": "clemensv/xregistry-package-registries"
+      "value": "xregistry/xrproxy"
     },
     "alertEmailAddress": {
       "value": "clemensv@microsoft.com"

@@ -10,7 +10,7 @@ LOCATION="westeurope"
 RESOURCE_GROUP="xregistry-package-registries"
 ENVIRONMENT="prod"
 IMAGE_TAG="latest"
-REPOSITORY_NAME="clemensv/xregistry-package-registries"
+REPOSITORY_NAME="xregistry/xrproxy"
 GITHUB_ACTOR=""
 GITHUB_TOKEN=""
 AZURE_SUBSCRIPTION=""
@@ -87,7 +87,7 @@ EXAMPLES:
 
 ENVIRONMENT VARIABLES:
     AZURE_SUBSCRIPTION             Azure subscription ID
-    REPOSITORY_NAME                GitHub repository name (default: clemensv/xregistry-package-registries)
+    REPOSITORY_NAME                GitHub repository name (default: xregistry/xrproxy)
     IMAGE_TAG                      Container image tag (default: latest)
 
 EOF

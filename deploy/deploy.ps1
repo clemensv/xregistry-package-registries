@@ -21,7 +21,7 @@
     Container image tag (default: latest)
 
 .PARAMETER RepositoryName
-    GitHub repository name (default: clemensv/xregistry-package-registries)
+    GitHub repository name (default: xregistry/xrproxy)
 
 .PARAMETER GitHubActor
     GitHub username (optional for public repos)
@@ -61,7 +61,7 @@ param(
     [string]$Environment = "prod",
     [string]$ImageTag = "latest",
     [Parameter(Mandatory = $false)]
-    [string]$RepositoryName = "clemensv/xregistry-package-registries",
+    [string]$RepositoryName = "xregistry/xrproxy",
     [Parameter(Mandatory = $false)]
     [string]$GitHubActor = "",
     [Parameter(Mandatory = $false)]

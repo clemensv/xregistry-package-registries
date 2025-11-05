@@ -21,7 +21,7 @@
     Docker image tag to deploy (default: latest)
 
 .PARAMETER Repository
-    GitHub repository in format owner/repo (default: clemensv/xregistry-package-registries)
+    GitHub repository in format owner/repo (default: xregistry/xrproxy)
 
 .PARAMETER ContainerRegistry
     Container registry server (default: ghcr.io)
@@ -58,7 +58,7 @@ param(
     [string]$ImageTag = "latest",
 
     [Parameter()]
-    [string]$Repository = "clemensv/xregistry-package-registries",
+    [string]$Repository = "xregistry/xrproxy",
 
     [Parameter()]
     [string]$ContainerRegistry = "ghcr.io",

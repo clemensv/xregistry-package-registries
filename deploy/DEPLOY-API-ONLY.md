@@ -42,7 +42,7 @@ This creates an API deployment at: `https://xregistry-pkg-registries-api-prod-*.
 | `Location`          | `westeurope`                            | Azure region                   |
 | `Environment`       | `prod`                                  | Environment (dev/staging/prod) |
 | `ImageTag`          | `latest`                                | Docker image tag               |
-| `Repository`        | `clemensv/xregistry-package-registries` | GitHub repository              |
+| `Repository`        | `xregistry/xrproxy` | GitHub repository              |
 | `ContainerRegistry` | `ghcr.io`                               | Container registry             |
 | `GitHubToken`       | `""`                                    | GitHub PAT for private repos   |
 
