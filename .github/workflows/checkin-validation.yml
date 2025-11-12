@@ -1,36 +1,38 @@
 name: Checkin Validation
 
 on:
-#  push:
-#    branches: [ "main", "develop" ]
-#    paths:
-#      - 'bridge/**'
-#      - 'npm/**'
-#      - 'pypi/**'
-#      - 'maven/**'
-#      - 'nuget/**'
-#      - 'oci/**'
-#      - 'mcp/**'
-#      - 'test/**'
-#      - '*.Dockerfile'
-#      - 'package.json'
-#      - 'package-lock.json'
-#      - '.github/workflows/checkin-validation.yml'
-#   pull_request:
-#    branches: [ "main", "develop" ]
-#    paths:
-#      - 'bridge/**'
-#      - 'npm/**'
-#      - 'pypi/**'
-#      - 'maven/**'
-#      - 'nuget/**'
-#      - 'oci/**'
-#      - 'mcp/**'
-#      - 'test/**'
-#      - '*.Dockerfile'
-#      - 'package.json'
-#      - 'package-lock.json'
-#      - '.github/workflows/checkin-validation.yml'
+  push:
+    branches: [ "main", "develop" ]
+    paths:
+      - 'bridge/**'
+      - 'npm/**'
+      - 'pypi/**'
+      - 'maven/**'
+      - 'nuget/**'
+      - 'oci/**'
+      - 'mcp/**'
+      - 'shared/**'
+      - 'test/**'
+      - '*.Dockerfile'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/checkin-validation.yml'
+  pull_request:
+    branches: [ "main", "develop" ]
+    paths:
+      - 'bridge/**'
+      - 'npm/**'
+      - 'pypi/**'
+      - 'maven/**'
+      - 'nuget/**'
+      - 'oci/**'
+      - 'mcp/**'
+      - 'shared/**'
+      - 'test/**'
+      - '*.Dockerfile'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/checkin-validation.yml'
   workflow_dispatch:
 
 env:
