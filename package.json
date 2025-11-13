@@ -78,6 +78,6 @@
     "knuth-shuffle": "^1.0.8",
     "mocha": "^10.2.0",
     "sinon": "^17.0.1",
-    "supertest": "^6.3.3"
+    "supertest": "^7.1.4"
   }
 }
