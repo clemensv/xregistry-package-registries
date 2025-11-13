@@ -342,7 +342,7 @@ main() {
     # Show service status
     log_info "📋 Current service status:"
     local service_status
-    service_status=$(docker-compose -f docker-compose.bridge.yml ps)
+    service_status=$($DOCKER_COMPOSE_CMD -f docker-compose.bridge.yml ps)
     echo "$service_status"
     
     # Check if any services are unhealthy right after startup
@@ -355,7 +355,7 @@ main() {
         for service in npm-registry pypi-registry maven-registry nuget-registry oci-registry; do
             if echo "$service_status" | grep "$service" | grep -q "unhealthy\|Exit\|error"; then
                 log_warning "🔍 Logs for failed service: $service"
-                docker-compose -f docker-compose.bridge.yml logs --tail=20 "$service" 2>/dev/null || true
+                $DOCKER_COMPOSE_CMD -f docker-compose.bridge.yml logs --tail=20 "$service" 2>/dev/null || true
                 echo "----------------------------------------"
             fi
         done
@@ -374,7 +374,7 @@ main() {
         
         # Check all service statuses for better diagnostics
         local all_services_status
-        all_services_status=$(docker-compose -f docker-compose.bridge.yml ps)
+        all_services_status=$($DOCKER_COMPOSE_CMD -f docker-compose.bridge.yml ps)
         
         local bridge_health
         bridge_health=$(echo "$all_services_status" | grep "bridge-proxy" || echo "bridge-proxy not found")
@@ -409,7 +409,7 @@ main() {
                 log_warning "📋 Showing logs for failed dependencies:"
                 for service in $failed_services; do
                     log_warning "🔍 Last 15 lines from $service:"
-                    docker-compose -f docker-compose.bridge.yml logs --tail=15 "$service" 2>/dev/null || true
+                    $DOCKER_COMPOSE_CMD -f docker-compose.bridge.yml logs --tail=15 "$service" 2>/dev/null || true
                     echo "----------------------------------------"
                 done
             fi
@@ -426,7 +426,7 @@ main() {
             
             for service in npm-registry pypi-registry maven-registry nuget-registry oci-registry bridge-proxy; do
                 log_error "🔍 Logs from $service:"
-                docker-compose -f docker-compose.bridge.yml logs --tail=20 "$service" 2>/dev/null || log_error "  No logs available for $service"
+                $DOCKER_COMPOSE_CMD -f docker-compose.bridge.yml logs --tail=20 "$service" 2>/dev/null || log_error "  No logs available for $service"
                 echo "========================================"
             done
             
@@ -518,38 +518,38 @@ main() {
     
     # Show final service status
     log_info "Final service status:"
-    docker-compose -f docker-compose.bridge.yml ps
+    $DOCKER_COMPOSE_CMD -f docker-compose.bridge.yml ps
     
     # Show service logs if test failed or if bridge is not healthy
     log_info "Checking bridge proxy health status..."
     local bridge_status
-    bridge_status=$(docker-compose -f docker-compose.bridge.yml ps bridge-proxy)
+    bridge_status=$($DOCKER_COMPOSE_CMD -f docker-compose.bridge.yml ps bridge-proxy)
     log_info "Bridge status: $bridge_status"
     
     # Always show bridge logs for debugging
     log_info "Bridge proxy logs:"
-    docker-compose -f docker-compose.bridge.yml logs bridge-proxy
+    $DOCKER_COMPOSE_CMD -f docker-compose.bridge.yml logs bridge-proxy
     
     if [[ $test_exit_code -ne 0 ]]; then
         log_warning "Tests failed. Showing all service logs..."
         
         log_info "NPM registry logs:"
-        docker-compose -f docker-compose.bridge.yml logs npm-registry
+        $DOCKER_COMPOSE_CMD -f docker-compose.bridge.yml logs npm-registry
         
         log_info "PyPI registry logs:"
-        docker-compose -f docker-compose.bridge.yml logs pypi-registry
+        $DOCKER_COMPOSE_CMD -f docker-compose.bridge.yml logs pypi-registry
         
         log_info "Maven registry logs:"
-        docker-compose -f docker-compose.bridge.yml logs maven-registry
+        $DOCKER_COMPOSE_CMD -f docker-compose.bridge.yml logs maven-registry
         
         log_info "NuGet registry logs:"
-        docker-compose -f docker-compose.bridge.yml logs nuget-registry
+        $DOCKER_COMPOSE_CMD -f docker-compose.bridge.yml logs nuget-registry
         
         log_info "OCI registry logs:"
-        docker-compose -f docker-compose.bridge.yml logs oci-registry
+        $DOCKER_COMPOSE_CMD -f docker-compose.bridge.yml logs oci-registry
         
         log_info "Service health status:"
-        docker-compose -f docker-compose.bridge.yml ps
+        $DOCKER_COMPOSE_CMD -f docker-compose.bridge.yml ps
     fi
     
     echo ""
