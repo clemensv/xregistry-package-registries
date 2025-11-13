@@ -2,7 +2,7 @@
 # Builds both the xRegistry Viewer Angular app and the Bridge server
 
 # Stage 1: Build xRegistry Viewer
-FROM node:23-alpine AS viewer-builder
+FROM node:25-alpine AS viewer-builder
 
 WORKDIR /viewer
 
@@ -19,7 +19,7 @@ COPY viewer/ ./
 RUN npm run build -- --configuration production --base-href /viewer/
 
 # Stage 2: Build Bridge TypeScript
-FROM node:23-alpine AS bridge-builder
+FROM node:25-alpine AS bridge-builder
 
 # Set working directory
 WORKDIR /app
@@ -41,7 +41,7 @@ WORKDIR /app/bridge
 RUN npm run build
 
 # Stage 3: Runtime image
-FROM node:23-alpine AS production
+FROM node:25-alpine AS production
 
 # Install diagnostic tools for troubleshooting
 RUN apk add --no-cache \
