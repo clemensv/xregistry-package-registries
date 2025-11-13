@@ -66,7 +66,7 @@ jobs:
             type=ref,event=pr
 
       - id: build-pypi
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./pypi.Dockerfile
@@ -154,7 +154,7 @@ jobs:
             type=ref,event=pr
 
       - id: build-npm
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./npm.Dockerfile
@@ -242,7 +242,7 @@ jobs:
             type=ref,event=pr
 
       - id: build-oci
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./oci.Dockerfile
@@ -330,7 +330,7 @@ jobs:
             type=ref,event=pr
 
       - id: build-nuget
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./nuget.Dockerfile
@@ -418,7 +418,7 @@ jobs:
             type=ref,event=pr
 
       - id: build-maven
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./maven.Dockerfile
@@ -506,7 +506,7 @@ jobs:
             type=ref,event=pr
 
       - id: build-bridge
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./bridge.Dockerfile
@@ -594,7 +594,7 @@ jobs:
             type=ref,event=pr
 
       - id: build-mcp
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./mcp.Dockerfile
@@ -684,7 +684,7 @@ jobs:
             type=ref,event=pr
 
       - id: build-bridge-viewer
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./bridge.Dockerfile.viewer
