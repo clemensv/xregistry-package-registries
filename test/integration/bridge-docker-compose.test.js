@@ -3,6 +3,7 @@ const axios = require("axios");
 const { exec, spawn } = require("child_process");
 const path = require("path");
 const { promisify } = require("util");
+const { getDockerComposeCommand } = require("../test-helpers");
 
 const execPromise = promisify(exec);
 
@@ -12,6 +13,7 @@ describe("Bridge Docker Compose Integration Tests", function () {
   let composeRunning = false;
   const bridgeUrl = "http://localhost:8080";
   const testDir = path.resolve(__dirname);
+  let dockerCompose = null;
 
   const loggedAxiosGet = async (url, headers = {}) => {
     try {
@@ -58,8 +60,9 @@ describe("Bridge Docker Compose Integration Tests", function () {
 
   const checkComposeServices = async () => {
     try {
+      if (!dockerCompose) dockerCompose = await getDockerComposeCommand();
       const { stdout } = await executeCommand(
-        "docker-compose -f docker-compose.bridge.yml ps",
+        `${dockerCompose} -f docker-compose.bridge.yml ps`,
         testDir
       );
       console.log(`📦 Docker Compose Services Status:\n${stdout}`);
@@ -115,10 +118,14 @@ describe("Bridge Docker Compose Integration Tests", function () {
     console.log("🏗️  Starting Docker Compose stack...");
     console.log("Working directory:", testDir);
 
+    // Detect docker compose command
+    dockerCompose = await getDockerComposeCommand();
+    console.log(`Using docker compose command: ${dockerCompose}`);
+
     // Stop any existing compose services
     try {
       await executeCommand(
-        "docker-compose -f docker-compose.bridge.yml down -v --remove-orphans",
+        `${dockerCompose} -f docker-compose.bridge.yml down -v --remove-orphans`,
         testDir
       );
     } catch (error) {
@@ -128,7 +135,7 @@ describe("Bridge Docker Compose Integration Tests", function () {
     // Start the Docker Compose stack
     console.log("🚀 Starting all services with Docker Compose...");
     await executeCommand(
-      "docker-compose -f docker-compose.bridge.yml up -d --build",
+      `${dockerCompose} -f docker-compose.bridge.yml up -d --build`,
       testDir
     );
 
@@ -165,7 +172,7 @@ describe("Bridge Docker Compose Integration Tests", function () {
         // First try graceful shutdown
         try {
           await executeCommand(
-            "docker-compose -f docker-compose.bridge.yml stop",
+            `${dockerCompose} -f docker-compose.bridge.yml stop`,
             testDir
           );
         } catch (stopError) {
@@ -174,7 +181,7 @@ describe("Bridge Docker Compose Integration Tests", function () {
 
         // Then remove everything
         await executeCommand(
-          "docker-compose -f docker-compose.bridge.yml down -v --remove-orphans",
+          `${dockerCompose} -f docker-compose.bridge.yml down -v --remove-orphans`,
           testDir
         );
         console.log("Compose cleanup completed");
@@ -184,11 +191,11 @@ describe("Bridge Docker Compose Integration Tests", function () {
         try {
           console.log("Attempting force cleanup...");
           await executeCommand(
-            "docker-compose -f docker-compose.bridge.yml kill",
+            `${dockerCompose} -f docker-compose.bridge.yml kill`,
             testDir
           );
           await executeCommand(
-            "docker-compose -f docker-compose.bridge.yml down -v --remove-orphans",
+            `${dockerCompose} -f docker-compose.bridge.yml down -v --remove-orphans`,
             testDir
           );
         } catch (forceError) {

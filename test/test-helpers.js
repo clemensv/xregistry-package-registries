@@ -1,6 +1,29 @@
 // Test helpers to ensure tests always exit properly
 
 /**
+ * Detect docker compose command (v1 or v2)
+ * @returns {string} - 'docker-compose' or 'docker compose'
+ */
+let _dockerComposeCommand = null;
+async function getDockerComposeCommand() {
+  if (_dockerComposeCommand) return _dockerComposeCommand;
+  
+  const { execSync } = require('child_process');
+  try {
+    execSync('docker compose version', { stdio: 'ignore' });
+    _dockerComposeCommand = 'docker compose';
+  } catch {
+    try {
+      execSync('docker-compose --version', { stdio: 'ignore' });
+      _dockerComposeCommand = 'docker-compose';
+    } catch {
+      throw new Error('Neither docker compose nor docker-compose command is available');
+    }
+  }
+  return _dockerComposeCommand;
+}
+
+/**
  * Ensures a server process is cleaned up properly to prevent hanging tests
  * @param {ChildProcess} serverProcess - The server process to manage
  * @param {Function} doneCallback - Mocha's done callback
@@ -89,26 +112,27 @@ async function cleanupDockerContainer(containerName, executeCommand, imageName =
  * @param {string} workDir - Working directory for compose commands
  */
 async function cleanupDockerCompose(composeFile, executeCommand, workDir) {
+  const dockerCompose = await getDockerComposeCommand();
   try {
     console.log('🧹 Stopping and removing Docker Compose stack...');
     
     // First try graceful shutdown
     try {
-      await executeCommand(`docker-compose -f ${composeFile} stop`, workDir);
+      await executeCommand(`${dockerCompose} -f ${composeFile} stop`, workDir);
     } catch (stopError) {
       console.log('Error stopping services gracefully:', stopError.message);
     }
     
     // Then remove everything
-    await executeCommand(`docker-compose -f ${composeFile} down -v --remove-orphans`, workDir);
+    await executeCommand(`${dockerCompose} -f ${composeFile} down -v --remove-orphans`, workDir);
     console.log('Compose cleanup completed');
   } catch (error) {
     console.error('Error during compose cleanup:', error.message);
     // Try force cleanup as last resort
     try {
       console.log('Attempting force cleanup...');
-      await executeCommand(`docker-compose -f ${composeFile} kill`, workDir);
-      await executeCommand(`docker-compose -f ${composeFile} down -v --remove-orphans`, workDir);
+      await executeCommand(`${dockerCompose} -f ${composeFile} kill`, workDir);
+      await executeCommand(`${dockerCompose} -f ${composeFile} down -v --remove-orphans`, workDir);
     } catch (forceError) {
       console.error('Force cleanup also failed:', forceError.message);
     }
@@ -159,5 +183,6 @@ module.exports = {
   cleanupServerProcess,
   cleanupDockerContainer,
   cleanupDockerCompose,
-  setupProcessExitHandlers
+  setupProcessExitHandlers,
+  getDockerComposeCommand
 };
