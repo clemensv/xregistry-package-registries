@@ -148,7 +148,7 @@ run_service_test() {
     start_time=$(date +%s)
     
     # Run the specific test
-    if npx mocha "$test_file" --recursive --timeout 300000 --reporter spec; then
+    if npx mocha "$test_file" --recursive --timeout 300000 --reporter spec --exit; then
         local end_time
         end_time=$(date +%s)
         local duration=$((end_time - start_time))
