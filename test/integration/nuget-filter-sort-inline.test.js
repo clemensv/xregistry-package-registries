@@ -56,7 +56,7 @@ describe("NuGet Filter, Sort, and Inline Functionality Integration Tests", funct
     }
   };
 
-  const waitForServer = async (url, maxRetries = 45, delay = 2000) => {
+  const waitForServer = async (url, maxRetries = 60, delay = 3000) => {
     console.log(
       `⏳ Waiting for server at ${url} (max ${maxRetries} retries, ${delay}ms delay)`
     );
