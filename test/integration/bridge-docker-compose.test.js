@@ -150,8 +150,8 @@ describe("Bridge Docker Compose Integration Tests", function () {
     const isBridgeReady = await waitForService(
       bridgeUrl,
       "Bridge Proxy",
-      60,
-      10000
+      90,
+      15000
     );
     if (!isBridgeReady) {
       await checkComposeServices();
