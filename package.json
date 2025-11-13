@@ -76,7 +76,7 @@
     "chai": "^4.3.10",
     "jsverify": "^0.8.4",
     "knuth-shuffle": "^1.0.8",
-    "mocha": "^10.2.0",
+    "mocha": "^11.7.5",
     "sinon": "^17.0.1",
     "supertest": "^6.3.3"
   }
