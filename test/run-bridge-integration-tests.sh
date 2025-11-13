@@ -123,14 +123,17 @@ check_prerequisites() {
     log_info "Docker found: $docker_version"
     
     # Check if Docker Compose is available (v2 plugin or v1 standalone)
+    # Set DOCKER_COMPOSE_CMD for use throughout the script
     if docker compose version &> /dev/null; then
         local docker_compose_version
         docker_compose_version=$(docker compose version)
         log_info "Docker Compose (v2) found: $docker_compose_version"
+        DOCKER_COMPOSE_CMD="docker compose"
     elif command -v docker-compose &> /dev/null; then
         local docker_compose_version
         docker_compose_version=$(docker-compose --version)
         log_info "Docker Compose (v1) found: $docker_compose_version"
+        DOCKER_COMPOSE_CMD="docker-compose"
     else
         log_error "Docker Compose is not available. Please install Docker Compose."
         exit 1
@@ -158,7 +161,7 @@ cleanup_services() {
         log_info "Stopping Docker Compose services..."
         (
             cd "$TEST_DIR"
-            docker-compose -f docker-compose.bridge.yml down -v --remove-orphans 2>/dev/null || true
+            $DOCKER_COMPOSE_CMD -f docker-compose.bridge.yml down -v --remove-orphans 2>/dev/null || true
         )
     else
         log_warning "Test directory not found: $TEST_DIR"
@@ -201,7 +204,7 @@ cleanup_on_exit() {
     else
         log_info "Keeping services running (--keep-services flag used)"
         log_info "To manually cleanup later, run:"
-        log_info "  docker-compose -f $TEST_DIR/docker-compose.bridge.yml down -v --remove-orphans"
+        log_info "  $DOCKER_COMPOSE_CMD -f $TEST_DIR/docker-compose.bridge.yml down -v --remove-orphans"
     fi
 }
 
@@ -285,12 +288,12 @@ main() {
     log_info "Building services: npm-registry, pypi-registry, maven-registry, nuget-registry, oci-registry, bridge-proxy"
     
     if [[ "$VERBOSE" == "true" ]]; then
-        docker-compose -f docker-compose.bridge.yml up -d --build
+        $DOCKER_COMPOSE_CMD -f docker-compose.bridge.yml up -d --build
     else
         log_info "Running docker-compose up (output will be saved to log file)..."
         # Show progress while building
         (
-            docker-compose -f docker-compose.bridge.yml up -d --build > /tmp/docker-compose-output.log 2>&1 &
+            $DOCKER_COMPOSE_CMD -f docker-compose.bridge.yml up -d --build > /tmp/docker-compose-output.log 2>&1 &
             DOCKER_PID=$!
             
             while kill -0 $DOCKER_PID 2>/dev/null; do
@@ -325,7 +328,7 @@ main() {
         echo "======================================================================="
         
         log_error "🔍 Checking individual service status for diagnostic information:"
-        docker-compose -f docker-compose.bridge.yml ps 2>/dev/null || true
+        $DOCKER_COMPOSE_CMD -f docker-compose.bridge.yml ps 2>/dev/null || true
         
         log_error "🚨 FAILURE SUMMARY: Docker containers failed to build or start properly"
         log_error "    This means the integration tests NEVER RAN because the infrastructure failed"
