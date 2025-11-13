@@ -224,14 +224,14 @@ main() {
         # Wait for all tests to complete and check results
         for i in "${!pids[@]}"; do
             if wait "${pids[$i]}"; then
-                ((success_count++))
+                success_count=$((success_count + 1))
             fi
         done
     else
         # Run tests sequentially
         for service in "${services[@]}"; do
             if run_service_test "$service"; then
-                ((success_count++))
+                success_count=$((success_count + 1))
             fi
             
             # Add a short delay between tests to avoid resource conflicts
