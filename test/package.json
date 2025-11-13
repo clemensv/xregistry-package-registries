@@ -27,7 +27,7 @@
     "cleanup": "node scripts/cleanup-tests.js"
   },
   "devDependencies": {
-    "axios": "^1.6.0",
+    "axios": "^1.13.2",
     "chai": "^4.3.10",
     "mocha": "^10.2.0",
     "sinon": "^17.0.1",
@@ -49,6 +49,6 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "semver": "^7.7.2"
+    "semver": "^7.7.3"
   }
 }
