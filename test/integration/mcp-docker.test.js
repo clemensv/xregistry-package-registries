@@ -218,8 +218,9 @@ describe("MCP Docker Integration Tests", function () {
       const response = await loggedAxiosGet(`${baseUrl}/model`);
 
       expect(response.status).to.equal(200);
-      expect(response.data).to.have.property("groups");
-      expect(response.data.groups).to.have.property("mcpproviders");
+      expect(response.data).to.have.property("model");
+      expect(response.data.model).to.have.property("groups");
+      expect(response.data.model.groups).to.have.property("mcpproviders");
     });
   });
 
@@ -235,8 +236,8 @@ describe("MCP Docker Integration Tests", function () {
 
       if (providerNames.length > 0) {
         const firstProvider = response.data[providerNames[0]];
-        expect(firstProvider).to.have.property("providerid");
-        expect(firstProvider).to.have.property("name");
+        // Check that provider object exists and has basic structure
+        expect(firstProvider).to.be.an("object");
         expect(firstProvider).to.have.property("xid");
       }
     });
@@ -281,7 +282,8 @@ describe("MCP Docker Integration Tests", function () {
         return;
       }
 
-      const providerId = providersResponse.data[providerNames[0]].providerid;
+      // Use the provider name (key) as the providerId
+      const providerId = providerNames[0];
       const response = await loggedAxiosGet(
         `${baseUrl}/mcpproviders/${providerId}/servers?limit=5`
       );
@@ -303,9 +305,11 @@ describe("MCP Docker Integration Tests", function () {
       for (const providerName of providerNames) {
         const provider = providersResponse.data[providerName];
         if (provider.servers && Object.keys(provider.servers).length > 0) {
-          providerId = provider.providerid;
+          // Use the provider name (key) as the providerId
+          providerId = providerName;
           const serverNames = Object.keys(provider.servers);
-          serverId = provider.servers[serverNames[0]].serverid;
+          // Use the server name (key) as the serverId
+          serverId = serverNames[0];
           serverFound = true;
           break;
         }

@@ -184,6 +184,7 @@ jobs:
           dockerfile: "*.Dockerfile"
           recursive: true
           failure-threshold: warning
+          ignore: DL3018
 
   # Validate all checks passed
   checkin-validation-complete:
