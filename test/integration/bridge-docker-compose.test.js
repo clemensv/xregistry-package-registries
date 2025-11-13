@@ -158,6 +158,32 @@ describe("Bridge Docker Compose Integration Tests", function () {
       throw new Error("Bridge proxy failed to start within the expected time");
     }
 
+    // Additional check: Verify routing is initialized by checking a registry endpoint
+    console.log("Verifying bridge routing is initialized...");
+    let routingReady = false;
+    for (let i = 0; i < 30; i++) {
+      try {
+        console.log(`⏳ Attempt ${i + 1}/30: Checking routing initialization...`);
+        const response = await axios.get(`${bridgeUrl}/noderegistries`, { timeout: 5000 });
+        if (response.status === 200 && response.data && Object.keys(response.data).length > 0) {
+          console.log("✅ Bridge routing confirmed ready - registry data available");
+          routingReady = true;
+          break;
+        }
+      } catch (err) {
+        console.log(`⏱️  Routing not ready yet: ${err.message}`);
+        if (i % 5 === 0 && i > 0) {
+          await checkComposeServices();
+        }
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2000)); // 2 second delay
+    }
+
+    if (!routingReady) {
+      await checkComposeServices();
+      throw new Error("Bridge routing failed to initialize within expected time (60 seconds)");
+    }
+
     console.log("🎯 All services are ready for testing");
   });
   after(async function () {
