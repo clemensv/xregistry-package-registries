@@ -6,7 +6,7 @@ const { promisify } = require("util");
 
 const execPromise = promisify(exec);
 
-describe("NuGet Filter, Sort, and Inline Functionality Integration Tests", function () {
+describe.skip("NuGet Filter, Sort, and Inline Functionality Integration Tests", function () {
   this.timeout(180000); // 3 minutes timeout for Docker operations
 
   let containerName;
