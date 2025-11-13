@@ -122,15 +122,19 @@ check_prerequisites() {
     docker_version=$(docker --version)
     log_info "Docker found: $docker_version"
     
-    # Check if Docker Compose is available
-    if ! command -v docker-compose &> /dev/null; then
+    # Check if Docker Compose is available (v2 plugin or v1 standalone)
+    if docker compose version &> /dev/null; then
+        local docker_compose_version
+        docker_compose_version=$(docker compose version)
+        log_info "Docker Compose (v2) found: $docker_compose_version"
+    elif command -v docker-compose &> /dev/null; then
+        local docker_compose_version
+        docker_compose_version=$(docker-compose --version)
+        log_info "Docker Compose (v1) found: $docker_compose_version"
+    else
         log_error "Docker Compose is not available. Please install Docker Compose."
         exit 1
     fi
-    
-    local docker_compose_version
-    docker_compose_version=$(docker-compose --version)
-    log_info "Docker Compose found: $docker_compose_version"
     
     # Check if Node.js is available
     if ! command -v node &> /dev/null; then
