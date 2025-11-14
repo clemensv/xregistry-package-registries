@@ -1,6 +1,4 @@
 name: Checkin Validation
-permissions:
-    issues: write
 on:
   push:
     branches: [ "main", "develop" ]
@@ -211,27 +209,3 @@ jobs:
           else
             echo "✅ All validation checks passed"
           fi
-      
-      - name: Post status comment (PR only)
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v8
-        with:
-          script: |
-            const status = '${{ needs.unit-tests.result }}' === 'success' &&
-                          '${{ needs.docker-integration-tests.result }}' === 'success' &&
-                          '${{ needs.bridge-integration-tests.result }}' === 'success' &&
-                          '${{ needs.code-quality.result }}' === 'success';
-            
-            const emoji = status ? '✅' : '❌';
-            const statusText = status ? 'All checks passed' : 'Some checks failed';
-            
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: `${emoji} **Checkin Validation**: ${statusText}\n\n` +
-                    `- Unit & Integration Tests: ${{ needs.unit-tests.result }}\n` +
-                    `- Docker Integration Tests: ${{ needs.docker-integration-tests.result }}\n` +
-                    `- Bridge Integration Tests: ${{ needs.bridge-integration-tests.result }}\n` +
-                    `- Code Quality & Security: ${{ needs.code-quality.result }}`
-            }); 
