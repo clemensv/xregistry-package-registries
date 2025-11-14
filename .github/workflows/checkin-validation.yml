@@ -1,5 +1,6 @@
 name: Checkin Validation
-
+permissions:
+    issues: write
 on:
   push:
     branches: [ "main", "develop" ]
@@ -39,7 +40,6 @@ env:
   NODE_VERSION: '20'
 
 jobs:
-  
   # Unit and basic integration tests
   unit-tests:
     name: Unit & Integration Tests
