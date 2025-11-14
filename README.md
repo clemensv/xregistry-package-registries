@@ -156,6 +156,7 @@ The project uses a bridge architecture where:
    - Maven: 3200
    - NuGet: 3300
    - OCI: 3400
+   - MCP: 3600
 
 2. **Unified Bridge Service** (port 8080) provides:
    - Single API endpoint
