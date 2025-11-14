@@ -24,7 +24,7 @@
         "all-the-package-names": "^2.0.2264",
         "axios": "^1.13.2",
         "express": "^4.18.2",
-        "uuid": "^9.0.1",
+        "uuid": "^13.0.0",
         "winston": "^3.18.3",
         "yargs": "^17.7.2"
     },
