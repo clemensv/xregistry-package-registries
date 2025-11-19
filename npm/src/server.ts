@@ -801,7 +801,7 @@ export class XRegistryServer {
         });
 
         // Catch-all for unsupported write operations (PUT, PATCH, POST, DELETE)
-        this.app.all('*', (req, res, next) => {
+        this.app.all(/.*/, (req, res, next) => {
             const method = req.method.toUpperCase();
 
             // Only intercept write methods
@@ -820,7 +820,7 @@ export class XRegistryServer {
         });
 
         // 404 handler
-        this.app.use('*', (req, res) => {
+        this.app.use(/.*/, (req, res) => {
             res.status(404).json(createProblemDetails(
                 404,
                 'Not Found',

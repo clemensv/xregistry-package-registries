@@ -23,13 +23,13 @@
     "dependencies": {
         "all-the-package-names": "^2.0.2268",
         "axios": "^1.13.2",
-        "express": "^4.18.2",
+        "express": "^5.1.0",
         "uuid": "^9.0.1",
         "winston": "^3.18.3",
         "yargs": "^18.0.0"
     },
     "devDependencies": {
-        "@types/express": "^4.17.21",
+        "@types/express": "^5.0.5",
         "@types/jest": "^29.5.8",
         "@types/node": "^20.10.0",
         "@types/uuid": "^9.0.7",
