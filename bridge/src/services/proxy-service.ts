@@ -106,8 +106,10 @@ export class ProxyService {
                 return cleanPath;
             },
 
-            // Intercept and rewrite response body
-            onProxyRes: (proxyRes, req, res) => {
+            // http-proxy-middleware v3 event handlers
+            on: {
+                // Intercept and rewrite response body
+                proxyRes: (proxyRes, req, res) => {
                 // Get the actual base URL from the request that was set by headerMiddleware
                 const actualBaseUrl = req.headers[BASE_URL_HEADER] as string;
 
@@ -202,13 +204,13 @@ export class ProxyService {
                         targetUrl
                     });
                     if (!res.headersSent) {
-                        res.status(500).json({ error: 'Error reading upstream response' });
+                        (res as any).status(500).json({ error: 'Error reading upstream response' });
                     }
                 });
-            },
+                },
 
-            // Inject API key and tracing headers
-            onProxyReq: (proxyReq, req: any) => {
+                // Inject API key and tracing headers
+                proxyReq: (proxyReq, req: any) => {
                 try {
                     // Forward x-base-url header to downstream service
                     const baseUrlValue = req.headers[BASE_URL_HEADER];
@@ -252,10 +254,10 @@ export class ProxyService {
                         targetUrl
                     });
                 }
-            },
+                },
 
-            // Handle proxy errors
-            onError: (err, req: any, res) => {
+                // Handle proxy errors
+                error: (err, req: any, res) => {
                 this.logger.error('Proxy error', {
                     groupType,
                     targetUrl,
@@ -265,14 +267,16 @@ export class ProxyService {
                     requestId: req.requestId
                 });
 
-                if (!res.headersSent) {
-                    res.status(502).json({
+                // Check if res is ServerResponse (not Socket)
+                if ('headersSent' in res && !res.headersSent) {
+                    (res as any).status(502).json({
                         error: 'Bad Gateway',
                         message: `Upstream server ${targetUrl} is not available`,
                         groupType,
                         traceId: req.traceId,
                         correlationId: req.correlationId
                     });
+                }
                 }
             }
         };
