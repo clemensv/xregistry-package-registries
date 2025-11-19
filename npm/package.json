@@ -21,7 +21,7 @@
         "prestart": "npm run build"
     },
     "dependencies": {
-        "all-the-package-names": "^2.0.2264",
+        "all-the-package-names": "^2.0.2268",
         "axios": "^1.13.2",
         "express": "^4.18.2",
         "uuid": "^9.0.1",
