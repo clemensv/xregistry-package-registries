@@ -28,10 +28,10 @@
   },
   "devDependencies": {
     "axios": "^1.13.2",
-    "chai": "^6.2.1",
+    "chai": "^4.3.10",
     "mocha": "^10.2.0",
-    "sinon": "^17.0.1",
-    "supertest": "^7.1.4"
+    "sinon": "^21.0.0",
+    "supertest": "^6.3.3"
   },
   "keywords": [
     "xregistry",
