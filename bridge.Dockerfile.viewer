@@ -70,6 +70,9 @@ RUN npm ci --omit=dev && npm cache clean --force
 # Return to bridge directory
 WORKDIR /app/bridge
 
+# Copy configuration file
+COPY bridge/downstreams.json ./
+
 # Copy built viewer (Angular dist output)
 COPY --from=viewer-builder /viewer/dist/xregistry-viewer ./viewer/dist/xregistry-viewer
 

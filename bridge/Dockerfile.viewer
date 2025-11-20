@@ -49,9 +49,8 @@ RUN npm ci --omit=dev && npm cache clean --force
 # Copy built bridge server
 COPY --from=bridge-builder /app/dist ./dist
 
-# Copy configuration files
-COPY bridge/model.json ./
-COPY bridge/downstreams.json* ./
+# Copy configuration file
+COPY bridge/downstreams.json ./
 
 # Copy shared utilities
 COPY --from=bridge-builder /app/../shared ../shared
