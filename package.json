@@ -73,7 +73,7 @@
   },
   "devDependencies": {
     "@sinonjs/referee-sinon": "^12.0.0",
-    "chai": "^4.3.10",
+    "chai": "^6.2.1",
     "jsverify": "^0.8.4",
     "knuth-shuffle": "^1.0.8",
     "mocha": "^11.7.5",
