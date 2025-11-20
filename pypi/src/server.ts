@@ -181,7 +181,7 @@ app.get('/performance/stats', (_req, res) => {
 });
 
 // 405 Method Not Allowed - catch unsupported methods before 404
-app.all('*', (req, res, next) => {
+app.all(/.*/, (req, res, next) => {
     if (['PUT', 'PATCH', 'POST', 'DELETE'].includes(req.method)) {
         res.status(405).json({
             type: 'about:blank',
