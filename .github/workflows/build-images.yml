@@ -41,7 +41,7 @@ jobs:
       digest: ${{ steps.build-pypi.outputs.digest }}
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - uses: sigstore/cosign-installer@v3
 
@@ -129,7 +129,7 @@ jobs:
       digest: ${{ steps.build-npm.outputs.digest }}
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - uses: sigstore/cosign-installer@v3
 
@@ -217,7 +217,7 @@ jobs:
       digest: ${{ steps.build-oci.outputs.digest }}
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - uses: sigstore/cosign-installer@v3
 
@@ -305,7 +305,7 @@ jobs:
       digest: ${{ steps.build-nuget.outputs.digest }}
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - uses: sigstore/cosign-installer@v3
 
@@ -393,7 +393,7 @@ jobs:
       digest: ${{ steps.build-maven.outputs.digest }}
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - uses: sigstore/cosign-installer@v3
 
@@ -481,7 +481,7 @@ jobs:
       digest: ${{ steps.build-bridge.outputs.digest }}
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - uses: sigstore/cosign-installer@v3
 
@@ -569,7 +569,7 @@ jobs:
       digest: ${{ steps.build-mcp.outputs.digest }}
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - uses: sigstore/cosign-installer@v3
 
@@ -657,7 +657,7 @@ jobs:
       digest: ${{ steps.build-bridge-viewer.outputs.digest }}
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
 
