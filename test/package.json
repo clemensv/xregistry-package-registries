@@ -27,7 +27,7 @@
     "cleanup": "node scripts/cleanup-tests.js"
   },
   "devDependencies": {
-    "axios": "^1.13.3",
+    "axios": "^1.13.4",
     "chai": "^4.3.10",
     "mocha": "^10.2.0",
     "sinon": "^21.0.1",
