@@ -89,7 +89,7 @@ jobs:
         run: npm ci
       
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
       
       - name: Run Docker integration tests for ${{ matrix.service }}
         run: ./test/run-docker-integration-tests.sh --service ${{ matrix.service }}
@@ -124,7 +124,7 @@ jobs:
         run: npm ci
       
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
       
       - name: Run Bridge integration tests
         run: ./test/run-bridge-integration-tests.sh --timeout 600
@@ -212,7 +212,7 @@ jobs:
           submodules: recursive
       
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
       
       - name: Build ${{ matrix.dockerfile.name }} (no cache)
         uses: docker/build-push-action@v6
