@@ -38,7 +38,7 @@
     "@types/express": "^5.0.3",
     "@types/jest": "^30.0.0",
     "@types/node": "^25.0.10",
-    "jest": "^29.7.0",
+    "jest": "^30.2.0",
     "nodemon": "^3.1.11",
     "rimraf": "^6.1.2",
     "ts-jest": "^29.4.6",
